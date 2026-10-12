@@ -33,6 +33,10 @@ class Stepper {
   final EffectiveParams ep;
   final FaultManager faults;
   final MeasurementBus bus = MeasurementBus();
+  final List<double> _dl = [0.0];
+
+  /// Highest flood fraction (jet, downcomer, froth fill) and weeping fraction of the last step (live metrics).
+  double liveMaxFlood = 0, liveMaxWeep = 0;
 
   /// True for full hydraulics (PHYSICS.md 5); false for ideal (M1) hydraulics.
   bool full;
@@ -437,11 +441,10 @@ class Stepper {
       final mn = s.holdup[j];
       var mm = mn;
       double lj;
-      if (kd > 0) {
-        // dumping tray (PHYSICS.md 5.15, 12.2): implicit solve for u = sqrt(M); the residual is convex in u
-        var u = math.sqrt(math.max(mn, 0.0));
-        for (var it = 0; it < 60; it++) {
-          final m2 = u * u;
+      if (full) {
+        // full hydraulics (PHYSICS.md 5.15, 12.2): every tray is solved for u = sqrt(M) with a bracketed Newton
+        final sqMc = hyd.mcSqrt[j];
+        double lwOf(double m2, List<double> dlOut) {
           final hcl = m2 * vl / aa;
           final arg = (hcl / ae - weirHeight) / bennettC;
           var lw = 0.0, dl = 0.0;
@@ -454,19 +457,46 @@ class Stepper {
             lw = cap;
             dl = 0;
           }
-          final g = m2 - mn - dt * (inflow - lw - kd * u);
-          final gp = 2 * u + dt * (2 * u * dl + kd);
-          final un = math.max(0.0, u - g / gp);
-          final du = (un - u).abs();
-          u = un;
-          if (du < 1e-12 * math.max(1.0, u)) break;
+          dlOut[0] = dl;
+          return lw;
+        }
+
+        double gOf(double u) {
+          final lw = lwOf(u * u, _dl);
+          final dump = u > sqMc ? kd * (u - sqMc) : 0.0;
+          return u * u - mn - dt * (inflow - lw - dump);
+        }
+
+        double u;
+        if (gOf(0.0) >= 0) {
+          u = 0.0;
+        } else {
+          var lo = 0.0, hi = math.sqrt(math.max(mn, 0.0)) + 1;
+          while (gOf(hi) <= 0) {
+            hi = 2 * hi + 1;
+          }
+          u = math.sqrt(math.max(mn, 0.0));
+          if (u <= lo || u >= hi) u = 0.5 * (lo + hi);
+          for (var it = 0; it < 100; it++) {
+            final g = gOf(u);
+            if (g > 0) {
+              hi = u;
+            } else {
+              lo = u;
+            }
+            final dl = _dl[0]; // slope of the weir flow at u (set by gOf)
+            final gp = 2 * u + dt * (2 * u * dl + (u > sqMc ? kd : 0.0));
+            var un = u - g / gp;
+            if (!(un > lo && un < hi)) un = 0.5 * (lo + hi);
+            final done = (un - u).abs() < 1e-12 * math.max(1.0, u) ||
+                (hi - lo) < 1e-13 * math.max(1.0, u);
+            u = un;
+            if (done) break;
+          }
         }
         mm = u * u;
-        final hcl = mm * vl / aa;
-        final arg = (hcl / ae - weirHeight) / bennettC;
-        var lw = arg > 0 ? weirLength * ae * arg * math.sqrt(arg) / vl : 0.0;
-        if (lw > cap) lw = cap;
-        lj = lw + kd * u;
+        final lw = lwOf(mm, _dl);
+        lj = lw + (u > sqMc ? kd * (u - sqMc) : 0.0);
       } else {
         for (var it = 0; it < 40; it++) {
           final hcl = mm * vl / aa;
@@ -633,10 +663,14 @@ class Stepper {
         maxWeep = math.max(maxWeep, hyd.weepW[j]);
         if ((hyd.flags[j] & 1) != 0) dcLim = true;
       }
+      liveMaxFlood = maxFlood;
+      liveMaxWeep = maxWeep;
       control.modelFlood = maxFlood > 0.9;
       control.modelWeep = maxWeep > 0.3;
       control.modelDc = dcLim;
     } else {
+      liveMaxFlood = 0;
+      liveMaxWeep = 0;
       control.modelFlood = false;
       control.modelWeep = false;
       control.modelDc = false;

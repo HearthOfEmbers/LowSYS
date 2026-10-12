@@ -240,7 +240,11 @@ class Instrument {
 
   double _display(double v) => (v / spec.resolution).roundToDouble();
 
-  double get typicalSigma => spec.sigmaDisp / 100 * span;
+  /// Healthy 1-sigma of the reading in % of span when it differs from the transmitter alone (flows moved by a level
+  /// loop, PHYSICS.md 10.5).
+  double? typicalPct;
+
+  double get typicalSigma => (typicalPct ?? spec.sigmaDisp) / 100 * span;
 
   /// Transmitter update (flow transmitters: h = 0.1 s; others: dt).
   void update(double h, double v, double t) {
@@ -316,10 +320,10 @@ class Instrument {
     // 10 value
     value = spec.lo + (iq - 4) / 16 * span;
     // 11 quality
-    if (iq <= 3.6) {
+    if (iq <= 3.6 + 1e-3) {
       quality = Quality.bad;
       qualityText = 'IOP−';
-    } else if (iq >= 21.0) {
+    } else if (iq >= 21.0 - 1e-3) {
       quality = Quality.bad;
       qualityText = 'IOP+';
     } else if (iq < 4.0) {
@@ -416,6 +420,7 @@ class Instrument {
   double sigma5min() {
     var n = _curN, sum = _curSum, sq = _curSq;
     for (var i = 0; i < 60; i++) {
+      if (i == _binIdx) continue; // the oldest bin: the window is the last 295-300 s, so a frozen signal reads 0 within 300 s
       n += _binN[i];
       sum += _binSum[i];
       sq += _binSq[i];
@@ -423,7 +428,7 @@ class Instrument {
     if (n < 2) return 0;
     final mean = sum / n;
     final v = sq / n - mean * mean;
-    return v <= 0 ? 0 : math.sqrt(v);
+    return v <= 1e-14 * mean * mean ? 0 : math.sqrt(v);
   }
 
   InstrumentReading get reading => readingAt(_t);

@@ -38,6 +38,7 @@ void main() {
       run.update();
     }
     expect(run.objectives[1].achieved, isTrue);
+    expect(run.submitAnswer('o3', 160).correct, isTrue);
     final card = run.finish();
     expect(card.completed, isTrue);
     expect(card.total, greaterThan(60));

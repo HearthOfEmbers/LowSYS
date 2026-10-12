@@ -9,6 +9,10 @@ class PidParams {
   /// true: a setpoint change acts through the proportional term too (flow loops).
   final bool spKick;
   final double opLo, opHi;
+
+  /// First-order filter on the measurement (s); 0 = none. Level loops use 10 s so that the transmitter
+  /// noise is not passed on to the product flows (docs/DEVIATIONS.md E35).
+  final double pvFilter;
   const PidParams({
     required this.kc,
     required this.ti,
@@ -17,6 +21,7 @@ class PidParams {
     this.spKick = true,
     this.opLo = 0,
     this.opHi = 100,
+    this.pvFilter = 0,
   });
 }
 
@@ -51,6 +56,7 @@ class ControlLoop {
   double _eStar = 0;
   double _pvf1 = 0, _pvf2 = 0;
   double _pvPct1 = 0;
+  double _pvFilt = 0;
   bool _hist = false;
   double lastError = 0, lastDeltaOp = 0;
 
@@ -82,6 +88,7 @@ class ControlLoop {
     _pvf1 = p;
     _pvf2 = p;
     _pvPct1 = p;
+    _pvFilt = p;
     _eStar = 0;
     _hist = true;
   }
@@ -92,7 +99,11 @@ class ControlLoop {
   double execute(double pvSi, double h) {
     _lastPvSi = pvSi;
     if (!_hist) initHistory(pvSi);
-    final pv = pct(pvSi);
+    var pv = pct(pvSi);
+    if (params.pvFilter > 0) {
+      _pvFilt += (pv - _pvFilt) * h / (params.pvFilter + h);
+      pv = _pvFilt;
+    }
     final spP = pct(sp);
     final s = _s;
     final e = s * (pv - spP);
@@ -166,6 +177,7 @@ class ControlLoop {
         'pvf1': _pvf1,
         'pvf2': _pvf2,
         'pvPct1': _pvPct1,
+        'pvFilt': _pvFilt,
         'hist': _hist,
         'lastPv': _lastPvSi,
         'lastError': lastError,
@@ -186,6 +198,7 @@ class ControlLoop {
     _pvf1 = d('pvf1');
     _pvf2 = d('pvf2');
     _pvPct1 = d('pvPct1');
+    _pvFilt = d('pvFilt');
     _hist = j['hist']! as bool;
     _lastPvSi = d('lastPv');
     lastError = d('lastError');

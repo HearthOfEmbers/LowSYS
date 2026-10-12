@@ -97,7 +97,7 @@ class CondenserConfig {
     this.reliefSet = 350000,
     this.cwInletT = 303.15,
     this.cwMaxFlow = 41.54,
-    this.uaClean = 28500,
+    this.uaClean = 29900,
     this.dvMax = 0,
   });
 
@@ -185,7 +185,7 @@ class ControlConfig {
   final double? distillateMax, bottomsMax;
   const ControlConfig({
     this.levelKc = 2.0,
-    this.levelTi = 1200,
+    this.levelTi = 1800,
     this.drumLevelSp = 50,
     this.sumpLevelSp = 50,
     this.distillateMax,

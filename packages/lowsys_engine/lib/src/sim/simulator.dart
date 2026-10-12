@@ -18,6 +18,9 @@ import '../explain/explain_engine.dart';
 import '../explain/explain_types.dart';
 import '../model/tray_hydraulics.dart';
 import '../model/column_state.dart';
+import '../scenario/drill.dart';
+import '../scenario/scenario_def.dart';
+import '../scenario/scenario_runner.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/component.dart';
 import '../thermo/thermo_model.dart';
@@ -163,6 +166,10 @@ class Simulator {
 
   double _carry = 0;
   int _serial = 0;
+  late int _seed = options.seed;
+  ScenarioRunner? _scenario;
+  final List<(String, double)> _failLog = [];
+  final Set<String> _failSeen = {};
   bool _halted = false;
 
   // steady-state monitor (PHYSICS.md 13.3)
@@ -195,7 +202,9 @@ class Simulator {
     if (warmStart) _applyWarmStart();
   }
 
-  Simulator._restoring(ColumnConfig config, this.options) : _config = config {
+  Simulator._restoring(ColumnConfig config, this.options, int seed)
+      : _config = config {
+    _seed = seed;
     _build(config, null);
   }
 
@@ -258,7 +267,7 @@ class Simulator {
           levelKc: config.control.levelKc,
           levelTi: config.control.levelTi,
         ),
-        options.seed);
+        _seed);
     _trends = TrendBuffer();
     _control.attachTrends(_trends);
     _control.setNoise(options.measurementNoise);
@@ -379,7 +388,7 @@ class Simulator {
     _steadyCount = 5;
     _captureMonitor();
     // the cache was made with another seed: re-key the streams, then restart instruments, trends and alarms
-    _control.reseed(options.seed);
+    _control.reseed(_seed);
     _initControl();
     _levelViolation = 0;
     if (_control.noise) _resetNoisyMonitor();
@@ -1066,7 +1075,7 @@ class Simulator {
     for (final f in _fields.values) {
       if (f.value != null || t + 1e-9 < f.readyAt) continue;
       final rng = _fieldRng.putIfAbsent(
-          f.tag, () => Rng.stream(options.seed, 'field:${f.tag}'));
+          f.tag, () => Rng.stream(_seed, 'field:${f.tag}'));
       final truth =
           f.tag == 'LG-101' ? _stepper.drumLevelPct : _stepper.sumpLevelPct;
       final raw = truth + 1.0 * rng.normal();
@@ -1094,7 +1103,7 @@ class Simulator {
   /// C6 reference (Tiers 2/3); nothing to do in Tier 1.
   void setTemperatureReference() {}
 
-  bool get _scenarioIsDrill => false;
+  bool get _scenarioIsDrill => _scenario?.def.isDrill ?? false;
 
   /// Seconds the true drum or sump level was below 5 % or above 95 % (safety score, VC-25.4).
   double get safetyLevelViolationSeconds => _levelViolation;
@@ -1132,10 +1141,231 @@ class Simulator {
     final d = _stepper.drumLevelPct, sp = _stepper.sumpLevelPct;
     if (d < 5 || d > 95 || sp < 5 || sp > 95) _levelViolation += h;
     _processFields(_state.time);
+    _scenario?.update();
     if (_trends.newestEnd > _lastEvalEnd + 1e-9) {
       _lastEvalEnd = _trends.newestEnd;
       _evalChecks();
+      for (final c in _checks.results) {
+        if (c.status == CheckStatus.fail && _failSeen.add(c.id)) _failLog.add((c.id, _state.time));
+      }
     }
+  }
+
+  // ---------------------------------------------------------------- scenarios (M3)
+
+  /// The seed of the noise and drill streams for this run.
+  int get seed => _seed;
+
+  /// The running scenario, if any (updated after every main step).
+  ScenarioRunner? get scenario => _scenario;
+
+  static final Map<String, Map<String, Object?>> _scenarioCache = {};
+
+  /// Starts [def] (ENGINE_API.md 6.1, 11.1): builds the configuration, applies the levers, reaches the
+  /// steady start with noise off, applies loops, noise, view and shed, sets t = 0, then runs the events of
+  /// t = 0 and (drills) the draw. Replaces any running scenario. [seed] defaults to the option seed.
+  void startScenario(ScenarioDef def, {int? seed}) {
+    _scenario = null;
+    _seed = seed ?? options.seed;
+    _failLog.clear();
+    _failSeen.clear();
+    _view = SimView.model;
+    _pinDrum = null;
+    _build(def.buildConfig(), null);
+    _control.setNoise(false);
+    _resetNoisyMonitor();
+    for (final e in def.leverSet.entries) {
+      setLever(e.key, e.value);
+    }
+    if (def.start == 'steady') {
+      final key = jsonEncode([_configWithCurrentLevers().toJson(), def.leverSet, options.murphreePasses]);
+      final cached = _scenarioCache[key];
+      if (cached != null) {
+        _loadDynamic(cached);
+      } else {
+        runToSteadyState();
+        _scenarioCache[key] = _dumpDynamic(includeTrends: false);
+      }
+      _state.time = 0;
+      _carry = 0;
+      _nextCheck = 60;
+      _steady = true;
+      _steadyCount = 5;
+      _captureMonitor();
+    }
+    _control.setNoise(false);
+    _control.reseed(_seed);
+    _initControl();
+    _levelViolation = 0;
+    final tags = def.loops.keys.toList()..sort();
+    for (final tag in tags) {
+      final cfg = def.loops[tag]!;
+      final mode = cfg['mode'] as String?;
+      if (mode != null) {
+        _control.setMode(tag, LoopMode.values.firstWhere((m) => m.name == mode));
+      }
+      if (cfg['sp'] != null) _control.setSp(tag, (cfg['sp']! as num).toDouble());
+      if (cfg['op'] != null) _control.setOp(tag, (cfg['op']! as num).toDouble());
+    }
+    _control.badPvShed = def.badPvShed;
+    _view = def.view == 'plant' ? SimView.plant : SimView.model;
+    _setNoise(def.noise);
+    _resetMonitor(capture: true);
+    if (_control.noise) _resetNoisyMonitor();
+    _scenario = ScenarioRunner(def, SimulatorHost(this));
+    _scenario!.update();
+  }
+
+  void takeHint(int index) => _requireScenario().takeHint(index);
+  AnswerResult submitAnswer(String objectiveId, Object answer) =>
+      _requireScenario().submitAnswer(objectiveId, answer);
+  DrillResult submitDiagnosis(Diagnosis d) => _requireScenario().submitDiagnosis(d);
+  ScoreCard finishScenario() => _requireScenario().finish();
+
+  ScenarioRunner _requireScenario() =>
+      _scenario ?? (throw StateError('No scenario is running'));
+
+  /// First cross-check that went `fail` at or after sim time [since], as (id, time).
+  (String, double)? firstFailedCheckSince(double since) {
+    for (final f in _failLog) {
+      if (f.$2 >= since) return f;
+    }
+    return null;
+  }
+
+  static final RegExp _mStage = RegExp(r'^stage\[(\d+)\]\.(\w+)$');
+  static final RegExp _mLoop = RegExp(r'^loop\[([\w-]+)\]\.(\w+)$');
+  static final RegExp _mInst = RegExp(r'^instrument\[([\w-]+)\]\.(\w+)$');
+  static final RegExp _mValve = RegExp(r'^valve\[([\w-]+)\]\.(\w+)$');
+  static final RegExp _mCheck = RegExp(r'^check\[([\w:.-]+)\]\.(\w+)$');
+  static final RegExp _mAlarm = RegExp(r'^alarm\[([\w.:-]+)\]\.active$');
+
+  /// True model values for scenario predicates, read from the live state without building a snapshot
+  /// (ENGINE_API.md 11.3). Unknown paths give null.
+  dynamic liveMetric(String path) {
+    switch (path) {
+      case 'steady':
+        return _steady;
+      case 'alarm.count':
+        return _control.alarms.activeCount;
+      case 'safety.reliefLifted':
+        return false;
+      case 'safety.levelViolationSeconds':
+        return _levelViolation;
+      case 'condenser.drumLevelPct':
+        return _stepper.drumLevelPct;
+      case 'condenser.qc':
+      case 'reboiler.qr':
+      case 'reboiler.steamValveOp':
+        return double.nan;
+    }
+    if (path.startsWith('kpi.')) return _liveKpi(path.substring(4));
+    if (path.startsWith('lever.')) {
+      try {
+        return lever(path.substring(6));
+      } on ArgumentError {
+        return null;
+      }
+    }
+    var m = _mStage.firstMatch(path);
+    if (m != null) {
+      final j = int.parse(m.group(1)!);
+      final st = _state;
+      if (j < 0 || j >= st.n) return null;
+      switch (m.group(2)) {
+        case 'x':
+          return st.x[j * st.nc];
+        case 't':
+          return double.nan;
+        case 'p':
+          return _config.condenser.pTopDesign;
+        case 'holdup':
+          return st.holdup[j];
+        case 'weepFrac':
+          return _stepper.full && j >= 1 && j <= st.nTrays ? _hyd.weepW[j] : 0.0;
+        case 'jetFlood':
+          return _stepper.full && j >= 1 && j <= st.nTrays ? _hyd.phi[j] : 0.0;
+      }
+      return null;
+    }
+    m = _mLoop.firstMatch(path);
+    if (m != null) {
+      final l = _control.loop(m.group(1)!);
+      switch (m.group(2)) {
+        case 'pv':
+          return _control.instrument(l.pvTag).value;
+        case 'sp':
+          return l.sp;
+        case 'op':
+          return l.op;
+        case 'mode':
+          return l.mode.name;
+      }
+      return null;
+    }
+    m = _mInst.firstMatch(path);
+    if (m != null) {
+      final i = _control.instrument(m.group(1)!);
+      return m.group(2) == 'value' ? i.value : i.quality.name;
+    }
+    m = _mValve.firstMatch(path);
+    if (m != null) {
+      final v = _control.valve(m.group(1)!);
+      final loop = _control.loops.firstWhere((l) => l.mvRef == v.id);
+      return m.group(2) == 'op' ? loop.op : v.position;
+    }
+    m = _mCheck.firstMatch(path);
+    if (m != null) {
+      for (final c in _checks.results) {
+        if (c.id == m.group(1)) {
+          return m.group(2) == 'residual' ? c.residual : c.status.name;
+        }
+      }
+      return null;
+    }
+    m = _mAlarm.firstMatch(path);
+    if (m != null) return _control.alarms.isActive(m.group(1)!);
+    return null;
+  }
+
+  double _liveKpi(String f) {
+    final s = _state;
+    final nc = s.nc;
+    final N = s.nTrays;
+    final used = _debug.dt > 0;
+    final d = used ? _debug.distillateFlow : _control.lv101.flow;
+    final b = used ? _debug.bottomsFlow : _control.lv102.flow;
+    switch (f) {
+      case 'xD':
+        return s.x[0];
+      case 'xB':
+        return s.x[(N + 1) * nc];
+      case 'd':
+        return d;
+      case 'b':
+        return b;
+      case 'refluxRatio':
+        return d > 1e-9 ? (used ? _debug.refluxFlow : s.liquid[0]) / d : double.nan;
+      case 'boilup':
+        return used ? _debug.boilupFlow : s.vapor[N + 1];
+      case 'columnDp':
+        return _stepper.bus.columnDp;
+      case 'maxFloodPct':
+        return 100 * _stepper.liveMaxFlood;
+      case 'maxWeepFraction':
+        return _stepper.liveMaxWeep;
+      case 'drumLevelPct':
+        return _stepper.drumLevelPct;
+      case 'sumpLevelPct':
+        return _stepper.sumpLevelPct;
+      case 'pTop':
+        return _config.condenser.pTopDesign;
+      case 'balanceResidual':
+        final fl = used ? _debug.feedFlow : s.feedAct;
+        final fz = fl * _ep.zEff[0];
+        return fz > 0 ? (fz - d * s.x[0] - b * s.x[(N + 1) * nc]).abs() / fz : 0.0;
+    }
+    return double.nan;
   }
 
   // ---------------------------------------------------------------- structure
@@ -1580,7 +1810,7 @@ class Simulator {
         for (final f in _fields.values)
           FieldCheck(f.tag, f.requestedAt, f.readyAt, f.value)
       ],
-      scenario: null,
+      scenario: _scenario?.snapshot(),
     );
   }
 
@@ -1637,6 +1867,11 @@ class Simulator {
         'dynamic': _dumpDynamic(),
         'faults': _faults.toJson(),
         'carry': _carry,
+        'seed': _seed,
+        'scenario': _scenario == null
+            ? null
+            : {'def': _scenario!.def.source, 'state': _scenario!.toJson()},
+        'failLog': [for (final f in _failLog) [f.$1, f.$2]],
         'view': _view.index,
         'levelViolation': _levelViolation,
         'checkWindow': _checks.window,
@@ -1683,7 +1918,7 @@ class Simulator {
           measurementNoise: o['measurementNoise']! as bool,
         );
     final cfg = ColumnConfig.fromJson(saved['config']! as Map<String, Object?>);
-    final sim = Simulator._restoring(cfg, opt);
+    final sim = Simulator._restoring(cfg, opt, (saved['seed'] as num?)?.toInt() ?? opt.seed);
     final inp = saved['inputs']! as Map<String, Object?>;
     sim._inputs
       ..feedFlowSp = (inp['feedFlow']! as num).toDouble()
@@ -1717,7 +1952,7 @@ class Simulator {
         ..value = (l[3] as num?)?.toDouble();
     }
     (saved['fieldRng']! as Map<String, Object?>).forEach((k, v) {
-      sim._fieldRng[k] = Rng.stream(sim.options.seed, 'field:$k')
+      sim._fieldRng[k] = Rng.stream(sim._seed, 'field:$k')
         ..loadJson(v! as Map<String, Object?>);
     });
     final nz = saved['noisy']! as Map<String, Object?>;
@@ -1750,6 +1985,17 @@ class Simulator {
     final po = m['prevOp']! as List<Object?>;
     for (var i = 0; i < po.length; i++) {
       sim._prevOp[i] = (po[i]! as num).toDouble();
+    }
+    for (final f in (saved['failLog'] as List<Object?>?) ?? const []) {
+      final l = f! as List<Object?>;
+      sim._failLog.add((l[0]! as String, (l[1]! as num).toDouble()));
+      sim._failSeen.add(l[0]! as String);
+    }
+    final sc = saved['scenario'] as Map<String, Object?>?;
+    if (sc != null) {
+      final def = ScenarioDef.fromJson(Map<String, Object?>.from(sc['def']! as Map<Object?, Object?>));
+      sim._scenario = ScenarioRunner(def, SimulatorHost(sim), restoring: true)
+        ..loadJson(sc['state']! as Map<String, Object?>);
     }
     return sim;
   }
