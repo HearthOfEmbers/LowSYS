@@ -60,6 +60,9 @@ class CrossCheckEngine {
 
     final ready = tb.count >= nb;
     final w = window;
+    // The level terms of C1 and C3 are divided by W, so their noise grows as 1/W; the bands of PHYSICS 14.6 are
+    // sized for W = 600 s and are widened for shorter windows (DEVIATIONS.md E36).
+    final shortScale = math.max(1.0, 600 / w);
 
     // ---- C1
     {
@@ -76,7 +79,7 @@ class CrossCheckEngine {
         final dn0 = (endMean('PV:LT-101') - startMean('PV:LT-101')) * cs.n01;
         final dn1 = (endMean('PV:LT-102') - startMean('PV:LT-102')) * cs.ns1;
         final r = f - d - b - (dn0 + dn1) / w;
-        final band = math.max(2.0 * _kmolh, 0.02 * f);
+        final band = shortScale * math.max(2.0 * _kmolh, 0.02 * f);
         out.add(CrossCheckResult(
             id, title, r, band, statusOf(r, band), inputs, null, {
           'in': f,
@@ -149,7 +152,7 @@ class CrossCheckEngine {
         final vBoil = vb + (1 - q) * f;
         final vRefl = l0 + d + dn0 / w;
         final r = vBoil - vRefl;
-        final band = math.max(2.0 * _kmolh, 0.015 * vRefl);
+        final band = shortScale * math.max(2.0 * _kmolh, 0.015 * vRefl);
         out.add(CrossCheckResult(id, title, r, band, statusOf(r, band), inputs,
             null, {'fromBoilup': vBoil, 'fromReflux': vRefl, 'difference': r}));
       }

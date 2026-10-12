@@ -438,3 +438,42 @@ class SimSnapshot {
         scenario: scenario,
       );
 }
+
+extension ObjectiveStateJson on ObjectiveState {
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'text': text,
+        'met': met,
+        'metAt': metAt,
+        'holdProgress': holdProgress,
+        'holdFor': holdFor,
+      };
+}
+
+extension HintStateJson on HintState {
+  Map<String, Object?> toJson() => {
+        'index': index,
+        'unlocked': unlocked,
+        'taken': taken,
+        'cost': cost,
+        'text': text,
+      };
+}
+
+extension ScenarioMessageJson on ScenarioMessage {
+  Map<String, Object?> toJson() => {'time': time, 'text': text};
+}
+
+extension ScenarioSnapshotJson on ScenarioSnapshot {
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'kind': kind.name,
+        'elapsed': elapsed,
+        'timeLimit': timeLimit,
+        'objectives': [for (final o in objectives) o.toJson()],
+        'hints': [for (final h in hints) h.toJson()],
+        'messages': [for (final m in messages) m.toJson()],
+        'diagnosisAttemptsLeft': diagnosisAttemptsLeft,
+        'finished': finished,
+      };
+}

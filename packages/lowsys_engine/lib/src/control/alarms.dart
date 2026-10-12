@@ -133,6 +133,15 @@ class AlarmManager {
 
   bool isActive(String id) => _rt[id]?.state != null;
 
+  /// Number of alarms that are not NORMAL.
+  int get activeCount {
+    var n = 0;
+    for (final r in _rt.values) {
+      if (r.state != null) n++;
+    }
+    return n;
+  }
+
   void reset() {
     for (final r in _rt.values) {
       r.state = null;

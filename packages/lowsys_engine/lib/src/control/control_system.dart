@@ -265,6 +265,11 @@ class ControlSystem {
     final fc103 = fc('FC-103', ft103, fv103, d.boilup, 300 * _kmolh);
     final lc101 = lc('LC-101', lt101, lv101, d.drumLevelSp);
     final lc102 = lc('LC-102', lt102, lv102, d.sumpLevelSp);
+    // FT-104 and FT-105 are moved by the level loops acting on the level noise: sigma_typ = sqrt(sigma_disp^2 + (Kc sigma_LT F_max/span)^2)
+    for (final (ft, lt, v) in [(ft104, lt101, lv101), (ft105, lt102, lv102)]) {
+      final g = d.levelKc * lt.spec.sigmaDisp * v.fMax / (ft.spec.hi - ft.spec.lo);
+      ft.typicalPct = math.sqrt(ft.spec.sigmaDisp * ft.spec.sigmaDisp + g * g);
+    }
     final cs = ControlSystem._(seed, [fc101, fc102, fc103, lc101, lc102], insts,
         [fv101, fv102, fv103, lv101, lv102]);
     cs

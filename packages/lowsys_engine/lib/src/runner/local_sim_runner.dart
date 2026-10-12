@@ -3,6 +3,10 @@ import 'dart:async';
 import '../config/column_config.dart';
 import '../core/ids.dart';
 import '../explain/explain_types.dart';
+import '../control/trend_buffer.dart';
+import '../scenario/drill.dart';
+import '../scenario/scenario_def.dart';
+import '../scenario/scenario_runner.dart';
 import '../faults/fault_spec.dart';
 import '../sim/lever_spec.dart';
 import '../sim/simulator.dart';
@@ -72,7 +76,7 @@ class LocalSimRunner implements SimRunner {
 
   @override
   Future<void> setLoopMode(LoopTag tag, LoopMode mode) async {
-    if (tag.startsWith('LC-')) sim.control.setMode(tag, mode);
+    sim.control.setMode(tag, mode);
   }
 
   @override
@@ -120,6 +124,29 @@ class LocalSimRunner implements SimRunner {
   Future<Map<String, Object?>> save() async => sim.saveState();
 
   @override
+  Future<void> acknowledgeAlarm(String alarmId) async => sim.acknowledgeAlarm(alarmId);
+  @override
+  Future<void> acknowledgeAllAlarms() async => sim.acknowledgeAllAlarms();
+  @override
+  Future<void> requestFieldCheck(String gaugeTag) async => sim.requestFieldCheck(gaugeTag);
+  @override
+  Future<void> requestMaintenance(String tag) async => sim.requestMaintenance(tag);
+  @override
+  Future<void> setCheckWindow(double seconds) async => sim.setCheckWindow(seconds);
+  @override
+  Future<void> setTemperatureReference() async => sim.setTemperatureReference();
+  @override
+  Future<void> startScenario(ScenarioDef def, {int? seed}) async => sim.startScenario(def, seed: seed);
+  @override
+  Future<void> takeHint(int index) async => sim.takeHint(index);
+  @override
+  Future<AnswerResult> submitAnswer(String objectiveId, Object answer) async => sim.submitAnswer(objectiveId, answer);
+  @override
+  Future<DrillResult> submitDiagnosis(Diagnosis d) async => sim.submitDiagnosis(d);
+  @override
+  Future<ScoreCard> finishScenario() async => sim.finishScenario();
+
+  @override
   Stream<SimEvent> get events => _events.stream;
 
   @override
@@ -130,6 +157,9 @@ class LocalSimRunner implements SimRunner {
 
   @override
   ColumnConfig get config => sim.config;
+
+  @override
+  TrendBuffer get trends => sim.trends;
 
   @override
   Future<void> dispose() async {

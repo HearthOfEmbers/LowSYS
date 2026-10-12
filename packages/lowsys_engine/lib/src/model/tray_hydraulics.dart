@@ -42,16 +42,9 @@ abstract final class TrayCorrelations {
   static double weepFraction(double stability) =>
       ((0.75 - stability) / 0.55).clamp(0.0, 1.0);
 
-  /// PHYSICS.md (5.15) orifice drainage constant kappa (mol^0.5/s): L_dump = kappa sqrt(M).
-  static double dumpKappa(
-          double stability, double aDrain, double aAct, double vL) =>
-      stability < 0.2
-          ? ((0.2 - stability) / 0.2) *
-              0.6 *
-              aDrain *
-              math.sqrt(2 * 9.80665 * vL / aAct) /
-              vL
-          : 0.0;
+  /// PHYSICS.md (5.15) orifice drainage constant kappa (mol^0.5/s): L_dump = kappa max(0, sqrt(M) - sqrt(Mc)).
+  static double dumpKappa(double aDrain, double aAct, double vL) =>
+      0.6 * aDrain * math.sqrt(2 * 9.80665 * vL / aAct) / vL;
 }
 
 /// Evaluates the tray hydraulics of PHYSICS.md 5 for every tray from the current state. Pure function of
@@ -93,6 +86,7 @@ class HydraulicSolver {
       bypass,
       weepFlow,
       kd,
+      mcSqrt,
       hNorm,
       dcHead,
       lMax,
@@ -144,6 +138,7 @@ class HydraulicSolver {
     bypass = f();
     weepFlow = f();
     kd = f();
+    mcSqrt = f();
     hNorm = f();
     dcHead = f();
     lMax = f();
@@ -278,7 +273,9 @@ class HydraulicSolver {
       final w = weeping ? TrayCorrelations.weepFraction(st) : 0.0;
       weepW[j] = w;
       bypass[j] = math.min(1.0, w + sB);
-      kd[j] = weeping ? TrayCorrelations.dumpKappa(st, drainA, aa, vl) : 0.0;
+      kd[j] = weeping ? TrayCorrelations.dumpKappa(drainA, aa, vl) : 0.0;
+      // holdup at which Phi = 0.2: h_cl = 25 h_dry (PHYSICS.md 5.15)
+      mcSqrt[j] = weeping ? math.sqrt(25 * hdry * aa / vl) : double.infinity;
       // full-tray overflow (5.9)
       final mm = geom.traySpacing * ae * aa / vl;
       mMax[j] = mm;
@@ -331,7 +328,7 @@ class HydraulicSolver {
       weepFlow[j] = bypass[j] * s.liquid[j - 1];
       var fl = 0;
       if (lMax[j] < double.infinity && lWeir[j] > lMax[j]) fl |= 1;
-      if (kd[j] > 0 && weeping) fl |= 2;
+      if (weeping && s.holdup[j] > mcSqrt[j] * mcSqrt[j]) fl |= 2;
       if (fill[j] >= 1 && eOv[j] > 0) fl |= 4;
       if (hcl[j] < 0.002) fl |= 8;
       if (fill[j] >= 1 || phi[j] >= 1) fl |= 16;
