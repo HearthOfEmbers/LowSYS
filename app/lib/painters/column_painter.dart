@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show PointMode;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -366,7 +367,13 @@ class ColumnLivePainter extends CustomPainter {
     final nominalHold = _median(st.holdup, 1, N);
     final hatchGapBase = g.spacing < 9 ? 3.2 : 5.0;
     final tAnim = anim.time;
-    final sprayPaint = Paint()..color = p.liquidLight.withValues(alpha: 0.9);
+    // batched point draws: one call for all froth dots and one for all spray droplets
+    final frothPts = <Offset>[];
+    final sprayPts = <Offset>[];
+    final sprayPaint = Paint()
+      ..color = p.liquidLight.withValues(alpha: 0.9)
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
     final dripPaint = Paint()
       ..color = p.liquidLight
       ..strokeWidth = 1.2
@@ -400,12 +407,11 @@ class ColumnLivePainter extends CustomPainter {
       final fr = Rect.fromLTRB(x0 + 1, dy - hFroth, (isBroken ? xa : x1) - 1, dy - hVis);
       if (full && fr.height > 1.5 && fr.width > 1) {
         canvas.drawRect(fr, Paint()..color = p.froth.withValues(alpha: flooded ? 0.22 : 0.10));
-        final dots = Paint()..color = p.froth.withValues(alpha: 0.55);
         final cols = math.max(2, (fr.width / 7).floor());
         for (var c = 0; c < cols; c++) {
           for (var rr = 0; rr < math.max(1, (fr.height / 6).floor()); rr++) {
             final u1 = _hash(j * 5.1 + c * 1.3 + rr * 7.7), u2 = _hash(j * 2.9 + c * 3.1 + rr * 1.9);
-            canvas.drawCircle(Offset(fr.left + (c + u1) * fr.width / cols, fr.bottom - (rr + u2) * 6.0 - 1), 0.9 + u2 * 1.1, dots);
+            frothPts.add(Offset(fr.left + (c + u1) * fr.width / cols, fr.bottom - (rr + u2) * 6.0 - 1));
           }
         }
       }
@@ -449,7 +455,7 @@ class ColumnLivePainter extends CustomPainter {
             final u1 = _hash(j * 9.1 + k * 2.3), u2 = _hash(j * 4.7 + k * 6.1), u3 = _hash(j * 1.3 + k * 3.7);
             final ph = (u3 + anim.bubblePhase * (0.8 + u2)) % 1.0;
             final yy = yBot - ph * (yBot - yTop);
-            canvas.drawCircle(Offset(x0 + 4 + u1 * (x1 - x0 - 8), yy), 0.8 + u2 * 0.7, sprayPaint);
+            sprayPts.add(Offset(x0 + 4 + u1 * (x1 - x0 - 8), yy));
           }
         }
       }
@@ -498,6 +504,17 @@ class ColumnLivePainter extends CustomPainter {
         _dashedLine(canvas, Offset(cxd, dcRect.top), Offset(cxd, dcRect.bottom), flow, 4, 4, phase: -anim.flowPhase * 14);
       }
     }
+
+    if (frothPts.isNotEmpty) {
+      canvas.drawPoints(
+          PointMode.points,
+          frothPts,
+          Paint()
+            ..color = p.froth.withValues(alpha: 0.55)
+            ..strokeWidth = 2.0
+            ..strokeCap = StrokeCap.round);
+    }
+    if (sprayPts.isNotEmpty) canvas.drawPoints(PointMode.points, sprayPts, sprayPaint);
 
     // ---- sump
     final sumpRect = Rect.fromLTRB(g.shellL + 1, g.sumpTop + g.spacing * 0.35, g.shellR - 1, g.sumpBot);
