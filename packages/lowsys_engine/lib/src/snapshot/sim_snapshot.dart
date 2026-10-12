@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../core/ids.dart';
+import '../faults/fault_spec.dart';
 
 enum StageKind { drum, tray, sump }
 
@@ -47,6 +48,7 @@ class StageArrays {
   final Float64List entrain, weep;
   final Float64List holdup, hcl, froth;
   final Float64List dp,
+      dpDry,
       jetFlood,
       dcFlood,
       frothFill,
@@ -72,6 +74,7 @@ class StageArrays {
     required this.hcl,
     required this.froth,
     required this.dp,
+    required this.dpDry,
     required this.jetFlood,
     required this.dcFlood,
     required this.frothFill,
@@ -138,13 +141,6 @@ class Alarm {
 }
 
 @immutable
-class FaultInfo {
-  final FaultId id;
-  final String description;
-  const FaultInfo(this.id, this.description);
-}
-
-@immutable
 class SteadyInfo {
   final bool isSteady;
 
@@ -173,6 +169,9 @@ class Kpis {
 
   /// Zero with ideal hydraulics.
   final double maxFloodPct;
+
+  /// Highest weeping fraction over the trays (PHYSICS.md 5.13).
+  final double maxWeepFraction;
   final double drumLevelPct, sumpLevelPct;
 
   /// Pa; fixed in Tier 1.
@@ -195,6 +194,7 @@ class Kpis {
     required this.qr,
     required this.columnDp,
     required this.maxFloodPct,
+    this.maxWeepFraction = 0,
     required this.drumLevelPct,
     required this.sumpLevelPct,
     required this.pTop,

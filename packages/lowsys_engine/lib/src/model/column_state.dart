@@ -46,6 +46,10 @@ class ColumnState {
   final Float64List entrain;
   final Float64List bypass;
 
+  /// Entrainment fraction filter psi_j and filtered liquid load (PHYSICS.md 5.5, 5.6), full hydraulics only.
+  final Float64List psi;
+  final Float64List lbar;
+
   /// Simulation time (s).
   double time = 0;
 
@@ -65,7 +69,9 @@ class ColumnState {
         eff = Float64List(nTrays + 2),
         alphaE = Float64List(nTrays + 2),
         entrain = Float64List(nTrays + 2),
-        bypass = Float64List(nTrays + 2);
+        bypass = Float64List(nTrays + 2),
+        psi = Float64List(nTrays + 2),
+        lbar = Float64List(nTrays + 2);
 
   void copyFrom(ColumnState o) {
     m.setAll(0, o.m);
@@ -80,6 +86,8 @@ class ColumnState {
     alphaE.setAll(0, o.alphaE);
     entrain.setAll(0, o.entrain);
     bypass.setAll(0, o.bypass);
+    psi.setAll(0, o.psi);
+    lbar.setAll(0, o.lbar);
     time = o.time;
     feedAct = o.feedAct;
     refluxAct = o.refluxAct;
@@ -101,6 +109,8 @@ class ColumnState {
         'vLiq': _l(vLiq),
         'eff': _l(eff),
         'alphaE': _l(alphaE),
+        'psi': _l(psi),
+        'lbar': _l(lbar),
         'time': time,
         'feedAct': feedAct,
         'refluxAct': refluxAct,
@@ -125,6 +135,8 @@ class ColumnState {
     _load(vLiq, j['vLiq']);
     _load(eff, j['eff']);
     _load(alphaE, j['alphaE']);
+    if (j['psi'] != null) _load(psi, j['psi']);
+    if (j['lbar'] != null) _load(lbar, j['lbar']);
     time = (j['time']! as num).toDouble();
     feedAct = (j['feedAct']! as num).toDouble();
     refluxAct = (j['refluxAct']! as num).toDouble();

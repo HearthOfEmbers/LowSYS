@@ -2,6 +2,8 @@ import 'dart:async';
 
 import '../config/column_config.dart';
 import '../core/ids.dart';
+import '../explain/explain_types.dart';
+import '../faults/fault_spec.dart';
 import '../sim/lever_spec.dart';
 import '../sim/simulator.dart';
 import '../snapshot/sim_snapshot.dart';
@@ -102,6 +104,15 @@ class LocalSimRunner implements SimRunner {
     onProgress?.call(1);
     return run.result!;
   }
+
+  @override
+  Future<FaultId> injectFault(FaultSpec spec) async => sim.faults.inject(spec);
+
+  @override
+  Future<void> clearFault(FaultId id) async => sim.faults.clear(id);
+
+  @override
+  Future<ExplainResult> explain(ExplainTarget target) async => sim.explain(target);
 
   @override
   Future<Map<String, Object?>> save() async => sim.saveState();
