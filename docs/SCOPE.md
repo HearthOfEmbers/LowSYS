@@ -46,7 +46,7 @@ Targets: Android first; Windows desktop is the development build; iOS and web la
 | Column internals | Sieve trays, valve trays, random packing, structured packing; mixed sections. | M1 (sieve, weir only), M2 (full tray hydraulics), M8 (packing) |
 | Equipment | Total/partial condenser with cooling water; reflux drum; kettle reboiler; thermosyphon reboiler (natural circulation loop); side draws, side strippers, pumparound, stripping steam (crude). | M1, M4, M6, M9 |
 | Dynamics | Liquid holdup dynamics on every stage, hydraulic lag, overhead pressure dynamics, controller dynamics, thermosyphon loop dynamics, time acceleration 0–1000×, run-to-steady-state. | M1–M6 |
-| Control | PID loops with AUTO/MAN/CAS, valves with characteristics and lag, instruments with lag/noise/faults, alarms. | M3 |
+| Control | PID loops with AUTO/MAN/CAS (real PI flow loops, sub-stepped), valves with characteristics, lag and bypass, instruments with lag, seeded noise, 4–20 mA scaling, quality flags and failure modes, analysers, field gauges, ISA-18.2 alarms, cross-check (Balance) panel, plant view. PHYSICS.md §10, §14.6. | M3 (Tier-2 instruments and checks: M4) |
 | Teaching layers | Math overlay (equation trace), guided scenarios, free sandbox, hidden-fault drills. | M2 (overlay), M3 (scenarios), M6 (drills) |
 | Diagrams | Live McCabe–Thiele (binary and key-component pseudo-binary), T-x-y, profiles (T, x, L, V, flood, ΔP), trends, FUG panel, crude TBP/D86 and gap chart. | M1, M4, M5, M7, M9 |
 | Units | SI and US field units, switchable at runtime. | M2 |
@@ -69,7 +69,7 @@ Targets: Android first; Windows desktop is the development build; iOS and web la
 | S3 | Scenario list | Guided scenarios grouped by topic, with completion state and best score. |
 | S4 | Briefing | Scenario or drill text, goals, levers available, "Start". |
 | S5 | Debrief | Score breakdown, what happened (event timeline), the key equations, "Retry" / "Next". |
-| S6 | Diagnose dialog | Choose fault category, location and (optional) severity; submit. Opens from S2b. |
+| S6 | Diagnose dialog | Choose fault category, location and, for instrument faults when the drill asks, the failure mode; submit. Opens from S2b. |
 | S7 | Settings | Theme picker with live thumbnails, units, graphics quality (High/Low), default speed, haptics, reset progress, about/licences. |
 | S8 | Library (M10) | Concept cards (e.g. "Minimum reflux", "Weeping") that link to the scenario that demonstrates them. |
 
@@ -82,7 +82,7 @@ Navigation uses plain `Navigator` routes (no routing package): S0 → S1 → S2;
 | **TimeBar** | Sim clock (hh:mm:ss), speed selector (Pause, 1×, 2×, 5×, 10×, 30×, 100×, 300×, 1000×), actual speed achieved (shown amber when the frame budget limits it), "Steady?" indicator (green when the steady-state residual is below tolerance), "Run to steady state" button, tier badge (T1/T2/T3, tap to switch), units toggle. |
 | **ColumnView** | Animated column painter (trays or packing, downcomers, liquid, froth, vapour, drum, sump, reboiler/thermosyphon, condenser, flows on pipes, side strippers for crude). Tap a tray or stream to open the math overlay; long-press for a quick-look tooltip. Pinch-zoom and pan on phone. |
 | **DiagramPanel** | Tabs: McCabe–Thiele · Profiles · Trends · Products (FUG panel or crude TBP/D86) · Equipment (condenser, reboiler / thermosyphon detail). |
-| **ControlPanel** | Tabs: Levers (grouped: Feed, Top, Bottom, Column, Advanced) · Faceplates (one per control loop) · Faults (sandbox only, M2+). |
+| **ControlPanel** | Tabs: Levers (grouped: Feed, Top, Bottom, Column, Advanced) · Faceplates (one per control loop: PV/SP/OP, mode, quality badge, signal look, valve-curve mini plot, field check; M3) · Balance (cross-checks C1–C7 with window selector and the C6 temperature chart; M3) · Faults (sandbox only, M2+). |
 | **KpiStrip** | xD, xB (or key-component specs, or crude product specs), D, B, R, Q_C, Q_R, column ΔP, max flood %, active alarms. Each value is tappable (math overlay). |
 | **AlarmBanner** | Newest unacknowledged alarm; tap to open the alarm list; "Ack" button (M3). |
 
@@ -145,7 +145,10 @@ Ranges are hard limits; defaults are for the benzene–toluene (B-T) preset unle
 | Antifoam injection | off / on | off | – | all | Counters the foaming fault (with delay) |
 | Overhead inert vent | 0–100 | 0 | % open | T2, T3 | Purges non-condensables |
 | TC-101 tray-temperature control | enable / disable, tray choice, SP | disabled; tray 14 when enabled | – | T2, T3 | Cascades to the reboiler duty |
-| Measurement noise | off / on | off (on in drills) | – | all | Seeded, deterministic |
+| Measurement noise | off / on | **on in the sandbox** (user decision 2026-10-12); off in guided scenarios; on in drills | – | all | Seeded, deterministic (PHYSICS.md §10.5, §12.9). "Run to steady state" suspends it for the run |
+| Plant view | off / on | off (on in drills H9, H10) | – | all | Shows only what a real plant measures (PHYSICS.md §10.9) |
+| Shed loops on bad PV | on / off | on | – | all | Modern DCS behaviour; off reproduces old systems (PHYSICS.md §10.2) |
+| Valve bypass (per control valve) | closed / 0–100 % | closed | % | all | The F20 fix: isolates the control valve and sets the flow by hand |
 
 ### 4.3 Multicomponent presets (defaults)
 
@@ -200,9 +203,9 @@ Each fault has a physical model (PHYSICS.md §11 gives the equations), a severit
 | F16 | Thermosyphon instability (operating condition) | Instability index I_s > 1 grows a limit-cycle oscillation of loop circulation (PHYSICS.md §8.3) | Boilup, bottom-tray ΔP, sump level and bottom T oscillate (period 5–20 s); duty falls if exit quality > 0.30 | Raise sump level; throttle inlet valve; cut duty | M6 |
 | F17 | Thermosyphon inlet restriction | Inlet loss coefficient K_in + 300 s | Lower circulation; higher exit quality; duty may fall | Clear restriction | M6 |
 | F18 | Thermosyphon outlet restriction | Outlet loss coefficient K_out + 40 s | Lower circulation; surging (raises I_s strongly) | Throttle inlet (stabilise); cut duty | M6 |
-| F19 | Instrument bias / drift / stuck | Measured = true + bias (step), + drift·t, or frozen | Controller holds the wrong value; mass/energy balance mismatch; cross-checks disagree (e.g. level vs flows) | Switch loop to MAN; use redundant instrument | M3 |
-| F20 | Control valve stuck / failed | Valve position frozen, or failed open/closed | Controller output moves but flow does not | Switch to bypass (manual flow) | M3 |
-| F28 | Transmitter hard failure | Signal loss (4–20 mA under/over-range → reads 0 % or 100 %), plugged impulse line (DP/level/flow reading stops following the process but still shows transmitter noise), spiking/erratic (heavy-tailed noise bursts), coated thermowell (TI lag τ × 10) | Loop on that PV drives its valve to a limit or goes sluggish; reading disagrees with neighbours (adjacent tray TIs, mass balance, valve OP vs flow); plugged lines look "too steady" | Put loop in MAN; use redundant/inferred measurement; flag instrument for maintenance (clears) | M3 |
+| F19 | Instrument bias / drift / stuck | Additive in % of span: bias s·10 %, drift s·10 % per hour, or output frozen (no noise). PHYSICS.md §10.6 | Controller holds the wrong value; mass/energy balance mismatch; cross-checks disagree (e.g. level vs flows) | Switch loop to MAN; use redundant instrument | M3 |
+| F20 | Control valve stuck / failed | Valve position frozen, or failed open/closed (actuator lag still applies). PHYSICS.md §10.3, §10.6 | Controller output moves but flow does not | Switch to bypass (manual flow) | M3 |
+| F28 | Transmitter hard failure | Signal loss (NAMUR failure current 3.6 / 21.0 mA → BAD, reads −2.5 % / 106.25 % of span; a loop sheds to MAN or, without shedding, drives its valve to a limit), plugged impulse line (extra lag 10^(4s) − 1 s: the reading stops following the process and keeps only the small electronic noise, "too steady"), spiking (Poisson spikes of 10–50 % of span), coated thermowell (TI lag × (1 + 9 s)). PHYSICS.md §10.6 | Loop on that PV drives its valve to a limit or goes sluggish; reading disagrees with neighbours (adjacent tray TIs, mass balance, valve OP vs flow); plugged lines look "too steady" | Put loop in MAN; use redundant/inferred measurement; flag instrument for maintenance (clears) | M3 |
 | F21 | Packing maldistribution (distributor plugged) | Parallel-column model with liquid split fraction f = 0.6 s (PHYSICS.md §6.6) | Fewer effective stages; T profile in the bed distorts; ΔP almost unchanged | None (needs shutdown); raise reflux | M8 |
 | F22 | Packing flooding (operating condition) | Robbins ΔP reaches the Kister–Gill flood ΔP; holdup rises steeply; HETP rises | Steep ΔP rise across the bed; HETP and separation worsen; liquid carryover | Cut rates | M8 |
 | F23 | Packing crushed / compacted | Packing factor F_p × (1 + 1.5 s), area unchanged, bed height H_bed × (1 − 0.15 s) (same segment count) | Higher ΔP at the same load; earlier flooding | Cut rates | M8 |
@@ -240,6 +243,8 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G15 | Packing retrofit | B-T, T2 | Compare 20 sieve trays to 9 m of structured packing | Report ΔP ratio and capacity gain (flood % at the same load) | M8 |
 | G16 | Crude cut points and gaps | Crude, T2 | Set draws and PA to meet kero D86 95 % ≤ 235 °C and a diesel–kero gap ≥ 0 °C | Meet both specs with residue D86-equivalent IBP ≥ 340 °C | M9 |
 
+Objective predicates, hints and reference numbers for G1–G12: ENGINE_API.md §11.8.
+
 ### 6.2 Hidden-fault drills (10)
 
 In a drill the engine injects one fault (from the drill's candidate list, chosen by a seeded random draw) at a random onset time inside a window. Measurement noise is on. The learner may move levers and switch loops. The learner presses **Diagnose** and picks a category, a location and optionally a severity class.
@@ -254,10 +259,17 @@ In a drill the engine injects one fault (from the drill's candidate list, chosen
 | H6 | Off-spec overhead | Debutanizer, T3 | F07 feed upset (more nC4/iC5), F12 partial reflux loss, F20 reflux valve stuck | Feed analyser trend vs reflux flow vs valve OP–flow mismatch |
 | H7 | Packed bed underperforms | B-T packed, T2 | F21 maldistribution, F22 near-flood operation, F23 crushed packing | ΔP at constant load (crushed: up; maldistribution: flat) and bed T profile |
 | H8 | Crude product drift | Crude, T2 | F24 stripping steam loss, F25 pumparound trip, F26 COT upset | Bottom T and residue yield; overhead duty and top T; flash-zone T |
-| H9 | Don't trust the gauge | B-T, T1 or T2, loops in AUTO | One instrument fault on a random tag (TI, LT, FT, PT): F19 bias/drift/stuck or F28 signal loss / plugged impulse line / spiking / coated thermowell. The process itself is healthy. | Decide *process problem vs instrument problem* and name the tag: cross-check neighbouring TIs, material and energy balance, valve OP vs measured flow, "too steady" trends. Bonus for putting the affected loop in MAN before product goes off-spec. |
-| H10 | Bad valve or bad meter? | B-T, T2 | F20 reflux/steam valve stuck vs F19/F28 on the matching flow transmitter vs a real upset (F07) | OP moving while flow is flat (valve) vs flow reading disagreeing with the heat/mass balance (meter) vs everything consistent (real upset) |
+| H9 | Don't trust the gauge | B-T, **T2** (T1 has no temperatures or pressure), full hydraulics, plant view, all loops in AUTO with the TC-101 cascade, no bad-PV shedding | One draw from 13: twelve instrument faults on FT-101/102/103/104, LT-101/102, PT-101, TI-107, TI-114 (F19 bias/drift/stuck, F28 signal loss/plugged/spiking/coated), or, about 1 in 8, a **real** feed change with every instrument healthy (decoy). Full JSON: ENGINE_API.md §11.6 | Decide *process problem vs instrument problem* and name the tag: cross-check neighbouring TIs, material and energy balance, valve OP vs measured flow, "too steady" trends. Bonus for putting the affected loop in MAN before product goes off-spec. |
+| H10 | Bad valve or bad meter? | B-T, T2, plant view | F20 FV-102/FV-103 stuck vs F19/F28 (bias, drift, plugged) on FT-102/FT-103 vs a real upset (F07). Full JSON: ENGINE_API.md §11.7 | OP moving while flow is flat (valve) vs flow reading disagreeing with the heat/mass balance (meter) vs everything consistent (real upset) |
 
-Scoring (both kinds): objectives 60 %, time 20 %, safety 10 % (no relief lift, no level < 5 % or > 95 % for more than 60 s), product quality 10 % (integrated off-spec). Drills: correct category 50 %, correct location 20 %, time to diagnosis 20 %, safety 10 %. Wrong diagnoses cost 10 % each (two attempts).
+Scoring (exact formulas: ENGINE_API.md §11.4).
+
+- **Guided:** objectives 60 %, time 20 % (full marks up to the scenario's par time), safety 10 % (no relief lift, no true level < 5 % or > 95 % for more than 60 s), product quality 10 % (share of time on spec).
+- **Drills:** correct category 50 %, correct location 20 %, time to diagnosis 20 % (full within 10 min of the fault, zero after 60 min), safety 10 %. Wrong diagnoses cost 10 % each (two attempts).
+- **Bonuses** (H9, H10): +10 % for putting the affected loop in MAN, or breaking the cascade, before the product goes off-spec. H9 also gives +5 % for naming the failure mode.
+- Drill hints cost 3 % each. The total is capped at 100 %.
+
+Drills must be winnable on a phone with noise on. Every candidate's evidence must clear the signal-to-noise rules of ENGINE_API.md §11.5, which VALIDATION.md §H tests with noise on.
 
 ---
 
@@ -360,9 +372,21 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 
 ### M3 — Regulatory control, trends, alarms, scenario engine
 
-- Engine: PID library (velocity form, anti-windup, bumpless transfer), loops FC-101/102/103, LC-101/102 (switchable AUTO/MAN), valve and instrument models, faults F19–F20, alarms; scenario runner (JSON) with structured objectives, hints, events and scoring; sandbox save/load (JSON).
-- App: Faceplates tab, Trends tab (rolling 2 h sim-time buffer, 1 point per 5 s), alarm banner and list, scenario list / briefing / debrief screens. Guided scenarios G1–G6 and G11–G12 (Tier 1 versions).
-- Acceptance: VC-16 (controller tests) pass; all eight scenarios can be completed by following their hints; scenario JSON files validate against the schema test.
+- Engine (PHYSICS.md §10, §12.9, §14.6):
+  - PID library: velocity form, corrected derivative sign, setpoint re-basing, anti-windup, bumpless transfer, IMAN cascade initialisation, BAD-PV shedding.
+  - Real PI flow loops FC-101/102/103 in a 0.1 s fast layer, replacing the ideal flow controller; LC-101/102 switchable AUTO/MAN.
+  - Valves: characteristic, actuator lag, supply disturbance, bypass.
+  - Instruments: the full pipeline with seeded noise (xoshiro128**), 4–20 mA, quality, analysers and field gauges.
+  - Faults F19, F20 and F28.
+  - ISA-18.2 alarms with acknowledgement.
+  - Cross-checks C1, C3, C4, C5; plant view; the noise-aware steady indicator.
+  - The scenario runner extended from M2 (per-step update, answer objectives, drill-ready schema, exact scoring, debrief templates).
+  - Sandbox save/load (JSON).
+- App:
+  - Faceplates tab (signal look, valve curve, field check, maintenance); Balance tab; Trends tab (rolling 2 h sim-time buffer, 5-s bins with min/max envelopes, auto-scaling with a minimum range of 10 σ).
+  - Alarm banner and list with Ack; plant-view toggle; noise on by default in the sandbox.
+  - Scenario list / briefing / debrief screens. Guided scenarios G1–G6 and G11–G12 (Tier 1 versions; objectives and reference numbers in ENGINE_API.md §11.8).
+- Acceptance: VC-7.2 (amended), VC-16, VC-20.3–20.6, VC-22 (Tier 1 instruments), VC-23 (C1, C3, C4, C5), VC-24, VC-25 and VC-26 pass. All eight scenarios can be completed by following their hints (VC-26.4), and scenario JSON files validate against the schema test. With noise on, B-T Tier 1 at 100× still holds ≥ 55 fps on the reference phone.
 
 ### M4 — Tier 2: ideal thermodynamics, energy balances, pressure
 
@@ -379,9 +403,9 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 
 ### M6 — Thermosyphon reboiler and hidden-fault drills
 
-- Engine: thermosyphon loop model with instability index and oscillator (PHYSICS.md §8.3); faults F16–F18; hidden-fault framework (seeded random fault draw and onset, diagnosis submission, scoring); measurement noise.
+- Engine: thermosyphon loop model with instability index and oscillator (PHYSICS.md §8.3); faults F16–F18; hidden-fault framework (seeded candidate, severity, onset and sign draw, diagnosis submission, protect/off-spec clocks, drill scoring; ENGINE_API.md §11.2–11.4). Measurement noise already exists from M3.
 - App: Equipment tab for the reboiler (loop schematic, circulation, exit quality, I_s gauge); Drill HUD and Diagnose dialog; drills H1–H5, H9, H10; scenario G14.
-- Acceptance: VC-14 (thermosyphon map) passes; each drill's injected fault produces its listed key evidence (automated symptom tests per drill in VALIDATION.md §H).
+- Acceptance: VC-14 (thermosyphon map) passes; each drill's injected fault produces its listed key evidence (automated symptom tests per drill in VALIDATION.md §H); H9 and H10 pass their noise-on detectability tests (VALIDATION.md §H, H9.0–H10.7), and candidates that cannot are disabled (weight 0) and recorded.
 
 ### M7 — Multicomponent light hydrocarbons
 
@@ -423,10 +447,18 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 | Time step | Fixed 0.5 s (deterministic); fast-forward uses 2.0 s | Stable and accurate per the prototype study in PHYSICS.md §12 |
 | State management | Plain `ChangeNotifier`s + `InheritedNotifier`, no third-party package | Fewest concepts for the implementer; hot path uses `ValueListenable` |
 | Fonts | Bundled OFL fonts (offline) | Works on phones without network |
+| Flow control | Real PI flow loops (Kc 0.6, Ti 2 s) on measured flow, sub-stepped at 0.1 s; closed-loop 63 % in 3 s | Instrument and valve faults need a controller that acts on a reading and owns an OP; the sub-step keeps it identical at every dt (PHYSICS.md §10.4) |
+| VC-7.2 | Tray lag timed from the delivered reflux, not the lever | That is what the case was written to test; holds for any flow-loop speed (VALIDATION.md VC-7.2) |
+| Random numbers | xoshiro128** with per-process streams (32-bit operations only) | Bit-identical on native and web; adding a fault never changes another instrument's noise (PHYSICS.md §12.9) |
+| Noise in the sandbox | On by default; off in guided scenarios | The user asked for noise on; textbook scenarios read cleaner without it, and their objectives use true values anyway |
+| What a drill shows | Plant view (only measured values) in H9 and H10 | Otherwise the model's true profiles would expose a lying instrument at a glance |
+| Bad-PV behaviour | Loops shed to MAN on a BAD PV (sandbox, H10); H9 turns shedding off | Modern DCS default; H9 needs the old behaviour so that a signal loss threatens the process |
 
 ## 10. Open items for the user (not blocking)
 
 These have defaults; the user may override them later.
 
 1. Crude assay: LowSYS ships a synthetic ~32 °API light crude (PHYSICS.md §9.1). If the user has a specific assay they care about, it can be added as a second preset.
-2. Resolved: the user wants measurement noise on, and instrument failure as its own troubleshooting drill (F28, H9, H10; delivered with the M6 drill framework).
+2. Resolved: the user wants measurement noise on, and instrument failure as its own troubleshooting drill (F28, H9, H10; delivered with the M6 drill framework). Noise is now on by default in the sandbox as well.
+3. H9 includes a decoy draw (weight 2 of 17): a real feed change with every instrument healthy. This makes "process or instrument?" a real question; without it, "instrument" is always right. Set the decoy's weight to 0 to restore "the process itself is always healthy".
+4. H9 runs in Tier 2 instead of "T1 or T2", because Tier 1 has no temperatures or pressure for the TI and PT faults. A Tier-1 variant would be limited to flow and level faults.

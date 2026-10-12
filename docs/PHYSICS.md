@@ -1238,16 +1238,20 @@ Every transmitter runs the same pipeline on its true value v (SI) at each update
 2  impulse line      v_p = v_s                         [F28 plugged: v_p ← v_p + (v_s − v_p) h/(τ_plug + h)]
 3  damping           v_m ← v_m + (v_p − v_m) h/(τ_m,eff + h)          τ_m,eff = τ_m   [F28 coated: τ_m (1 + 9 s)]
 4  calibration       v_c = v_m + b                     [F19 bias / drift: b(t)]
-5  4–20 mA           I = 4 + 16 (v_c − lo)/(hi − lo) + 0.16 n_e + 0.16 a_spike
-                                                       n_e: white N(0, σ_e) in % of span (electronics), 0 with noise off
-                                                       a_spike: [F28 spiking], % of span
-6  failure current   [F28 signal loss: I = 3.6 mA (low) or 21.0 mA (high)]
-7  saturation        I_c = clamp(I, 3.8, 20.5), except that failure currents (I ≤ 3.6 or ≥ 21.0) pass unchanged
-8  A/D               I_q = round(4096 I_c)/4096        (65 536 counts over 4–20 mA)
-9  value             v_meas = lo + (I_q − 4)/16 · (hi − lo)
-10 quality           BAD if I_q ≤ 3.6 or I_q ≥ 21.0 ; UNCERTAIN ("out of range") if I_q < 4.0 or I_q > 20.0 ;
+5  4–20 mA           I = 4 + 16 (v_c − lo)/(hi − lo) + 0.16 n_e      n_e: white N(0, σ_e), % of span (electronics);
+                                                                       0 with noise off
+6  saturation        I = clamp(I, 3.8, 20.5)          (NAMUR NE43 measuring range: a process outside the span
+                                                       reads −1.25 % or 103.125 %, UNCERTAIN, never BAD)
+7  spikes            I = I + 0.16 a_spike             [F28 spiking], a_spike in % of span; may leave 3.8–20.5 mA
+8  failure current   [F28 signal loss: I = 3.6 mA (low) or 21.0 mA (high)]
+9  A/D               I_q = clamp(round(4096 I)/4096, 0, 24)   (65 536 counts over 4–20 mA; input card 0–24 mA)
+                     — only with noise on; with noise off I_q = clamp(I, 0, 24) unrounded, so a noise-free run is
+                       exact (a quantised PV would make every PI loop dither by one count forever and the
+                       §13.3 monitor would never pass)
+10 value             v_meas = lo + (I_q − 4)/16 · (hi − lo)
+11 quality           BAD if I_q ≤ 3.6 or I_q ≥ 21.0 ; UNCERTAIN ("out of range") if I_q < 4.0 or I_q > 20.0 ;
                      OOS during maintenance ; else GOOD
-[F19 stuck: steps 1–10 are skipped; v_meas, I_q and quality stay at their last values before the onset]
+[F19 stuck: steps 1–11 are skipped; v_meas, I_q and quality stay at their last values before the onset]
 ```
 
 - Noise processes use the exact Ornstein–Uhlenbeck discretisation, so their statistics do not depend on h:
@@ -1263,7 +1267,7 @@ Every transmitter runs the same pipeline on its true value v (SI) at each update
 
   The discrete pipeline stays within 4 % of it at h ≤ 2 s.
 - **Noise switch.** Lever `noise` (0/1) enables n_s, n_e and the valve disturbances d together. When it is off they are 0 and their streams draw nothing. When switched on, every noise state starts at 0. Fault randomness (spikes, drill draws) uses separate streams and does not depend on this lever.
-- **Initialisation.** v_m = v and v_p = v at the start; with noise off a healthy transmitter reads exactly v at steady state. The only difference is A/D quantisation (≤ 1/131 072 of span), which is why loop and KPI tests use 1×10⁻⁵ of span as their resolution.
+- **Initialisation.** v_m = v and v_p = v at the start. With noise off, a healthy transmitter reads v to round-off (no quantisation, step 9), so every noise-off steady state and validation number of M1/M2 is unchanged.
 
 **Parameters by type** (B-T spans; % of span unless stated):
 
@@ -1322,7 +1326,7 @@ A fault acts on one tag. s is the current severity (11.1) and σ = ±1 the fault
 | `bias` | F19 | every transmitter, AT | b = σ · s · 0.10 (hi − lo), pipeline step 4 | 0 |
 | `drift` | F19 | every transmitter, AT | b(t) = σ · s · 0.10 (hi − lo) · (t − t₀)/3600 s | 0 (the drift is its own ramp) |
 | `stuck` | F19 | every transmitter, AT | outputs frozen at their last pre-onset values (no noise, no quantisation flicker) | 0 |
-| `signalLossLow` | F28 | every transmitter | I = 3.6 mA → v_meas = lo − 0.025 (hi − lo) | 0 |
+| `signalLossLow` | F28 | every transmitter | I = 3.6 mA → v_meas = lo − 0.025 (hi − lo) (step 8 overrides saturation) | 0 |
 | `signalLossHigh` | F28 | every transmitter | I = 21.0 mA → v_meas = lo + 1.0625 (hi − lo) | 0 |
 | `signalLoss` | F28 | AT | analyser fault: no new results | 0 |
 | `plugged` | F28 | FT, LT, PT, PDT; AT (sample line) | extra lag τ_plug = 10^(4s) − 1 s (s = 0.5: 99 s; 0.75: 999 s; 0.9: 3980 s; 1: 9999 s). The state starts at the sensed value at onset. A step in the true value shows only 45 % (s = 0.75), 14 % (0.9) or 6 % (1.0) after 10 min | 300 s |
@@ -1842,7 +1846,7 @@ The engine computes these checks from **readings only** (instrument values and q
 - **Level to moles.** N_0,1% and N_S,1% are the mol per 1 % of drum and sump level, from the preset's design steady state (constant; B-T Tier 1: 307 mol and 236 mol). ΔN_0 = (LT-101_end − LT-101_start) N_0,1%, and likewise ΔN_S.
 - **Status and band.** Each check has a residual r and a band. Status is `ok` for |r| ≤ band, `check` for band < |r| ≤ 2 band and `fail` for |r| > 2 band, shown green, amber and red with the number r/band.
 - **Bad inputs.** If any input is BAD or OOS, the status is `n/a` with the tag named. UNCERTAIN inputs are used but flagged.
-- **Steady-only checks** (C2, C7) show `transient` while the steady indicator (§13.3) is false.
+- **Steady-only check.** C2 shows `transient` while the steady indicator (§13.3) is false; the column inventory absorbs composition changes for about an hour.
 - **Band sizes.** Bands are 3–10× the noise of the windowed residual at the default window. A fault larger than about twice the band is unambiguous on a phone, and drill severities are chosen to meet that (ENGINE_API.md §11.5).
 
 | Id | Check | Residual (B-T notation) | Band | What the learner sees |
@@ -1852,10 +1856,10 @@ The engine computes these checks from **readings only** (instrument values and q
 | C3 | **Top vapour, Tier 1**: boilup vs reflux + distillate (CMO) | V_boil = V̄_B + (1 − q) F̄ (V_B = FT-103, q = feed lever); V_refl = L̄_0 + D̄ + ΔN_0/W (L_0 = FT-102); r3 = V_boil − V_refl | max(2.0 kmol/h, 0.015 V_refl) | Three numbers: "Vapour to the top: from boilup 150.1 · from reflux + distillate 149.8 · difference +0.3 (band ±2.3)" |
 | C3a | **Top vapour, Tiers 2/3**: condenser duty vs reflux + distillate | Q_C,cw = ρ_w FT-201 c_p,w (TI-202 − TI-201) (windowed means; ρ_w 995 kg/m³, c_p,w 4180 J/kg/K); λ_top = H_V(x_D, T_cond) − h_L(x_D, T̄_100), T_cond = T_bub(x_D, P̄_101); V_cw = Q_C,cw/λ_top; r3a = V_cw − V_refl | max(2.0 kmol/h, 0.02 V_refl) | "Condenser 1282 kW ≈ 150.3 kmol/h of vapour · reflux + distillate 149.9" |
 | C3b | **Column energy balance**, Tiers 2/3 | r3b = Q̄_R + F̄ h_F − Q_C,cw − D̄ h_D − B̄ h_B; Q_R = FT-103; h_F from the feed lever (T_F) and z = AT-100 with the simulator's own feed-enthalpy function; h_D = h_L(x_D, T̄_100); h_B = h_L(x_B, T̄_121) | 0.02 Q̄_R | "Reboiler 1301 kW + feed −12 kW = condenser 1282 kW + products 4 kW · unaccounted +3 kW (band ±26)" |
-| C4 | **Valve characteristic**, one per valve–meter pair: FV-101/FT-101, FV-102/FT-102, FV-103/FT-103, LV-101/FT-104, LV-102/FT-105, PV-101/FT-201 | F_exp = F_max g(OP̄); for FV-103 in Tiers 2/3, Q_exp = Q_max,0 g(OP̄) with Q_max,0 = UA_R,clean (T_st(P̄_201) − T̄_121); r4 = F̄_meas − F_exp | 0.02 F_max | On each faceplate, a small plot of flow vs OP with the straight characteristic, a band and the window-mean operating point. Panel row: "FV-102: OP 30.3 % → expects 90.9 kmol/h; meter says 100.0 (−9.1, band ±6.0)" |
+| C4 | **Valve characteristic**, one per valve–meter pair: FV-101/FT-101, FV-102/FT-102, FV-103/FT-103, LV-101/FT-104, LV-102/FT-105, PV-101/FT-201 | F_exp = F_max g(OP̄); for FV-103 in Tiers 2/3, Q_exp = Q_max,0 g(OP̄) with Q_max,0 = UA_R,clean (T_st(P̄_201) − T̄_121); r4 = F̄_meas − F_exp | 0.015 F_max (10-min noise of r4 from d: ≈ 0.32 % of the flow) | On each faceplate, a small plot of flow vs OP with the straight characteristic, a band and the window-mean operating point. Panel row: "FV-102: OP 30.3 % → expects 90.9 kmol/h; meter says 100.0 (−9.1, band ±4.5)" |
 | C5 | **Level vs integrated flows** (drum, sump) | Drum: Δ_pred = ∫(V̂ − L_0 − D) dt / N_0,1%; sump: Δ_pred = ∫(F + L_0 − V̂ − B) dt / N_S,1% (tray holdups taken constant). V̂ = V_boil (T1) or V_cw (T2/3); Δ_meas = LT_end − LT_start; r5 = Δ_meas − Δ_pred (in % level) | 1.0 % + 0.5 % per 600 s of window | A mini-trend over the window: measured level (solid) and "level predicted from the flows" (dashed, starting at the same point). The gap at the end is r5 |
 | C6 | **Tray temperatures** (T2/3), in two parts | (a) Ordering: going down the column readings must rise; flag TI k if T̄_k < T̄_above − 0.5 K or T̄_k > T̄_below + 0.5 K. (b) Change since a reference: ΔT_k = T̄_k − T_k,ref, where the reference is the 300-s mean at drill start or when the learner presses "Set reference". Flag k if \|ΔT_k − ½(ΔT_above + ΔT_below)\| > max(1.0 K, 0.5 max(\|ΔT_above\|, \|ΔT_below\|)); the end TIs use their single neighbour | (as stated) | The plant-view temperature profile: dots at instrumented trays, the reference profile as a ghost line, and a bar chart of ΔT per TI with flagged TIs in red. A lying TI is a lone bar; a real process change is a smooth wave of bars |
-| C7 | **Bubble-point consistency** (T2/3 binaries); steady only | Top: r7a = (T̄_100 + ΔT_sub,lever) − T_bub(x_D, P̄_101). Bottom: r7b = T̄_121 − T_bub(x_B, P̄_101 + P̄DT_101) | ±1.0 K each | "Top: drum 80.1 °C + 0 K subcooling vs bubble point of the analysed distillate at the measured pressure 80.3 °C (−0.2 K)". A lying PT moves both rows by about (dT/dP)·b with the same sign (B-T near 1 atm: 0.33 K/kPa) |
+| C7 | **Bubble-point consistency** (T2/3 binaries); valid in transients too (the pressure term acts at once; a composition transient adds at most a few tenths of a kelvin through the analyser lag) | Top: r7a = (T̄_100 + ΔT_sub,lever) − T_bub(x_D, P̄_101). Bottom: r7b = T̄_121 − T_bub(x_B, P̄_101 + P̄DT_101) | ±1.0 K each | "Top: drum 80.1 °C + 0 K subcooling vs bubble point of the analysed distillate at the measured pressure 80.3 °C (−0.2 K)". A lying PT moves both rows by about (dT/dP)·b with the same sign (B-T near 1 atm: 0.33 K/kPa) |
 
 Signal look (on every faceplate detail, all tiers): the 5-min standard deviation of the reading next to its typical healthy value σ_disp (§10.5), and the age of the last change of the displayed digits. "σ 0.00 (typical 1.23)" means frozen; "σ 0.06 (typical 1.23)" means too steady; "σ 9.4 (typical 1.23)" means erratic.
 

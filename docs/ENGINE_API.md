@@ -522,9 +522,9 @@ class ValveSnapshot {
 }
 
 @immutable
-class LoopSnapshot {
+class LoopSnapshot {                // M2 positional fields (tag, mode, pv, sp, op) kept first; M3 adds the rest
   final LoopTag tag;
-  final LoopMode mode;              // man | auto | cas | iman
+  final LoopMode mode;              // man | auto | cas | iman (M3 adds iman to core/ids.dart)
   final bool shed;                  // in MAN because of a BAD PV
   final double pv, sp, op;          // pv = the reading (SI), sp SI, op %
   final Quality pvQuality;
@@ -536,15 +536,17 @@ class LoopSnapshot {
 }
 
 enum AlarmState { unack, acked, rtnUnack }   // NORMAL alarms are not listed
-enum AlarmPriority { high, medium, low }
+enum AlarmPriority { low, medium, high }        // M2 order kept
 
 @immutable
 class Alarm {
   final String id;                  // '<tag>.<type>' or 'model.<type>' (PHYSICS.md §10.8)
   final String message;             // localisation key + parameters
   final AlarmPriority priority;
-  final AlarmState state;
-  final double raisedAt, changedAt; // sim time
+  final bool acknowledged;          // M2 field, kept (= state != unack)
+  final double raisedAt;            // M2 field, kept
+  final AlarmState state;           // M3
+  final double changedAt;           // M3, sim time of the last state change
 }
 
 enum CheckStatus { ok, check, fail, notAvailable, transient }
@@ -591,7 +593,7 @@ class StageArrays {
 class Kpis {
   final double xD, xB;              // light component (binary) or LK in D / HK in B (multicomponent)
   final double d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct;
-  final double maxWeepFrac;         // max over trays of the weeping fraction w_j (0 in ideal hydraulics); M2/M3
+  final double maxWeepFraction;     // max over trays of the weeping fraction w_j (M2, DEVIATIONS.md E23)
   final double drumLevelPct, sumpLevelPct, pTop;
   final double? recoveryLK, recoveryHK;                 // multicomponent
   final CrudeProductKpis? crude;                        // crude
@@ -718,7 +720,7 @@ enum FaultType { trayDamage, trayFouling, foaming, feedComposition, feedThermal,
 //   F19: {"type": "instrument",  "location": {"tag": "FT-102"}, "params": {"kind": "bias"|"drift"|"stuck", "sign": 1|-1}}
 //   F28: {"type": "transmitter", "location": {"tag": "TI-114"},
 //         "params": {"kind": "signalLossLow"|"signalLossHigh"|"signalLoss"(AT)|"plugged"|"spiking"|"coated"}}
-//   F20: {"type": "valve",       "location": {"valve": "FV-102"}, "params": {"kind": "stuck"|"failOpen"|"failClosed"}}
+//   F20: {"type": "valve",       "location": {"tag": "FV-102"}, "params": {"kind": "stuck"|"failOpen"|"failClosed"}}
 // "sign" is required for bias/drift (1 = reads high). A kind that does not apply to the tag's type
 // (e.g. coated on an FT) is a ConfigException. At most one F19/F28 fault per tag at a time
 // (injecting a second replaces the first).
@@ -866,7 +868,7 @@ class CrossCheckEngine {                    // PHYSICS.md §14.6; reads TrendBuf
     {"when": {"metric": "kpi.refluxRatio", "op": "<", "value": 1.12}, "text": "You are close to the pinch …"}
   ],
   "events": [],
-  "scoring": {"objectives": 60, "time": 20, "safety": 10, "quality": 10,
+  "scoring": {"objectives": 0.6, "time": 0.2, "safety": 0.1, "quality": 0.1,
               "qualitySpec": {"metric": "kpi.xD", "op": ">=", "value": 0.95}},
   "debrief": "Markdown with live values: {kpi.refluxRatio:0.00}, {answer.o2:0.00} …"
 }
@@ -902,12 +904,13 @@ Start order: config with overrides → levers.set → steady start (or cold) →
 | Field | Meaning |
 |---|---|
 | `id`, `text` | |
-| `when` | Predicate. The objective is met once it has held continuously for `holdFor` s (default 0); the hold clock resets whenever it is false |
+| `when` | Predicate. The objective becomes *achieved* once it has held continuously for `holdFor` s (default 0); the hold clock resets whenever it is false |
+| `latch` | Default false. If true, an achieved objective stays achieved; if false, it is achieved only while its predicate keeps holding (the M2 runner semantics) |
 | `after` | Id of another objective. This one is not evaluated before that one is met (sequencing, e.g. G4) |
 | `weight` | Default 1 |
-| `answer` | Instead of `when`: met when a correct answer is submitted |
+| `answer` | Instead of `when`: achieved (and latched) when a correct answer is submitted |
 
-Objectives latch: once met they stay met.
+An objective counts for scoring if it is achieved when the scenario finishes. Every M3 guided objective sets `latch: true`, except where a scenario needs the learner to *end* in a state.
 
 **Answers**
 - `{"type": "number", "correct": x, "tolerance": t, "toleranceKind": "abs"|"rel", "quantity": "<Quantity>"}`. The learner types in display units; the value is converted to SI before comparison. The default quantity is dimensionless.
@@ -923,20 +926,20 @@ Objectives latch: once met they stay met.
 
 **Metric paths**
 - `time`, `steady`
-- `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFrac (new in M2/M3: max over trays of w_j), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, balanceResidual.
+- `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFraction (M2, DEVIATIONS.md E23), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, balanceResidual.
 - `stage[<j>].<t|p|x|holdup|weepFrac|jetFlood>` (x = light component)
 - `loop[<tag>].<pv|sp|op|mode>` (pv is the reading)
 - `instrument[<tag>].<value|quality>`
 - `valve[<id>].<op|position>`
 - `check[<id>].<residual|status>`
 - `condenser.<drumLevelPct|qc>`, `reboiler.<qr|steamValveOp>`
-- `alarm.count`, `alarm[<id>].active`
+- `alarm.count` (alarms not NORMAL), `alarm[<id>].active`
 - `safety.reliefLifted`, `safety.levelViolationSeconds`
 - `answer.<objectiveId>`, `lever.<id>`
 
 An unknown path is a schema-test failure.
 
-**Hints**: `{"after": s}` (absolute scenario time) or `{"when": predicate}`, plus `"text"` and `"cost"` (points deducted when the learner opens the hint; default 0 for guided, 3 for drills). A hint becomes available when its condition is met, and is charged once.
+**Hints**: `{"after": s}` (absolute scenario time) or `{"when": predicate}`, plus `"text"` and `"cost"` (a fraction of the total score deducted when the learner opens the hint; default 0 for guided, 0.03 for drills). A hint becomes *available* when its condition is met; it is *taken* (and charged, once) when the learner opens it. M2 shows unlocked hints immediately at no cost, which is the cost-0 case.
 
 **Events**
 
@@ -944,8 +947,10 @@ An unknown path is a schema-test failure.
 |---|---|
 | `id` | Optional, for `clearFault` |
 | Timing | `{"at": s}`, `{"atRandom": [lo, hi]}` (stream `scenario:events`, drawn at t = 0 in event order), or `{"when": predicate}` (fires once) |
-| `action` | `setLever` (`lever`, `value` or `delta`), `setLoopMode` (`loop`, `mode`), `setSp` (`loop`, `value` or `delta`), `injectFault` (`fault`: FaultSpec JSON), `clearFault` (`faultRef`: event id), `message` |
-| `message` | Optional text shown with any action (the timeline and HUD show it) |
+| `action` | `setLever` (`lever`, `value` or `delta`), `setLoopMode` (`tag`, `mode`), `setSp` (`tag`, `value` or `delta`), `injectFault` (`fault`: FaultSpec JSON with `severity`), `clearFault` (`faultRef`: event id), `message` |
+| `text` | The message of a `message` action, or an optional text shown with any other action (timeline and HUD) |
+
+The M2 runner implements `at`, `setLever`, `setLoopMode` (with `tag`), `injectFault` and `message` (with `text`). M3 adds `atRandom`, `when`, `setSp`, `delta`, `clearFault` and `text` on any action.
 
 `delta` is an SI increment applied to the current value. A `setSp` on a loop in MAN stores the SP (PHYSICS.md §10.2).
 
@@ -979,8 +984,8 @@ An unknown path is a schema-test failure.
     "modes": [],
     "attempts": 2
   },
-  "scoring": {"category": 50, "location": 20, "time": 20, "safety": 10, "timeFull": 600, "timeZero": 3600,
-              "wrongPenalty": 10, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
   "timeLimit": 14400
 }
 ```
@@ -993,7 +998,7 @@ An unknown path is a schema-test failure.
 | `weight` | > 0; 0 disables the candidate |
 | `fault` | A FaultSpec (§9) with `severityRange: [lo, hi]` instead of `severity`, no `onset` (it is drawn), and `params.sign` allowed as `"random"` |
 | `answer` | `{category, location, mode?}` |
-| `protect` | Optional list of `{"loop": tag, "modes": [...]}`. The MAN-before-off-spec bonus is earned when, at some time t with t₀ ≤ t < t_os, any listed loop is in one of its listed modes |
+| `protect` | Optional list of `{"tag": loopTag, "modes": [...]}`. The MAN-before-off-spec bonus is earned when, at some time t with t₀ ≤ t < t_os, any listed loop is in one of its listed modes |
 | `debrief` | Markdown template shown when this candidate was drawn |
 
 **Diagnosis**
@@ -1015,56 +1020,72 @@ The fault is injected with `hidden: true` at t₀. Snapshots carry no fault data
 
 ### 11.3 Runner
 
+M2 built `ScenarioDef`, `Predicate`/`MetricContext`, `ScenarioHost`/`SimulatorHost` and `ScenarioRunner` (DEVIATIONS.md A9). M3 keeps those names and extends them:
+
 ```dart
-class ScenarioDef { factory ScenarioDef.fromJson(Map<String, Object?> j); List<String> validate(ComponentDb db); }
+class ScenarioDef {                                 // + kind 'drill' fields: candidates, onsetWindow, offSpec,
+  factory ScenarioDef.fromJson(Map<String, Object?> j);   //   diagnosis; + noise, view, badPvShed, parTime
+  List<String> validate();                          // + lever ids, loop/instrument/valve tags, fault kinds, templates
+}
+abstract class ScenarioHost {                       // M2 + setSp, current lever value, live metric reads
+  SimSnapshot snapshot();  void setLever(LeverId id, double v);  void setLoopMode(LoopTag t, LoopMode m);
+  void setSp(LoopTag t, double sp);  FaultId injectFault(FaultSpec s);  void clearFault(FaultId id);
+}
 class ScenarioRunner {
-  ScenarioRunner(ScenarioDef def, Simulator sim);   // performs the start order of §11.1 and the drill draws
-  void update();                                    // after each step (PHYSICS.md §12.4 step 13): events, objectives,
-                                                    // hints, off-spec clock, protect clock, safety accumulators
+  ScenarioRunner(ScenarioDef def, ScenarioHost host);   // M3: performs the start order of §11.1 and the drill draws
+  void update();                                    // M3: called by the simulator after EVERY main step (§12.4 step 13)
   List<ObjectiveState> get objectives;
-  List<HintState> get hints;
-  void takeHint(int index);
+  List<HintState> get hints;  void takeHint(int index);
   AnswerResult submitAnswer(String objectiveId, Object answer);
   DrillResult submitDiagnosis(Diagnosis d);         // {fullyCorrect, categoryOk, locationOk, attemptsLeft}
-  ScoreCard finish();                               // §11.4; resolves the debrief template
+  ScoreCard finish();                               // §11.4; ScoreCard gains the drill terms and resolved debrief
 }
 ```
 
-`validate()` checks that every metric path, lever id, loop tag, instrument tag, valve id, fault type/kind combination, objective reference and template variable exists. It also checks that candidate weights sum to > 0 and that `onsetWindow[1] + 3600 ≤ timeLimit`. The schema test (VC-26.1) runs `validate()` on every shipped scenario.
+**Two changes from M2.**
+- **Update on every step.** M2's app calls `update(snapshot)` once per frame. At 1000× a frame is about 17 s of sim time, so `holdFor`, the off-spec clock and the protect clock would depend on frame rate and wall speed. From M3 the simulator itself calls `update()` after every main step (PHYSICS.md §12.4 step 13), so a scenario is deterministic at any speed (VC-26.5).
+  - To keep `step()` allocation-free, `MetricContext` gets a second constructor that reads the live state through the same accessors the snapshot uses, instead of a `SimSnapshot`.
+  - The app only reads `ScenarioSnapshot`.
+- **Time score.** M2's time score is 1 − elapsed/timeLimit, which never gives full marks. M3 uses `parTime` (§11.4).
+
+`validate()` checks that every metric path, lever id, loop tag, instrument tag, valve id, fault type/kind combination, objective reference and template variable exists. It also checks that candidate weights sum to > 0 and that `onsetWindow[1] + 3600 ≤ timeLimit`. The schema test (VC-26.1) runs it on every shipped scenario.
 
 ### 11.4 Scoring (exact)
 
-**Guided**, on a 0–100 scale; the weights come from `scoring`:
+Weights in `scoring` are fractions; the score is 100 × the weighted sum (as in the M2 runner).
+
+**Guided:**
 
 ```
-W   = Σ weight of all objectives ;  Wm = Σ weight of the met objectives
-O   = objectives · Wm / W
-T   = time · (Wm / W) · clamp( 1 − (t_end − parTime)/(timeLimit − parTime), 0, 1 )      (t_end = finish time)
+W   = Σ weight of all objectives ;  Wa = Σ weight of the objectives achieved at finish
+O   = objectives · Wa / W
+T   = time · (Wa / W) · clamp( 1 − (t_end − parTime)/(timeLimit − parTime), 0, 1 )     (t_end = finish time)
 S   = safety · ( 1 − ½ [relief ever lifted] − ½ [true drum or sump level < 5 % or > 95 % for > 60 s in total] )
-Q   = quality · ( 1 − min(1, 2 f_os) ),  f_os = time with qualitySpec false / t_end   (Q = quality if no qualitySpec)
-H   = Σ cost of opened hints
-Score = round( clamp(O + T + S + Q − H, 0, 100) )
+      (Tier 1 has no relief valve, so the first bracket is 0; M2's rule is the second bracket alone)
+Q   = quality · (time with qualitySpec true) / t_end           (Q = quality if there is no qualitySpec; as in M2)
+H   = Σ cost of taken hints
+Score = round( 100 · clamp(O + T + S + Q − H, 0, 1) )
 ```
 
-**Drills**:
+**Drills:**
 
 ```
 Attempt a: C_a = category · [category ok],  L_a = location · [location ok]; "fully correct" = both ok
 f   = the first fully correct attempt, else the last attempt made
 P   = wrongPenalty × (number of attempts made that were not fully correct)
-C   = C_f ,  L = L_f   (0 and 0 if no attempt was made)
-T   = time · clamp( 1 − (max(0, t_f − t₀) − timeFull)/(timeZero − timeFull), 0, 1 )  if f is fully correct, else 0
+C   = C_f ,  L = L_f   (both 0 if no attempt was made)
+T   = time · clamp( 1 − (max(0, t_f − t₀) − timeFull)/(timeZero − timeFull), 0, 1 )   if f is fully correct, else 0
 S   = as guided
 B   = bonus.protectBeforeOffSpec · [candidate has `protect` and it was met for some t, t₀ ≤ t < min(t_os, t_f)]
     + bonus.mode · [f fully correct and Diagnosis.mode == answer.mode]
-H   = Σ cost of opened hints
-Score = round( clamp(C + L + T + S + B − P − H, 0, 100) )
+H   = Σ cost of taken hints
+Score = round( 100 · clamp(C + L + T + S + B − P − H, 0, 1) )
 ```
 
 The ScoreCard lists every term, t₀, t_os, the protect time and each attempt, so the debrief can show them. SCOPE.md §6.2 states the same weights in words.
 
-**Debrief templates.** `{path}` prints a metric (§11.1 paths, at finish time) with `Fmt.value` and units in the user's unit system. `{path:0.00}` prints fixed decimals without a unit. `{path:time}` prints h:mm:ss of sim time ("never" for ∞). Drills add:
-- `fault.tag`, `fault.valve`, `fault.mode`, `fault.severity`, `fault.sign` ("+" / "−")
+**Debrief templates.** `{path}` prints a metric (§11.1 paths, at finish time) with `Fmt.value` and units in the user's unit system. `{path:0.00}` prints fixed decimals without a unit (as in M2). `{path:time}` prints h:mm:ss of sim time ("never" for ∞). Drills add:
+- `fault.tag`, `fault.mode`, `fault.severity`, `fault.sign` ("+" / "−")
 - `fault.magnitude`: the bias in display units with sign, the drift per hour, or the severity
 - `fault.onset`
 - `result.offSpecTime`, `result.protectTime`, `result.diagnosisTime`, `result.firstFlaggedCheck` (id and time of the first cross-check that went `fail` after t₀)
@@ -1088,7 +1109,7 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
 2. **One screen.** The evidence must be readable on one compact-portrait screen: a Balance-tab row, a faceplate with its signal look and valve curve, one trend, or the C6 chart. Nothing may require the learner to overlay two trends.
 3. **Persistence.** Evidence that only exists for one window after onset (level bias) must have a second, permanent source (the field gauge, or the LC output move in the trend history).
 4. **Time.** `onsetWindow[1] + 3600 ≤ timeLimit`, so a learner gets at least an hour after the latest onset.
-5. **Hints** point at a check or a habit, never at a tag. Their costs make a guess cheaper than three hints only if the guess is right.
+5. **Hints** point at a check or a habit, never at a tag. A hint costs 3 %, a wrong diagnosis 10 %, so reading hints is cheaper than guessing.
 6. **Decoys.** A drill whose title asks "process or instrument?" must contain at least one candidate whose answer is a process fault. Otherwise the category question answers itself.
 7. **Disturbance events.** Fixed-time events that reveal frozen or slow sensors must not, by themselves, make the product go off-spec. VALIDATION.md §H checks this with a healthy run.
 
@@ -1121,17 +1142,17 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
     {"id": "ft102_bias", "weight": 2,
      "fault": {"type": "instrument", "location": {"tag": "FT-102"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.7], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-102", "mode": "bias"},
-     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102 (reflux flow) read {fault.magnitude} wrong from {fault.onset:time}.** FC-102 kept the *reading* at its set point, so the real reflux moved the other way by the same amount. The tell-tales: C4 for FV-102 went red (the valve's OP no longer matched the flow it should give), and C3 (vapour to the top: reboiler vs reflux + distillate) disagreed by the same amount, while every other check stayed green. The trend itself looked normal — a bias has normal noise. Right response: FC-102 to MAN, then set the OP from the valve curve, for example {valve[FV-102].op:0.0} %."},
     {"id": "ft102_plugged", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-102", "mode": "plugged"},
-     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** The reading stopped following the process: its 5-minute σ dropped from about 1.2 kmol/h to under 0.1 (\"too steady\"). FC-102 then kept integrating the small offset between its set point and the trapped value, and walked the real reflux far away while the reading sat on the set point. C4 (FV-102) and C3 both failed. A stuck *valve* would have looked similar on the OP trend, but its flow reading would still have had normal noise and the balances would have agreed."},
     {"id": "ft101_drift", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-101"}, "params": {"kind": "drift", "sign": "random"}, "severityRange": [0.6, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-101", "mode": "drift"},
-     "protect": [{"loop": "FC-101", "modes": ["man"]}],
+     "protect": [{"tag": "FC-101", "modes": ["man"]}],
      "debrief": "**FT-101 (feed flow) drifted by {fault.magnitude} per hour from {fault.onset:time}.** FC-101 held the reading, so the real feed walked away. C1 (feed in vs distillate + bottoms out) grew steadily, and so did C4 for FV-101. The sump level-vs-flows check (C5) failed in proportion to the window: drifts show best with a 30-min window."},
     {"id": "ft103_bias", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-103"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.6], "ramp": 0},
@@ -1140,32 +1161,32 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
     {"id": "lt101_bias", "weight": 2,
      "fault": {"type": "instrument", "location": {"tag": "LT-101"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.8, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:LT-101", "mode": "bias"},
-     "protect": [{"loop": "LC-101", "modes": ["man"]}],
+     "protect": [{"tag": "LC-101", "modes": ["man"]}],
      "debrief": "**LT-101 (reflux drum level) read {fault.magnitude} wrong from {fault.onset:time}.** The reading jumped with no flow change to explain it. LC-101 then moved the distillate flow to bring the *reading* back to its set point, which shifted the real level by the same amount. C5 (drum level vs integrated flows) failed for one window after the jump, and the sight glass LG-101 disagreed with LT-101 at any time afterwards. That field check is the permanent proof."},
     {"id": "lt102_loss", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "LT-102"}, "params": {"kind": "signalLossLow"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:LT-102", "mode": "signalLoss"},
-     "protect": [{"loop": "LC-102", "modes": ["man"]}],
+     "protect": [{"tag": "LC-102", "modes": ["man"]}],
      "debrief": "**LT-102 (sump level) lost its signal at {fault.onset:time}.** The DCS flagged BAD PV (IOP−) at once. This plant does not shed the loop, so LC-102 saw −2.5 % and closed the bottoms valve, and the real sump began to fill. Diagnosis was the easy part; the score was in the response. LC-102 to MAN at the old OP within minutes, then LG-102 field checks to steer the level by hand."},
     {"id": "lt102_stuck", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "LT-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:LT-102", "mode": "stuck"},
-     "protect": [{"loop": "LC-102", "modes": ["man"]}],
+     "protect": [{"tag": "LC-102", "modes": ["man"]}],
      "debrief": "**LT-102 froze at {fault.onset:time}.** The trend became a perfectly flat line — the same digits for minutes, σ = 0 against a typical 0.8 %. LC-102 stopped correcting, so when the feed went up at 45 min the real sump level started to climb while the reading stayed put. C5 for the sump failed from then on."},
     {"id": "pt101_bias", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "PT-101"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.3, 0.5], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:PT-101", "mode": "bias"},
-     "protect": [{"loop": "PC-101", "modes": ["man"]}],
+     "protect": [{"tag": "PC-101", "modes": ["man"]}],
      "debrief": "**PT-101 (top pressure) read {fault.magnitude} wrong from {fault.onset:time}.** PC-101 moved the real pressure the other way, so every temperature shifted together, smoothly — that looks like a process change. What gave it away was C7: the drum temperature and the bottom temperature no longer matched the bubble points of the analysed products *at the measured pressure*, both off with the same sign (about 0.33 K per kPa). The local gauge PG-101 confirmed it."},
     {"id": "ti114_bias", "weight": 2,
      "fault": {"type": "instrument", "location": {"tag": "TI-114"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.25, 0.4], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:TI-114", "mode": "bias"},
-     "protect": [{"loop": "TC-101", "modes": ["man"]}, {"loop": "FC-103", "modes": ["auto", "man"]}],
+     "protect": [{"tag": "TC-101", "modes": ["man"]}, {"tag": "FC-103", "modes": ["auto", "man"]}],
      "debrief": "**TI-114 read {fault.magnitude} wrong from {fault.onset:time}.** It is TC-101's measurement, so TC-101 moved the reboiler duty until the *reading* was back at its set point. The real stripping section was then several kelvin off, and the bottoms followed. In C6, TI-114's change since the reference sat near zero while TI-112 and TI-117 moved together: a lone bar in a quiet neighbourhood. Right response: break the cascade (TC-101 to MAN, or FC-103 to AUTO) and hold the duty."},
     {"id": "ti114_coated", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "TI-114"}, "params": {"kind": "coated"}, "severityRange": [0.8, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:TI-114", "mode": "coated"},
-     "protect": [{"loop": "TC-101", "modes": ["man"]}, {"loop": "FC-103", "modes": ["auto", "man"]}],
+     "protect": [{"tag": "TC-101", "modes": ["man"]}, {"tag": "FC-103", "modes": ["auto", "man"]}],
      "debrief": "**TI-114's thermowell coated over from {fault.onset:time}:** its time constant went from 10 s to 10 × (1 + 9 × {fault.severity:0.00}) s. At steady state it reads right, so the evidence only appears in transients. When the feed rose at 45 min, TI-114 lagged its neighbours in C6 and TC-101 started to swing the duty. The fuzz on TI-114 also halved (signal look ≈ 0.5 of typical)."},
     {"id": "ti107_spiking", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "TI-107"}, "params": {"kind": "spiking"}, "severityRange": [0.5, 0.8], "ramp": 0},
@@ -1181,16 +1202,16 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
      "debrief": "**Nothing was lying — the feed really changed** by {fault.sign}0.08 benzene from {fault.onset:time}, over 15 minutes. Every balance stayed green, the temperature profile moved as a smooth wave (C6, no lone bar), and the feed analyser AT-100 showed the change about 7–10 minutes later. When all the cross-checks agree, believe the instruments."}
   ],
   "events": [
-    {"id": "feed_up", "at": 2700, "action": "setSp", "loop": "FC-101", "delta": 1.38889,
-     "message": "Upstream raised the feed: FC-101 set point +5 kmol/h."}
+    {"id": "feed_up", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 1.38889,
+     "text": "Upstream raised the feed: FC-101 set point +5 kmol/h."}
   ],
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
   "hints": [
-    {"after": 1200, "cost": 3, "text": "Open the **Balance** tab. Each row uses only meters. When a row turns red, ask which instruments feed it — the liar is one of them, unless a valve is involved."},
-    {"after": 2400, "cost": 3, "text": "Check every loop's **valve curve** (C4). A lying flow meter fails its own valve check *and* a balance; a real process change fails neither."},
-    {"after": 3300, "cost": 3, "text": "Look at the **signal look** on each faceplate: σ = 0 means frozen, far below typical means plugged, far above means erratic. For temperatures, compare each TI's change since the reference with its neighbours (C6)."},
-    {"after": 4200, "cost": 3, "text": "Levels and pressure have field gauges. A field check takes 3 minutes and settles any argument about LT-101, LT-102 or PT-101."}
+    {"after": 1200, "cost": 0.03, "text": "Open the **Balance** tab. Each row uses only meters. When a row turns red, ask which instruments feed it — the liar is one of them, unless a valve is involved."},
+    {"after": 2400, "cost": 0.03, "text": "Check every loop's **valve curve** (C4). A lying flow meter fails its own valve check *and* a balance; a real process change fails neither."},
+    {"after": 3300, "cost": 0.03, "text": "Look at the **signal look** on each faceplate: σ = 0 means frozen, far below typical means plugged, far above means erratic. For temperatures, compare each TI's change since the reference with its neighbours (C6)."},
+    {"after": 4200, "cost": 0.03, "text": "Levels and pressure have field gauges. A field check takes 3 minutes and settles any argument about LT-101, LT-102 or PT-101."}
   ],
   "diagnosis": {
     "categories": ["instrument", "valve", "feedUpset", "fouling", "foaming", "trayDamage", "none"],
@@ -1198,8 +1219,8 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
     "modes": ["bias", "drift", "stuck", "signalLoss", "plugged", "spiking", "coated"],
     "attempts": 2
   },
-  "scoring": {"category": 50, "location": 20, "time": 20, "safety": 10, "timeFull": 600, "timeZero": 3600,
-              "wrongPenalty": 10, "bonus": {"protectBeforeOffSpec": 10, "mode": 5}},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0.1, "mode": 0.05}},
   "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; affected loop protected: {result.protectTime:time}; diagnosed: {result.diagnosisTime:time}."
 }
 ```
@@ -1233,34 +1254,34 @@ Notes:
   "onsetWindow": [600, 1800],
   "candidates": [
     {"id": "fv102_stuck", "weight": 2,
-     "fault": {"type": "valve", "location": {"valve": "FV-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "fault": {"type": "valve", "location": {"tag": "FV-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "valve", "location": "valve:FV-102"},
-     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** FC-102's OP started to wander, and later ran off when planning raised the set point, while the flow reading stayed within its normal noise of its old value. The flow *reading* was honest: it still had normal noise, and C3 (top vapour) and C1 stayed green. Only C4 for FV-102 failed — an OP that no longer matches the flow. The fix is the bypass: open `bypass.FV-102` and set the reflux by hand."},
     {"id": "fv103_stuck", "weight": 2,
-     "fault": {"type": "valve", "location": {"valve": "FV-103"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "fault": {"type": "valve", "location": {"tag": "FV-103"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "valve", "location": "valve:FV-103"},
-     "protect": [{"loop": "FC-103", "modes": ["man"]}],
+     "protect": [{"tag": "FC-103", "modes": ["man"]}],
      "debrief": "**The steam valve FV-103 stuck at {fault.onset:time}.** FC-103's OP wandered and then ran to its limit when the duty set point went up, but the duty reading did not follow. The duty meter was honest: normal noise, and the energy balance C3b green. Only C4 for FV-103 failed."},
     {"id": "ft102_bias", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-102"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.7], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-102"},
-     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102 read {fault.magnitude} wrong from {fault.onset:time}.** The valve was fine and moved as told, but FC-102 controlled a lie, so the real reflux was off by that amount. Two checks failed together: C4 for FV-102 (OP vs flow) *and* C3/C3a (reflux + distillate vs condenser duty). A sticking valve fails only the first."},
     {"id": "ft102_plugged", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-102"},
-     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** On the OP trend this looks exactly like a stuck valve: OP moving, reading flat. The difference was the *noise*: the reading became far too smooth (σ under a tenth of typical) and the balances disagreed. With a stuck valve the meter keeps its normal noise and the balances agree."},
     {"id": "ft103_drift", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-103"}, "params": {"kind": "drift", "sign": "random"}, "severityRange": [0.6, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-103"},
-     "protect": [{"loop": "FC-103", "modes": ["man"]}],
+     "protect": [{"tag": "FC-103", "modes": ["man"]}],
      "debrief": "**FT-103 (duty) drifted by {fault.magnitude} per hour from {fault.onset:time}.** FC-103 held the reading, so the real duty crept away. The energy balance C3b and FV-103's valve curve (C4) both diverged steadily — a meter fault, not a valve fault."},
     {"id": "ft103_plugged", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "FT-103"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-103"},
-     "protect": [{"loop": "FC-103", "modes": ["man"]}],
+     "protect": [{"tag": "FC-103", "modes": ["man"]}],
      "debrief": "**FT-103's impulse line plugged at {fault.onset:time}.** As with FT-102, the OP moved while the reading stayed flat, but the reading was too smooth, and C3b failed as the real duty wandered."},
     {"id": "feed_real", "weight": 2,
      "fault": {"type": "feedComposition", "params": {"dz": {"benzene": 0.10}, "sign": "random"}, "severityRange": [1.0, 1.0], "ramp": 600},
@@ -1268,16 +1289,16 @@ Notes:
      "debrief": "**Valves and meters were fine — the feed changed** by {fault.sign}0.10 benzene from {fault.onset:time}. All the C4 valve curves stayed on their lines, the balances closed, and AT-100 showed the new feed about 7–10 minutes later. The products moved because the column was separating a different feed."}
   ],
   "events": [
-    {"id": "planning", "at": 2700, "action": "setSp", "loop": "FC-102", "delta": 1.38889,
-     "message": "Planning: reflux +5 kmol/h and duty +65 kW to firm up the distillate."},
-    {"at": 2700, "action": "setSp", "loop": "FC-103", "delta": 65000}
+    {"id": "planning", "at": 2700, "action": "setSp", "tag": "FC-102", "delta": 1.38889,
+     "text": "Planning: reflux +5 kmol/h and duty +65 kW to firm up the distillate."},
+    {"at": 2700, "action": "setSp", "tag": "FC-103", "delta": 65000}
   ],
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
   "hints": [
-    {"after": 1200, "cost": 3, "text": "For FC-102 and FC-103, open the faceplate's **valve curve** (C4). Is the operating point on the line?"},
-    {"after": 2400, "cost": 3, "text": "A point off the valve line means the valve *or* the meter. Now look at the balances (C3a, C3b): an honest meter keeps them green."},
-    {"after": 3600, "cost": 3, "text": "Compare the noise on the suspect flow with its typical value. Sticking valves leave the meter's noise alone; plugged meters go quiet."}
+    {"after": 1200, "cost": 0.03, "text": "For FC-102 and FC-103, open the faceplate's **valve curve** (C4). Is the operating point on the line?"},
+    {"after": 2400, "cost": 0.03, "text": "A point off the valve line means the valve *or* the meter. Now look at the balances (C3a, C3b): an honest meter keeps them green."},
+    {"after": 3600, "cost": 0.03, "text": "Compare the noise on the suspect flow with its typical value. Sticking valves leave the meter's noise alone; plugged meters go quiet."}
   ],
   "diagnosis": {
     "categories": ["valve", "instrument", "feedUpset", "steam", "fouling", "none"],
@@ -1286,8 +1307,8 @@ Notes:
     "modes": [],
     "attempts": 2
   },
-  "scoring": {"category": 50, "location": 20, "time": 20, "safety": 10, "timeFull": 600, "timeZero": 3600,
-              "wrongPenalty": 10, "bonus": {"protectBeforeOffSpec": 10, "mode": 0}},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0.1, "mode": 0}},
   "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; loop protected: {result.protectTime:time}; diagnosed: {result.diagnosisTime:time}."
 }
 ```
@@ -1312,8 +1333,8 @@ All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`,
 | G8 Pressure and volatility (M4) | B-T T2 | o1 lever.pTop ≥ 199 000 ∧ xD ≥ xD(start) − 0.002 ∧ xB ≤ xB(start) + 0.002 (use `from: start`) ∧ steady, hold 300; o2 choice "What happened to α?" → "it fell" | v1.0 said "hold specs" without defining them: they are now the 1-atm start values ± 0.002 | VC-10.3 α 2.71 (0.5 bar) → 2.20 (3 bar) |
 | G9 The azeotrope wall (M5) | ew T3, N 40, E 1 | o1 number "highest x_D you could reach" = 0.8956 ± 0.01; o2 choice "Tier 1 went past it. Why?" → "constant α cannot represent an azeotrope"; o3 choice "Lower pressure moves the azeotrope to…" → "higher ethanol" | | VC-10.5 |
 | G10 The other azeotrope (M5) | ac T3 | o1 choice "Where does the azeotrope leave?" → "in the bottoms"; o2 number x_B,acetone = 0.33 ± 0.03 | | VC-10.5, VC-8.11 |
-| G11 Flooding (M2/M3, Tier 1, full hydraulics) | `steady` (defaults, full hydraulics) | o1 kpi.maxFloodPct ≥ 100 (reach flood); o2 (after o1) maxFloodPct between 80 and 88 ∧ steady, hold 600; o3 number "throughput at flood onset (% of design)" = 120 ± 10 | "Raise F, L₀ and V_B together by 10 %: 110/110/165, 120/120/180, 130/130/195 kmol/h" | Uniform scaling keeps F_LV constant, so φ scales with the vapour rate: design max φ 0.832 (VC-12.3) → flood at ≈ 1/0.832 = 120 % |
-| G12 Turndown and weeping (M2/M3) | `steady`, full hydraulics, sieve | o1 throughput 35 % (F 35, L₀ 35, V_B 52.5 kmol/h) ∧ steady ∧ kpi.maxWeepFrac ≥ 0.3; o2 choice "What did weeping do to x_B?" → "raised it"; o3 (after o1) trayType.0 == valve ∧ steady ∧ kpi.maxWeepFrac < 0.05; o4 choice "Why don't valve trays weep yet?" → "closed valves keep the hole velocity up" | "Tray type can only be changed while paused" | VC-12.4 (w 0.51 sieve), VC-12.5 (w 0 valve at 35 %) |
+| G11 Flooding (shipped in M2, `scenarios.dart`) | as shipped: `steady`, Tier 1, full hydraulics, E 0.7 | As shipped: o1 kpi.maxFloodPct ≥ 100, hold 30, latch; o2 (after o1) maxFloodPct between 80 and 92 ∧ xD ≥ 0.95, hold 600. M3 adds o3: number "throughput at flood onset (% of design)" = 120 ± 10 | As shipped | Uniform scaling of F, L₀ and V_B keeps F_LV constant, so φ scales with the vapour rate: design max φ 0.832 (VC-12.3) → flood at ≈ 1/0.832 = 120 % |
+| G12 Turndown and weeping (shipped in M2) | as shipped | As shipped: o1 lever.feedFlow ≤ 11.12 mol/s ∧ lever.trayType.0 == 0 ∧ kpi.maxWeepFraction ≥ 0.3, hold 60, latch; o2 (after o1) the same throughput, lever.trayType.0 == 1, maxWeepFraction < 0.05, xB ≤ 0.03, hold 300. M3 adds o3: choice "Why don't valve trays weep yet?" → "closed valves keep the hole velocity up" | As shipped | VC-12.4 (w 0.51 on sieve trays at 35 %), VC-12.5 (w 0 on valve trays at 35 %) |
 
 Every guided scenario's JSON carries these objectives verbatim. Its hints must, followed literally, complete it (SCOPE.md M3 acceptance; VC-26.4 plays G1–G6 automatically by applying the hint values).
 
