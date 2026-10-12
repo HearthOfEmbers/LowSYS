@@ -218,7 +218,7 @@ The hidden-fault drill pool uses F04, F05, F06, F07, F09, F10, F11, F13, F14, F1
 
 Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (structured predicates on KPIs), hints, timed events, scoring and a debrief.
 
-### 6.1 Guided scenarios (14)
+### 6.1 Guided scenarios (16)
 
 | ID | Title | System / tier | What the learner does | Objective (summary) | M |
 |---|---|---|---|---|---|
