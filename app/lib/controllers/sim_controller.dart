@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
+import 'save_store.dart';
+
 /// Speeds offered in the TimeBar; 0 is pause.
 const List<double> kSpeeds = [0, 1, 2, 5, 10, 30, 100, 300, 1000];
 
@@ -16,38 +18,64 @@ class SimController extends ChangeNotifier {
   SimController({SimRunner? runner}) : runner = runner ?? LocalSimRunner();
 
   /// Latest snapshot (null until loaded).
-  final ValueNotifier<SimSnapshot?> snapshot = ValueNotifier<SimSnapshot?>(null);
+  final ValueNotifier<SimSnapshot?> snapshot = ValueNotifier<SimSnapshot?>(
+    null,
+  );
 
   /// McCabe-Thiele data for the latest snapshot.
-  final ValueNotifier<McCabeThieleData?> mccabe = ValueNotifier<McCabeThieleData?>(null);
+  final ValueNotifier<McCabeThieleData?> mccabe =
+      ValueNotifier<McCabeThieleData?>(null);
 
   /// Column structure (trays, feed tray); changes rarely, so the static vessel layer rebuilds rarely.
-  final ValueNotifier<({int trays, int feed})> structure = ValueNotifier((trays: 20, feed: 10));
+  final ValueNotifier<({int trays, int feed})> structure = ValueNotifier((
+    trays: 20,
+    feed: 10,
+  ));
 
   /// Broken trays from the visible faults (stage to open fraction); the static vessel layer redraws on change.
   final ValueNotifier<Map<int, double>> brokenStages = ValueNotifier(const {});
 
   /// Lever values (SI); notifies only when a value changed.
-  final ValueNotifier<Map<String, double>> leverValues = ValueNotifier(const {});
+  final ValueNotifier<Map<String, double>> leverValues = ValueNotifier(
+    const {},
+  );
 
   /// Diagram tab (0 McCabe-Thiele, 1 Profiles) and the profile quantity (index into ProfileKind).
   final ValueNotifier<int> diagramTab = ValueNotifier<int>(0);
   final ValueNotifier<int> profileKind = ValueNotifier<int>(0);
 
-  /// Control tab (0 Levers, 1 Faults).
+  /// Control tab (0 Levers, 1 Loops, 2 Balance, 3 Trends, 4 Faults).
   final ValueNotifier<int> controlTab = ValueNotifier<int>(0);
 
   /// Display unit system (SCOPE.md 4: SI / US field, switchable at runtime).
-  final ValueNotifier<UnitSystem> units = ValueNotifier<UnitSystem>(UnitSystem.si);
+  final ValueNotifier<UnitSystem> units = ValueNotifier<UnitSystem>(
+    UnitSystem.si,
+  );
 
   /// Math overlay: the target being explained and the live result (re-evaluated about 4 times a second).
-  final ValueNotifier<ExplainTarget?> mathTarget = ValueNotifier<ExplainTarget?>(null);
-  final ValueNotifier<ExplainResult?> mathResult = ValueNotifier<ExplainResult?>(null);
+  final ValueNotifier<ExplainTarget?> mathTarget =
+      ValueNotifier<ExplainTarget?>(null);
+  final ValueNotifier<ExplainResult?> mathResult =
+      ValueNotifier<ExplainResult?>(null);
 
   /// Active scenario, if any; [scenarioTick] changes when objectives or hints change.
   ScenarioDef? scenarioDef;
-  ScenarioRunner? scenario;
   final ValueNotifier<int> scenarioTick = ValueNotifier<int>(0);
+  bool _finishing = false;
+
+  /// Scenario state of the latest snapshot (objectives, hints, messages, timer).
+  ScenarioSnapshot? get scenario => snapshot.value?.scenario;
+
+  /// Persistence for settings and sandbox slots; autosave runs every 60 s of wall time.
+  SaveStore? saveStore;
+  double _autosaveWall = 0;
+  final ValueNotifier<String?> saveMessage = ValueNotifier<String?>(null);
+
+  /// Loop or instrument tag whose faceplate is open, and the trend tags shown.
+  final ValueNotifier<String?> selectedLoop = ValueNotifier<String?>(null);
+  final ValueNotifier<List<String>> trendTags = ValueNotifier<List<String>>(
+    const ['PV:FT-102', 'PV:LT-101'],
+  );
   ScoreCard? scoreCard;
   String? debriefText;
 
@@ -84,25 +112,34 @@ class SimController extends ChangeNotifier {
   ColumnConfig get config => runner.config;
 
   /// Sandbox default is full hydraulics (SCOPE.md 4.2); the preset itself stays ideal (docs/DEVIATIONS.md E19).
-  Future<void> load(PresetId id, {ColumnConfig? config, bool keepScenario = false}) async {
+  Future<void> load(
+    PresetId id, {
+    ColumnConfig? config,
+    bool keepScenario = false,
+  }) async {
     _loaded = false;
     presetId = id;
     _debt = 0;
     selectedStage.value = null;
     closeMath();
     if (!keepScenario) {
-      scenario = null;
       scenarioDef = null;
       scoreCard = null;
     }
-    await runner.load(config ?? Presets.byId(id).copyWith(hydraulics: HydraulicsMode.full));
+    await runner.load(
+      config ?? Presets.byId(id).copyWith(hydraulics: HydraulicsMode.full),
+    );
+    if (!keepScenario)
+      await runner.setLever('noise', 1); // sandbox default (SCOPE.md 3, M3)
     _loaded = true;
     await _refresh();
     notifyListeners();
   }
 
   void toggleUnits() {
-    units.value = units.value == UnitSystem.si ? UnitSystem.usField : UnitSystem.si;
+    units.value = units.value == UnitSystem.si
+        ? UnitSystem.usField
+        : UnitSystem.si;
   }
 
   // ---------------------------------------------------------------- math overlay
@@ -140,45 +177,162 @@ class SimController extends ChangeNotifier {
   // ---------------------------------------------------------------- scenarios
 
   Future<void> startScenario(ScenarioDef def) async {
-    await load(def.preset, config: def.buildConfig(), keepScenario: true);
-    scenarioDef = def;
+    _loaded = false;
+    closeMath();
+    selectedStage.value = null;
+    _debt = 0;
     scoreCard = null;
     debriefText = null;
-    for (final e in def.leverSet.entries) {
-      await runner.setLever(e.key, e.value);
-    }
-    scenario = ScenarioRunner(def, _ControllerHost(this));
+    _finishing = false;
+    presetId = def.preset;
+    await runner.startScenario(
+      def,
+      seed: DateTime.now().microsecondsSinceEpoch & 0x7fffffff,
+    );
+    scenarioDef = def;
+    _loaded = true;
     scenarioTick.value++;
     await _refresh();
-    scenario!.update(snapshot.value);
     notifyListeners();
   }
 
-  /// Ends the scenario: score card and debrief text.
-  void finishScenario() {
-    final r = scenario;
-    if (r == null) return;
-    scoreCard = r.finish();
-    debriefText = r.debriefText(snapshot.value!);
+  /// Ends the scenario: score card and debrief text from the engine.
+  Future<void> finishScenario() async {
+    if (scenarioDef == null || scoreCard != null) return;
+    scoreCard = await runner.finishScenario();
+    debriefText = scoreCard!.debriefText;
     scenarioTick.value++;
     notifyListeners();
   }
 
   void leaveScenario() {
-    scenario = null;
     scenarioDef = null;
     scoreCard = null;
     scenarioTick.value++;
-    notifyListeners();
+    load(presetId);
   }
 
+  Future<void> takeHint(int index) async {
+    await runner.takeHint(index);
+    await _refresh();
+    scenarioTick.value++;
+  }
+
+  Future<AnswerResult> submitAnswer(String objectiveId, Object answer) async {
+    final r = await runner.submitAnswer(objectiveId, answer);
+    await _refresh();
+    scenarioTick.value++;
+    return r;
+  }
+
+  Future<DrillResult> submitDiagnosis(Diagnosis d) async {
+    final r = await runner.submitDiagnosis(d);
+    await _refresh();
+    scenarioTick.value++;
+    return r;
+  }
+
+  String _scenarioSig = '';
   void _updateScenario(SimSnapshot s) {
-    final r = scenario;
-    if (r == null || scoreCard != null) return;
-    final before = '${r.objectives.where((o) => o.achieved).length}/${r.unlockedHints.length}';
-    r.update(s);
-    final after = '${r.objectives.where((o) => o.achieved).length}/${r.unlockedHints.length}';
-    if (before != after || s.time.floor() % 5 == 0) scenarioTick.value++;
+    final sc = s.scenario;
+    if (sc == null) return;
+    final sig =
+        '${sc.objectives.where((o) => o.met).length}/${sc.hints.where((h) => h.unlocked).length}/${sc.messages.length}/${sc.finished}/${(sc.elapsed / 5).floor()}';
+    if (sig != _scenarioSig) {
+      _scenarioSig = sig;
+      scenarioTick.value++;
+    }
+    if (sc.finished && scoreCard == null && !_finishing) {
+      _finishing = true;
+      finishScenario();
+    }
+  }
+
+  // ---------------------------------------------------------------- M3 operator actions
+
+  Future<void> setLoopMode(LoopTag tag, LoopMode mode) async {
+    try {
+      await runner.setLoopMode(tag, mode);
+    } on StateError catch (e) {
+      notice.value = e.message;
+    }
+    await _refresh();
+  }
+
+  Future<void> setLoopSp(LoopTag tag, double sp) async {
+    await runner.setLoopSp(tag, sp);
+    await _refresh();
+  }
+
+  Future<void> setLoopOp(LoopTag tag, double op) async {
+    try {
+      await runner.setLoopOp(tag, op);
+    } on StateError {
+      return;
+    }
+    await _refresh();
+  }
+
+  Future<void> acknowledge(String id) async {
+    await runner.acknowledgeAlarm(id);
+    await _refresh();
+  }
+
+  Future<void> acknowledgeAll() async {
+    await runner.acknowledgeAllAlarms();
+    await _refresh();
+  }
+
+  Future<void> fieldCheck(String gauge) async {
+    await runner.requestFieldCheck(gauge);
+    await _refresh();
+  }
+
+  Future<void> maintenance(String tag) async {
+    try {
+      await runner.requestMaintenance(tag);
+    } on StateError catch (e) {
+      notice.value = e.message;
+    }
+    await _refresh();
+  }
+
+  double checkWindow = 600;
+
+  Future<void> setCheckWindow(double seconds) async {
+    checkWindow = seconds;
+    await runner.setCheckWindow(seconds);
+    await _refresh();
+  }
+
+  TrendBuffer get trends => runner.trends;
+
+  // ---------------------------------------------------------------- sandbox save and load
+
+  /// Saves the sandbox state to slot [n] (0 is the autosave).
+  Future<void> saveSandbox(int n) async {
+    final store = saveStore;
+    if (store == null || !_loaded) return;
+    final saved = await runner.save();
+    await store.write('sandbox.slot.$n', encodeJson(saved));
+    notice.value = n == 0 ? null : 'Saved to slot $n';
+  }
+
+  Future<bool> loadSandbox(int n) async {
+    final store = saveStore;
+    if (store == null) return false;
+    final text = await store.read('sandbox.slot.$n');
+    if (text == null) return false;
+    _loaded = false;
+    scenarioDef = null;
+    scoreCard = null;
+    closeMath();
+    await runner.loadSaved(decodeJson(text)! as Map<String, Object?>);
+    _loaded = true;
+    await _refresh();
+    notifyListeners();
+    notice.value = 'Loaded slot $n';
+    return true;
   }
 
   Future<void> _refresh() async {
@@ -229,12 +383,20 @@ class SimController extends ChangeNotifier {
   Future<void> onTick(Duration elapsed) async {
     final wall = (elapsed - _lastTick).inMicroseconds / 1e6;
     _lastTick = elapsed;
+    _autosaveWall += wall.clamp(0.0, 0.5);
+    if (_autosaveWall >= 60 && _loaded && scenarioDef == null) {
+      _autosaveWall = 0;
+      saveSandbox(0);
+    }
     if (!_loaded || _busy || paused || runningToSteady) return;
     _busy = true;
     try {
       final dtWall = wall.clamp(0.0, 0.1);
       _debt += dtWall * _speed;
-      final cap = math.max(2 * (1 / 60) * _speed, 1.0); // always allow at least two steps of 0.5 s
+      final cap = math.max(
+        2 * (1 / 60) * _speed,
+        1.0,
+      ); // always allow at least two steps of 0.5 s
       if (_debt > cap) _debt = cap;
       final requested = _debt;
       final adv = await runner.advance(_debt, const Duration(milliseconds: 6));
@@ -282,9 +444,11 @@ class SimController extends ChangeNotifier {
     _paused = wasPaused;
     if (r.stillConverging) {
       final tau = (r.slowModeTau! / 3600).toStringAsFixed(1);
-      notice.value = 'Still converging (slow mode, tau about $tau h). Run again to continue.';
+      notice.value =
+          'Still converging (slow mode, tau about $tau h). Run again to continue.';
     } else if (!r.reached) {
-      notice.value = 'No steady state found within ${(maxSimSeconds / 3600).toStringAsFixed(0)} h of simulated time.';
+      notice.value =
+          'No steady state found within ${(maxSimSeconds / 3600).toStringAsFixed(0)} h of simulated time.';
     } else {
       notice.value = null;
     }
@@ -314,35 +478,10 @@ class SimController extends ChangeNotifier {
     steadyProgress.dispose();
     achievedSpeed.dispose();
     notice.dispose();
+    selectedLoop.dispose();
+    trendTags.dispose();
+    saveMessage.dispose();
     runner.dispose();
     super.dispose();
-  }
-}
-
-/// Lets a [ScenarioRunner] drive the controller's runner (calls complete synchronously on the local runner).
-class _ControllerHost implements ScenarioHost {
-  final SimController c;
-  _ControllerHost(this.c);
-  @override
-  SimSnapshot snapshot() => c.snapshot.value!;
-  @override
-  void setLever(LeverId id, double value) {
-    c.setLever(id, value);
-  }
-
-  @override
-  void setLoopMode(LoopTag tag, LoopMode mode) {
-    c.runner.setLoopMode(tag, mode);
-  }
-
-  @override
-  FaultId injectFault(FaultSpec spec) {
-    c.runner.injectFault(spec);
-    return '';
-  }
-
-  @override
-  void clearFault(FaultId id) {
-    c.runner.clearFault(id);
   }
 }

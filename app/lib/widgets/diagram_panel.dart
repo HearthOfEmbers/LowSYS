@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
 import '../painters/profile_painter.dart';
@@ -19,23 +20,58 @@ class DiagramBody extends StatelessWidget {
       valueListenable: sim.diagramTab,
       builder: (context, tab, _) {
         Widget tabBtn(String label, int i) => Expanded(
-              child: InkWell(
-                onTap: () => sim.diagramTab.value = i,
-                child: Container(
-                  height: MediaQuery.sizeOf(context).height < 500 ? 30 : 36,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: tab == i ? p.accent : p.gridMajor, width: tab == i ? 2.5 : 1)),
+          child: InkWell(
+            onTap: () => sim.diagramTab.value = i,
+            child: Container(
+              height: MediaQuery.sizeOf(context).height < 500 ? 30 : 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: tab == i ? p.accent : p.gridMajor,
+                    width: tab == i ? 2.5 : 1,
                   ),
-                  child: Text(label, style: t.type.display.style(13.5, tab == i ? p.accent : p.inkMuted, weight: FontWeight.w700)),
                 ),
               ),
-            );
+              child: Text(
+                label,
+                style: t.type.display.style(
+                  13.5,
+                  tab == i ? p.accent : p.inkMuted,
+                  weight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(children: [tabBtn(compact ? 'McCabe' : 'McCabe–Thiele', 0), tabBtn('Profiles', 1)]),
-            Expanded(child: tab == 0 ? McCabeChart(compact: compact) : const ProfilesChart()),
+            Row(
+              children: [
+                tabBtn(compact ? 'McCabe' : 'McCabe–Thiele', 0),
+                tabBtn('Profiles', 1),
+              ],
+            ),
+            Expanded(
+              child: ValueListenableBuilder<SimSnapshot?>(
+                valueListenable: sim.snapshot,
+                builder: (context, s, _) => s?.view == SimView.plant
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            'Not available on a real plant. The analysers show xD and xB, and the Balance tab checks the meters against each other.',
+                            textAlign: TextAlign.center,
+                            style: t.type.label.style(14, p.inkMuted),
+                          ),
+                        ),
+                      )
+                    : (tab == 0
+                          ? McCabeChart(compact: compact)
+                          : const ProfilesChart()),
+              ),
+            ),
           ],
         );
       },
@@ -73,10 +109,20 @@ class ProfilesChart extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: k == kind ? p.accent.withValues(alpha: 0.18) : Colors.transparent,
-                            border: Border.all(color: k == kind ? p.accent : p.gridMajor),
+                            color: k == kind
+                                ? p.accent.withValues(alpha: 0.18)
+                                : Colors.transparent,
+                            border: Border.all(
+                              color: k == kind ? p.accent : p.gridMajor,
+                            ),
                           ),
-                          child: Text(k.label, style: t.type.label.style(13, k == kind ? p.accent : p.inkMuted)),
+                          child: Text(
+                            k.label,
+                            style: t.type.label.style(
+                              13,
+                              k == kind ? p.accent : p.inkMuted,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -84,26 +130,40 @@ class ProfilesChart extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: LayoutBuilder(builder: (context, c) {
-                final size = Size(c.maxWidth, c.maxHeight);
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapUp: (d) {
-                    final s = sim.snapshot.value;
-                    if (s == null) return;
-                    final plot = profilePlotRect(size);
-                    final n = s.layout.nTrays;
-                    final j = ((d.localPosition.dy - plot.top) / (plot.height / n)).floor() + 1;
-                    if (j >= 1 && j <= n) sim.selectStage(sim.selectedStage.value == j ? null : j);
-                  },
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      size: size,
-                      painter: ProfilePainter(snapshot: sim.snapshot, selected: sim.selectedStage, units: sim.units, kind: kind, theme: t),
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final size = Size(c.maxWidth, c.maxHeight);
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapUp: (d) {
+                      final s = sim.snapshot.value;
+                      if (s == null) return;
+                      final plot = profilePlotRect(size);
+                      final n = s.layout.nTrays;
+                      final j =
+                          ((d.localPosition.dy - plot.top) / (plot.height / n))
+                              .floor() +
+                          1;
+                      if (j >= 1 && j <= n)
+                        sim.selectStage(
+                          sim.selectedStage.value == j ? null : j,
+                        );
+                    },
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        size: size,
+                        painter: ProfilePainter(
+                          snapshot: sim.snapshot,
+                          selected: sim.selectedStage,
+                          units: sim.units,
+                          kind: kind,
+                          theme: t,
+                        ),
+                      ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                },
+              ),
             ),
           ],
         );

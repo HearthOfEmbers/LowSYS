@@ -23,33 +23,57 @@ class TrayInspector extends StatelessWidget {
         if (sel == null && hideWhenEmpty) return const SizedBox.shrink();
         return Container(
           constraints: const BoxConstraints(minHeight: 64),
-          decoration: BoxDecoration(color: p.bgAlt.withValues(alpha: 0.97), border: Border.all(color: sel == null ? p.gridMajor : p.selection)),
+          decoration: BoxDecoration(
+            color: p.bgAlt.withValues(alpha: 0.97),
+            border: Border.all(color: sel == null ? p.gridMajor : p.selection),
+          ),
           padding: const EdgeInsets.fromLTRB(10, 6, 4, 8),
           child: sel == null
               ? Center(
-                  child: Text('Tap a tray on the column or a stage on the diagram to inspect it.', style: t.type.label.style(12.5, p.inkMuted), textAlign: TextAlign.center),
+                  child: Text(
+                    'Tap a tray on the column or a stage on the diagram to inspect it.',
+                    style: t.type.label.style(12.5, p.inkMuted),
+                    textAlign: TextAlign.center,
+                  ),
                 )
               : ValueListenableBuilder<UnitSystem>(
                   valueListenable: sim.units,
-                  builder: (context, u, _) => ValueListenableBuilder<SimSnapshot?>(
-                    valueListenable: sim.snapshot,
-                    builder: (context, s, _) => s == null ? const SizedBox() : _body(context, s, sel, sim, t, u),
-                  ),
+                  builder: (context, u, _) =>
+                      ValueListenableBuilder<SimSnapshot?>(
+                        valueListenable: sim.snapshot,
+                        builder: (context, s, _) => s == null
+                            ? const SizedBox()
+                            : _body(context, s, sel, sim, t, u),
+                      ),
                 ),
         );
       },
     );
   }
 
-  Widget _body(BuildContext context, SimSnapshot s, int j, SimController sim, LowsysTheme t, UnitSystem u) {
+  Widget _body(
+    BuildContext context,
+    SimSnapshot s,
+    int j,
+    SimController sim,
+    LowsysTheme t,
+    UnitSystem u,
+  ) {
     final p = t.palette;
+    if (s.view == SimView.plant) {
+      return Text(
+        'Not observable on a real plant: tray compositions and flows are not measured. Use the Loops, Balance and Trends tabs.',
+        style: t.type.label.style(13, p.inkMuted),
+      );
+    }
     final st = s.stages;
     final nc = st.nc;
     final N = s.layout.nTrays;
     final feed = s.layout.feedStages.first;
     final full = s.hydraulics == HydraulicsMode.full;
     String frac(double v) => v.toStringAsFixed(4);
-    String flow(double v) => '${u.fromSI(Quantity.molarFlow, v).toStringAsFixed(1)} ${u.symbol(Quantity.molarFlow)}';
+    String flow(double v) =>
+        '${u.fromSI(Quantity.molarFlow, v).toStringAsFixed(1)} ${u.symbol(Quantity.molarFlow)}';
     String section() {
       if (j == 0) return 'condenser drum';
       if (j == N + 1) return 'sump and reboiler (equilibrium stage)';
@@ -60,8 +84,8 @@ class TrayInspector extends StatelessWidget {
     final title = j == 0
         ? 'Drum'
         : j == N + 1
-            ? 'Sump'
-            : 'Tray $j';
+        ? 'Sump'
+        : 'Tray $j';
     final x = st.x[j * nc], y = st.y[j * nc], ys = st.yStar[j * nc];
     final rows = <(String, String)>[
       ('x', frac(x)),
@@ -69,13 +93,27 @@ class TrayInspector extends StatelessWidget {
       if (j >= 1) ('y*', frac(ys)),
       if (j >= 1) ('L', flow(st.liquidDown[j])),
       if (j >= 1) ('V', flow(st.vaporUp[j])),
-      ('holdup', '${u.fromSI(Quantity.molarAmount, st.holdup[j]).toStringAsFixed(3)} ${u.symbol(Quantity.molarAmount)}'),
+      (
+        'holdup',
+        '${u.fromSI(Quantity.molarAmount, st.holdup[j]).toStringAsFixed(3)} ${u.symbol(Quantity.molarAmount)}',
+      ),
       if (j >= 1 && j <= N) ('E_MV', st.efficiency[j].toStringAsFixed(3)),
-      if (full && j >= 1 && j <= N) ('dP', '${u.fromSI(Quantity.pressureDelta, st.dp[j]).toStringAsFixed(u == UnitSystem.si ? 2 : 3)} ${u.symbol(Quantity.pressureDelta)}'),
-      if (full && j >= 1 && j <= N) ('flood', '${(100 * st.jetFlood[j]).toStringAsFixed(0)} %'),
-      if (full && j >= 1 && j <= N) ('downcomer', '${(100 * st.dcFlood[j]).toStringAsFixed(0)} %'),
-      if (full && j >= 1 && j <= N && st.weepFrac[j] > 0) ('weeping', '${(100 * st.weepFrac[j]).toStringAsFixed(0)} %'),
-      if (full && j >= 1 && j <= N) ('froth', '${u.fromSI(Quantity.smallLength, st.froth[j]).toStringAsFixed(u == UnitSystem.si ? 0 : 1)} ${u.symbol(Quantity.smallLength)}'),
+      if (full && j >= 1 && j <= N)
+        (
+          'dP',
+          '${u.fromSI(Quantity.pressureDelta, st.dp[j]).toStringAsFixed(u == UnitSystem.si ? 2 : 3)} ${u.symbol(Quantity.pressureDelta)}',
+        ),
+      if (full && j >= 1 && j <= N)
+        ('flood', '${(100 * st.jetFlood[j]).toStringAsFixed(0)} %'),
+      if (full && j >= 1 && j <= N)
+        ('downcomer', '${(100 * st.dcFlood[j]).toStringAsFixed(0)} %'),
+      if (full && j >= 1 && j <= N && st.weepFrac[j] > 0)
+        ('weeping', '${(100 * st.weepFrac[j]).toStringAsFixed(0)} %'),
+      if (full && j >= 1 && j <= N)
+        (
+          'froth',
+          '${u.fromSI(Quantity.smallLength, st.froth[j]).toStringAsFixed(u == UnitSystem.si ? 0 : 1)} ${u.symbol(Quantity.smallLength)}',
+        ),
       if (j == 0) ('reflux L0', flow(s.streams[StreamId.reflux]!.flow)),
       if (j == 0) ('D', flow(s.kpis.d)),
       if (j == N + 1) ('B', flow(s.kpis.b)),
@@ -87,20 +125,44 @@ class TrayInspector extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text.rich(TextSpan(children: [
-                TextSpan(text: title, style: t.type.display.style(16, p.selection, weight: FontWeight.w700)),
-                TextSpan(text: '  ${section()}', style: t.type.label.style(12.5, p.inkMuted)),
-              ])),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: title,
+                      style: t.type.display.style(
+                        16,
+                        p.selection,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    TextSpan(
+                      text: '  ${section()}',
+                      style: t.type.label.style(12.5, p.inkMuted),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 14,
                 runSpacing: 2,
                 children: [
                   for (final r in rows)
-                    Text.rich(TextSpan(children: [
-                      TextSpan(text: '${r.$1} ', style: t.type.label.style(12.5, p.inkMuted)),
-                      TextSpan(text: r.$2, style: t.type.number.style(13.5, p.ink)),
-                    ])),
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '${r.$1} ',
+                            style: t.type.label.style(12.5, p.inkMuted),
+                          ),
+                          TextSpan(
+                            text: r.$2,
+                            style: t.type.number.style(13.5, p.ink),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -108,11 +170,21 @@ class TrayInspector extends StatelessWidget {
                 onTap: () => sim.openMath(ExplainStage(j)),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.functions, size: 18, color: p.accent),
-                    const SizedBox(width: 4),
-                    Text('Equations', style: t.type.label.style(13.5, p.accent, weight: FontWeight.w700)),
-                  ]),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.functions, size: 18, color: p.accent),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Equations',
+                        style: t.type.label.style(
+                          13.5,
+                          p.accent,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

@@ -8,6 +8,9 @@ class ThemePalette {
   final Color ok, warn, alarm, info, selection;
   final Color eqCurve, opLine, opLineCmo, qLine, stepLine, diagonal, pseudoEq, marker;
 
+  /// Six trend and multi-variable colours (SCOPE.md 7.1, added for the M3 Trends tab).
+  final List<Color> series;
+
   const ThemePalette({
     required this.bg,
     required this.bgAlt,
@@ -40,6 +43,7 @@ class ThemePalette {
     required this.diagonal,
     required this.pseudoEq,
     required this.marker,
+    required this.series,
   });
 
   /// Composition colour: light component end to heavy component end.
