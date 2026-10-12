@@ -5,8 +5,11 @@ import 'dart:typed_data';
 import '../config/tray_geometry.dart';
 import '../control/control_system.dart';
 import '../core/ids.dart';
+import '../faults/fault_effects.dart';
+import '../faults/fault_manager.dart';
 import '../math/banded_solver.dart';
 import '../model/column_state.dart';
+import '../model/tray_hydraulics.dart';
 import '../thermo/tier1_constant_alpha.dart';
 
 /// One fixed step of the Tier 1 column, PHYSICS.md 12.4 in order, no allocation.
@@ -14,6 +17,8 @@ import '../thermo/tier1_constant_alpha.dart';
 /// Tier 1 skips steps 5 (reboiler duty), 10 (pressure) and 11 (thermo update beyond the
 /// composition-dependent quantities). Ideal hydraulics: only the Bennett weir relation
 /// (alpha_e and C); no pressure drop, entrainment, weeping or downcomer limit (PHYSICS.md 4.6).
+/// Full hydraulics: PHYSICS.md 5 through [HydraulicSolver] (step 4), with entrainment, bypass and the
+/// downcomer cap in the implicit holdup solve (12.2) and in the banded component solve (12.3).
 class Stepper {
   final int nTrays;
   final int n;
@@ -24,7 +29,13 @@ class Stepper {
   final ControlSystem control;
   final SolverHealth health;
   final StepDebug debug;
+  final HydraulicSolver hyd;
+  final EffectiveParams ep;
+  final FaultManager faults;
   final MeasurementBus bus = MeasurementBus();
+
+  /// True for full hydraulics (PHYSICS.md 5); false for ideal (M1) hydraulics.
+  bool full;
 
   // Geometry (PHYSICS.md 5.1)
   final double aActive;
@@ -36,6 +47,9 @@ class Stepper {
 
   /// Time constant of the ideal flow controllers (s). PHYSICS.md 10.2 says 3 s; 1 s is needed for VC-7.2 (docs/DEVIATIONS.md).
   static const double tauFlow = 1.0;
+
+  /// Time constants of the entrainment fraction and filtered liquid load (PHYSICS.md 5.5, 5.6).
+  static const double tauPsi = 5.0, tauLbar = 10.0;
 
   final int murphreePasses;
 
@@ -58,6 +72,10 @@ class Stepper {
     required this.control,
     required this.health,
     required this.debug,
+    required this.hyd,
+    required this.ep,
+    required this.faults,
+    required this.full,
     required TrayGeometry geometry,
     required this.drumVolume,
     required this.sumpVolume,
@@ -160,11 +178,15 @@ class Stepper {
     }
   }
 
+  /// Open fraction of the deck of tray [j] (broken tray); zero in ideal hydraulics.
+  double _sB(int j) => full ? ep.brokenS[j] : 0.0;
+
   /// Murphree efficiency of tray [j]: E (1 - b_V) min(1, h_cl / 5 mm), PHYSICS.md (4.2).
   double _effOf(int j) {
-    final hcl = s.holdup[j] * s.vLiq[j] / aActive;
+    final sB = _sB(j);
+    final hcl = s.holdup[j] * s.vLiq[j] / (aActive * math.max(1 - sB, 0.02));
     final f = hcl >= 0.005 ? 1.0 : (hcl <= 0 ? 0.0 : hcl / 0.005);
-    return inp.murphree * f;
+    return inp.murphree * (1 - sB) * f;
   }
 
   /// Refresh efficiencies and the vapour/equilibrium arrays from the current liquid state.
@@ -177,15 +199,31 @@ class Stepper {
     _computeVapour(s.x, s.y, s.yStar);
   }
 
+  /// Fault effects and, in full hydraulics, the hydraulic arrays for the current state (used by the
+  /// snapshot and the explain API; the step does the same before it advances).
+  void refreshHydraulics(double dt) {
+    faults.apply(s.time, ep, inp.z);
+    if (full) hyd.update(s, ep, dt);
+  }
+
+  /// Initialises psi and the filtered liquid load from the current state (switching to full hydraulics).
+  void initHydraulicState() {
+    faults.apply(s.time, ep, inp.z);
+    hyd.update(s, ep, 0.5);
+    for (var j = 1; j <= nTrays; j++) {
+      s.psi[j] = hyd.entrainmentFilterInit(j);
+      s.lbar[j] = s.liquid[j];
+    }
+    hyd.update(s, ep, 0.5);
+  }
+
   // ---------------------------------------------------------------- initialisation
 
   /// Cold initialisation (PHYSICS.md 13.1): feed composition everywhere, CMO flows,
   /// Bennett holdups, drum and sump at 50 %, controllers at the matching flows.
   void initializeCold() {
     final N = nTrays;
-    final F = inp.feedFlowSp,
-        L0 = inp.ratioMode ? 0.0 : inp.refluxFlowSp,
-        VB = inp.boilupSp;
+    final F = inp.feedFlowSp, L0 = inp.ratioMode ? 0.0 : inp.refluxFlowSp, VB = inp.boilupSp;
     final fs = inp.feedStage, q = inp.feedQ;
     s.time = 0;
     s.feedAct = F;
@@ -206,8 +244,7 @@ class Stepper {
     // CMO flows
     s.vapor[N + 1] = VB;
     for (var j = N; j >= 1; j--) {
-      s.vapor[j] =
-          math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
+      s.vapor[j] = math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
     }
     s.liquid[0] = l0;
     for (var j = 1; j <= N; j++) {
@@ -241,7 +278,10 @@ class Stepper {
     for (var j = 0; j < n; j++) {
       s.entrain[j] = 0;
       s.bypass[j] = 0;
+      s.psi[j] = 0;
+      s.lbar[j] = s.liquid[j];
     }
+    if (full) initHydraulicState();
     // sump / drum level measurements
     bus.drumLevelPct = 100 * s.holdup[0] * s.vLiq[0] / drumVolume;
     bus.sumpLevelPct = 100 * s.holdup[N + 1] * s.vLiq[N + 1] / sumpVolume;
@@ -298,13 +338,16 @@ class Stepper {
     var B = control.bottomsValve.flow;
     var L0 = s.refluxAct;
 
+    // --- 1. faults: effective parameters (PHYSICS.md 11)
+    faults.apply(s.time, ep, inp.z);
+    final z = ep.zEff;
+
     // --- 6. vapour profile, Tier 1 CMO (PHYSICS.md 4.4) with sump starvation (8.1)
     final mMin = 0.05 * sumpVolume / s.vLiq[N + 1];
     final sSump = mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0;
     s.vapor[N + 1] = VB * sSump;
     for (var j = N; j >= 1; j--) {
-      s.vapor[j] =
-          math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
+      s.vapor[j] = math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
     }
 
     // --- 3./4. normalised K (4.4), efficiencies, froth density
@@ -318,16 +361,33 @@ class Stepper {
         _kt[j * nc + i] = thermo.alpha[i] / den;
       }
     }
-    for (var j = 1; j <= N; j++) {
-      s.eff[j] = _effOf(j);
-      s.alphaE[j] = _alphaE(j);
+    if (full) {
+      // PHYSICS.md 5: hydraulic coefficients at state n, then the filter states (12.4 step 4)
+      hyd.update(s, ep, dt);
+      for (var j = 1; j <= N; j++) {
+        s.psi[j] += (hyd.psiEq[j] - s.psi[j]) * dt / (tauPsi + dt);
+        s.lbar[j] += (s.liquid[j] - s.lbar[j]) * dt / (tauLbar + dt);
+      }
+      hyd.finishEntrainment(s, dt);
+      for (var j = 1; j <= N; j++) {
+        s.alphaE[j] = hyd.alphaE[j];
+        s.entrain[j] = hyd.entrain[j];
+        s.bypass[j] = hyd.bypass[j];
+        s.eff[j] = inp.murphree * (1 - ep.brokenS[j]) * math.min(1.0, hyd.hcl[j] / 0.005);
+      }
+    } else {
+      for (var j = 1; j <= N; j++) {
+        s.eff[j] = _effOf(j);
+        s.alphaE[j] = _alphaE(j);
+      }
     }
     s.eff[N + 1] = 1.0;
     s.eff[0] = 1.0;
 
     // reflux and distillate pumps cannot take more than the drum holds (7.3)
     final v1 = s.vapor[1];
-    final availD = s.holdup[0] / dt + v1;
+    final e1 = full ? s.entrain[1] : 0.0;
+    final availD = s.holdup[0] / dt + v1 + e1;
     final totD = L0 + D;
     if (totD > availD) {
       final f = totD > 0 ? availD / totD : 0.0;
@@ -338,21 +398,35 @@ class Stepper {
 
     // --- 8. hydraulic step, top-down (PHYSICS.md 12.2)
     var lPrev = L0;
+    var lPrev2 = 0.0;
     for (var j = 1; j <= N; j++) {
-      final inflow = lPrev + (j == fs ? F : 0.0) + s.vapor[j + 1] - s.vapor[j];
+      final fj = full ? s.bypass[j] : 0.0;
+      final fPrev = j >= 2 && full ? s.bypass[j - 1] : 0.0;
+      final eNext = full && j + 1 <= N ? s.entrain[j + 1] : 0.0;
+      final eJ = full ? s.entrain[j] : 0.0;
+      final inflow = (1 - fj) * lPrev + fPrev * lPrev2 + eNext + (j == fs ? F : 0.0) + s.vapor[j + 1] - s.vapor[j] - eJ;
       final vl = s.vLiq[j];
       final ae = s.alphaE[j];
+      final aa = full ? hyd.aAct[j] : aActive;
+      final cap = full ? hyd.lMax[j] : double.infinity;
+      final kd = full ? hyd.kd[j] : 0.0;
       final mn = s.holdup[j];
       var mm = mn;
       for (var it = 0; it < 40; it++) {
-        final hcl = mm * vl / aActive;
+        final hcl = mm * vl / aa;
         final arg = (hcl / ae - weirHeight) / bennettC;
         var lw = 0.0, dl = 0.0;
         if (arg > 0) {
           final sq = math.sqrt(arg);
           lw = weirLength * ae * arg * sq / vl; // PHYSICS.md (5.2)
-          dl = 1.5 * weirLength * sq / (bennettC * aActive);
+          dl = 1.5 * weirLength * sq / (bennettC * aa);
         }
+        if (lw > cap) {
+          lw = cap; // downcomer backup limit (5.11)
+          dl = 0;
+        }
+        lw += kd * mm; // dumping drain (5.15)
+        dl += kd;
         final r = mm - mn - dt * (inflow - lw);
         var mNew = mm - r / (1 + dt * dl);
         if (mNew <= 0) mNew = mm / 2;
@@ -360,18 +434,23 @@ class Stepper {
         mm = mNew;
         if (dm.abs() < 1e-10 * math.max(1.0, mm)) break;
       }
-      final hcl = mm * vl / aActive;
+      final hcl = mm * vl / aa;
       final arg = (hcl / ae - weirHeight) / bennettC;
-      final lj = arg > 0 ? weirLength * ae * arg * math.sqrt(arg) / vl : 0.0;
+      var lj = arg > 0 ? weirLength * ae * arg * math.sqrt(arg) / vl : 0.0;
+      if (lj > cap) lj = cap;
+      lj += kd * mm;
       _mhat[j] = mm;
       s.liquid[j] = lj;
+      lPrev2 = lPrev;
       lPrev = lj;
     }
     // bottoms pump limit (8.1)
-    final availB = s.holdup[N + 1] / dt + s.liquid[N] - s.vapor[N + 1];
+    final fN = full ? s.bypass[N] : 0.0;
+    final lIntoSump = s.liquid[N] + fN * (N >= 2 ? s.liquid[N - 1] : L0);
+    final availB = s.holdup[N + 1] / dt + lIntoSump - s.vapor[N + 1];
     if (B > availB) B = math.max(0.0, availB);
-    _mhat[0] = s.holdup[0] + dt * (v1 - L0 - D);
-    _mhat[N + 1] = s.holdup[N + 1] + dt * (s.liquid[N] - s.vapor[N + 1] - B);
+    _mhat[0] = s.holdup[0] + dt * (v1 + e1 - L0 - D);
+    _mhat[N + 1] = s.holdup[N + 1] + dt * (lIntoSump - s.vapor[N + 1] - B);
     for (var j = 0; j < n; j++) {
       if (!(_mhat[j] > 1e-9)) _mhat[j] = 1e-9;
     }
@@ -379,7 +458,7 @@ class Stepper {
     // --- 9. component step (PHYSICS.md 12.3), Murphree passes
     _yhat.setAll(0, s.y);
     for (var pass = 0; pass < murphreePasses; pass++) {
-      _componentPass(dt, F, fs, D, B, L0);
+      _componentPass(dt, F, fs, D, B, L0, z);
       if (pass + 1 < murphreePasses) {
         // new vapour from the pass solution for the next pass
         _computeVapour(_mnew, _yhat, null);
@@ -395,7 +474,7 @@ class Stepper {
       ..bottomsFlow = B
       ..boilupFlow = s.vapor[N + 1];
     for (var i = 0; i < nc; i++) {
-      debug.feedRate[i] = F * inp.z[i];
+      debug.feedRate[i] = F * z[i];
       debug.distillateRate[i] = D * _mnew[i] / _mhat[0];
       debug.bottomsRate[i] = B * _mnew[(N + 1) * nc + i] / _mhat[N + 1];
     }
@@ -411,13 +490,12 @@ class Stepper {
     }
     refreshFromHoldups();
     for (var j = 1; j <= N; j++) {
-      s.eff[j] = _effOf(j);
+      s.eff[j] = full ? inp.murphree * (1 - ep.brokenS[j]) * math.min(1.0, s.holdup[j] * s.vLiq[j] / (aActive * math.max(1 - ep.brokenS[j], 0.02)) / 0.005) : _effOf(j);
     }
     _computeVapour(s.x, s.y, s.yStar);
   }
 
-  void _componentPass(
-      double dt, double F, int fs, double D, double B, double L0) {
+  void _componentPass(double dt, double F, int fs, double D, double B, double L0, Float64List z) {
     final N = nTrays;
     final v1 = s.vapor[1];
     for (var i = 0; i < nc; i++) {
@@ -428,22 +506,13 @@ class Stepper {
       _c[0] = -dt * (v1 * s.eff[1] * _kt[nc + i] + s.entrain[1]) / _mhat[1];
       _d[0] = s.m[i] + dt * v1 * (1 - s.eff[1]) * _yhat[2 * nc + i];
       for (var j = 1; j <= N; j++) {
-        _g[j] = j >= 2
-            ? -dt * s.bypass[j - 1] * s.liquid[j - 2] / _mhat[j - 2]
-            : 0.0;
+        _g[j] = j >= 2 ? -dt * s.bypass[j - 1] * s.liquid[j - 2] / _mhat[j - 2] : 0.0;
         _a[j] = -dt * (1 - s.bypass[j]) * s.liquid[j - 1] / _mhat[j - 1];
-        _b[j] = 1 +
-            dt *
-                (s.liquid[j] +
-                    s.entrain[j] +
-                    s.vapor[j] * s.eff[j] * _kt[j * nc + i]) /
-                _mhat[j];
+        _b[j] = 1 + dt * (s.liquid[j] + s.entrain[j] + s.vapor[j] * s.eff[j] * _kt[j * nc + i]) / _mhat[j];
         final eNext = j + 1 <= N ? s.entrain[j + 1] : 0.0;
-        _c[j] = -dt *
-            (s.vapor[j + 1] * s.eff[j + 1] * _kt[(j + 1) * nc + i] + eNext) /
-            _mhat[j + 1];
+        _c[j] = -dt * (s.vapor[j + 1] * s.eff[j + 1] * _kt[(j + 1) * nc + i] + eNext) / _mhat[j + 1];
         var rhs = s.m[j * nc + i];
-        var src = j == fs ? F * inp.z[i] : 0.0;
+        var src = j == fs ? F * z[i] : 0.0;
         if (j + 2 <= N + 1) {
           src += s.vapor[j + 1] * (1 - s.eff[j + 1]) * _yhat[(j + 2) * nc + i];
         }
@@ -454,8 +523,7 @@ class Stepper {
       // sump row
       _g[N + 1] = -dt * s.bypass[N] * s.liquid[N - 1] / _mhat[N - 1];
       _a[N + 1] = -dt * s.liquid[N] / _mhat[N];
-      _b[N + 1] =
-          1 + dt * (B + s.vapor[N + 1] * _kt[(N + 1) * nc + i]) / _mhat[N + 1];
+      _b[N + 1] = 1 + dt * (B + s.vapor[N + 1] * _kt[(N + 1) * nc + i]) / _mhat[N + 1];
       _c[N + 1] = 0;
       _d[N + 1] = s.m[(N + 1) * nc + i];
       BandedSolver.solve(n, _g, _a, _b, _c, _d, _sol, _cp, _dp);
@@ -475,15 +543,15 @@ class Stepper {
     // ideal flow controllers follow their setpoints through a first-order lag (PHYSICS.md 10.2)
     final k = dt / (tauFlow + dt);
     s.feedAct += (inp.feedFlowSp - s.feedAct) * k;
-    final lSp = inp.ratioMode
-        ? inp.refluxRatio * control.distillateValve.flow
-        : inp.refluxFlowSp;
+    final lSp = inp.ratioMode ? inp.refluxRatio * control.distillateValve.flow : inp.refluxFlowSp;
     s.refluxAct += (lSp - s.refluxAct) * k;
     s.boilupAct += (inp.boilupSp - s.boilupAct) * k;
+    if (s.feedAct.abs() < 1e-12) s.feedAct = 0;
+    if (s.refluxAct.abs() < 1e-12) s.refluxAct = 0;
+    if (s.boilupAct.abs() < 1e-12) s.boilupAct = 0;
   }
 
   /// Level (%) of the drum / sump from the current state.
   double get drumLevelPct => 100 * s.holdup[0] * s.vLiq[0] / drumVolume;
-  double get sumpLevelPct =>
-      100 * s.holdup[nTrays + 1] * s.vLiq[nTrays + 1] / sumpVolume;
+  double get sumpLevelPct => 100 * s.holdup[nTrays + 1] * s.vLiq[nTrays + 1] / sumpVolume;
 }

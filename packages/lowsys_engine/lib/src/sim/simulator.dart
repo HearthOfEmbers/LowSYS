@@ -9,6 +9,11 @@ import '../config/column_config.dart';
 import '../control/control_system.dart';
 import '../core/ids.dart';
 import '../core/quantity.dart';
+import '../faults/fault_effects.dart';
+import '../faults/fault_manager.dart';
+import '../explain/explain_engine.dart';
+import '../explain/explain_types.dart';
+import '../model/tray_hydraulics.dart';
 import '../model/column_state.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/component.dart';
@@ -125,6 +130,9 @@ class Simulator {
   late StepInputs _inputs;
   late ControlSystem _control;
   late Stepper _stepper;
+  late HydraulicSolver _hyd;
+  late EffectiveParams _ep;
+  late FaultManager _faults;
   late StepDebug _debug;
   late List<LeverSpec> _levers;
   final SolverHealth _health = SolverHealth();
@@ -217,7 +225,25 @@ class Simulator {
     _state = ColumnState(N, nc);
     _debug = StepDebug(nc);
     final sec = config.traySection;
+    _ep = EffectiveParams(N + 2, nc);
+    _faults = carry?.faults ??
+        FaultManager(systemFactor: sec.geometry.systemFactor, phiDcBase: sec.geometry.downcomerAeration);
+    _hyd = HydraulicSolver(
+      nTrays: N,
+      nc: nc,
+      thermo: _thermo,
+      geom: sec.geometry,
+      trayType: sec.type,
+      pTop: config.condenser.pTopDesign,
+      entrainment: options.entrainment,
+      weeping: options.weeping,
+      downcomerLimit: options.downcomerLimit,
+    );
     _stepper = Stepper(
+      hyd: _hyd,
+      ep: _ep,
+      faults: _faults,
+      full: config.hydraulics == HydraulicsMode.full,
       thermo: _thermo,
       s: _state,
       inp: _inputs,
@@ -558,6 +584,34 @@ class Simulator {
             tiers: const {ThermoTier.t1},
             group: 'column'),
       const LeverSpec(
+          id: 'hydraulics',
+          label: 'Hydraulics (0 ideal, 1 full)',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: 0,
+          group: 'advanced',
+          integer: true),
+      const LeverSpec(
+          id: 'trayType.0',
+          label: 'Tray type (0 sieve, 1 valve)',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: 0,
+          requiresPause: true,
+          group: 'advanced',
+          integer: true),
+      const LeverSpec(
+          id: 'antifoam',
+          label: 'Antifoam injection',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: 0,
+          group: 'advanced',
+          integer: true),
+      const LeverSpec(
           id: 'distillateValve',
           label: 'Distillate valve OP',
           quantity: Quantity.percent,
@@ -614,6 +668,12 @@ class Simulator {
         return inp.murphree;
       case 'alpha':
         return _thermo.alpha[0] / _thermo.alpha[1];
+      case 'hydraulics':
+        return _stepper.full ? 1 : 0;
+      case 'trayType.0':
+        return _hyd.trayType == TrayType.valve ? 1 : 0;
+      case 'antifoam':
+        return _faults.antifoam ? 1 : 0;
       case 'distillateValve':
         return _control.loops[0].op;
       case 'bottomsValve':
@@ -674,6 +734,13 @@ class Simulator {
         _thermo.alpha[0] = v;
         _thermo.alpha[1] = 1.0;
         _config = _config.copyWith(tier1Alpha: Float64List.fromList([v, 1.0]));
+      case 'hydraulics':
+        setHydraulicsMode(v >= 0.5 ? HydraulicsMode.full : HydraulicsMode.ideal);
+      case 'trayType.0':
+        _hyd.trayType = v >= 0.5 ? TrayType.valve : TrayType.sieve;
+        _config = _config.copyWith(sections: [_config.traySection.copyWith(type: _hyd.trayType)]);
+      case 'antifoam':
+        _faults.setAntifoam(v >= 0.5, _state.time);
       case 'distillateValve':
         _control.setOp('LC-101', v);
       case 'bottomsValve':
@@ -694,10 +761,42 @@ class Simulator {
     }
   }
 
+  /// Switches between ideal (M1) and full tray hydraulics. The composition state is kept; the entrainment
+  /// filters are initialised from the current state when going to full.
   void setHydraulicsMode(HydraulicsMode mode) {
-    if (mode != HydraulicsMode.ideal) {
-      throw UnsupportedError('Full tray hydraulics arrive with M2');
+    if (mode == _hydraulics) return;
+    _hydraulics = mode;
+    _config = _config.copyWith(hydraulics: mode);
+    _stepper.full = mode == HydraulicsMode.full;
+    if (_stepper.full) {
+      _stepper.initHydraulicState();
+    } else {
+      for (var j = 0; j < _state.n; j++) {
+        _state.entrain[j] = 0;
+        _state.bypass[j] = 0;
+      }
     }
+    _stepper.refreshVapour();
+    _noteChange();
+  }
+
+  /// The fault manager (ENGINE_API.md 9).
+  FaultManager get faults => _faults;
+
+  /// Equation trace for the math overlay (ENGINE_API.md 8). Recomputes the hydraulics for the current state
+  /// with the same code the stepper and the snapshot use.
+  ExplainResult explain(ExplainTarget target) {
+    _stepper.refreshHydraulics(options.dt);
+    final snap = snapshot();
+    return ExplainEngine(
+      config: _config,
+      snapshot: snap,
+      hyd: _hyd,
+      ep: _ep,
+      thermo: _thermo,
+      control: _control,
+      full: _stepper.full,
+    ).explain(target);
   }
 
   /// A configuration with the current lever values baked in (feed, flows, efficiency, SPs).
@@ -755,6 +854,7 @@ class Simulator {
       feedAct: old.feedAct,
       refluxAct: old.refluxAct,
       boilupAct: old.boilupAct,
+      faults: _faults,
     );
     _build(newConfig, carry);
     _emit(SimEventType.rebuildDone,
@@ -818,11 +918,43 @@ class Simulator {
     final sec = _config.traySection.geometry;
     final aA = sec.areaActive;
     final nan = double.nan;
+    final full = _stepper.full;
+    _stepper.refreshHydraulics(options.dt);
+    final h = _hyd;
+    Float64List copyOrZero(Float64List a) => full ? Float64List.fromList(a) : Float64List(n);
     final hcl = Float64List(n);
     final froth = Float64List(n);
+    final flags = Uint8List(n);
     for (var j = 1; j <= N; j++) {
-      hcl[j] = s.holdup[j] * s.vLiq[j] / aA;
-      froth[j] = s.alphaE[j] > 0 ? hcl[j] / s.alphaE[j] : hcl[j];
+      if (full) {
+        hcl[j] = h.hcl[j];
+        froth[j] = h.froth[j];
+        flags[j] = h.flags[j];
+      } else {
+        hcl[j] = s.holdup[j] * s.vLiq[j] / aA;
+        froth[j] = s.alphaE[j] > 0 ? hcl[j] / s.alphaE[j] : hcl[j];
+      }
+    }
+    final p = Float64List(n)..fillRange(0, n, _config.condenser.pTopDesign);
+    var maxFlood = 0.0, maxWeep = 0.0, columnDp = 0.0;
+    var anyDcLimited = false;
+    final dcFlood = Float64List(n), fill = Float64List(n), jet = Float64List(n), weepFrac = Float64List(n);
+    final weepFlow = Float64List(n);
+    if (full) {
+      for (var j = 1; j <= n - 1; j++) {
+        p[j] = h.pressure[j];
+      }
+      columnDp = h.pressureDropTotal;
+      for (var j = 1; j <= N; j++) {
+        jet[j] = h.phi[j];
+        dcFlood[j] = h.dcFrac[j];
+        fill[j] = h.fill[j];
+        weepFrac[j] = h.weepW[j];
+        weepFlow[j] = h.weepFlow[j];
+        maxFlood = math.max(maxFlood, math.max(jet[j], math.max(dcFlood[j], fill[j])));
+        maxWeep = math.max(maxWeep, weepFrac[j]);
+        if ((flags[j] & 1) != 0) anyDcLimited = true;
+      }
     }
     final stages = StageArrays(
       n: n,
@@ -831,24 +963,25 @@ class Simulator {
       y: Float64List.fromList(s.y),
       yStar: Float64List.fromList(s.yStar),
       t: Float64List(n)..fillRange(0, n, nan),
-      p: Float64List(n)..fillRange(0, n, _config.condenser.pTopDesign),
+      p: p,
       liquidDown: Float64List.fromList(s.liquid),
       vaporUp: Float64List.fromList(s.vapor),
-      entrain: Float64List(n),
-      weep: Float64List(n),
+      entrain: copyOrZero(h.entrain),
+      weep: weepFlow,
       holdup: Float64List.fromList(s.holdup),
       hcl: hcl,
       froth: froth,
-      dp: Float64List(n),
-      jetFlood: Float64List(n),
-      dcFlood: Float64List(n),
-      frothFill: Float64List(n),
-      stability: Float64List(n),
-      weepFrac: Float64List(n),
+      dp: copyOrZero(h.dp),
+      dpDry: copyOrZero(h.dpDry),
+      jetFlood: jet,
+      dcFlood: dcFlood,
+      frothFill: fill,
+      stability: copyOrZero(h.stab),
+      weepFrac: weepFrac,
       efficiency: Float64List.fromList(s.eff),
       hetp: Float64List(n)..fillRange(0, n, nan),
       packFlood: Float64List(n)..fillRange(0, n, nan),
-      flags: Uint8List(n),
+      flags: flags,
     );
     // Report the flows the solver used in the last completed step, so that integrating the
     // snapshot flows closes the component balance exactly (the valves already hold next step's flow).
@@ -861,18 +994,17 @@ class Simulator {
     final xDrum = Float64List.fromList(s.x.sublist(0, nc));
     final xSump = Float64List.fromList(s.x.sublist((N + 1) * nc, (N + 2) * nc));
     final ySump = Float64List.fromList(s.y.sublist((N + 1) * nc, (N + 2) * nc));
+    final zEff = Float64List.fromList(_ep.zEff);
     final streams = <StreamId, StreamSnapshot>{
-      StreamId.feed: StreamSnapshot(
-          StreamId.feed, f, Float64List.fromList(_inputs.z), nan),
+      StreamId.feed: StreamSnapshot(StreamId.feed, f, zEff, nan),
       StreamId.reflux: StreamSnapshot(StreamId.reflux, l0, xDrum, nan),
-      StreamId.distillate:
-          StreamSnapshot(StreamId.distillate, dFlow, xDrum, nan),
+      StreamId.distillate: StreamSnapshot(StreamId.distillate, dFlow, xDrum, nan),
       StreamId.bottoms: StreamSnapshot(StreamId.bottoms, bFlow, xSump, nan),
       StreamId.boilup: StreamSnapshot(StreamId.boilup, vUp, ySump, nan),
     };
     final xD = s.x[0];
     final xB = s.x[(N + 1) * nc];
-    final fz = f * _inputs.z[0];
+    final fz = f * zEff[0];
     final drumPct = _stepper.drumLevelPct;
     final sumpPct = _stepper.sumpLevelPct;
     final mMin = 0.05 * _config.reboiler.sumpVolume / s.vLiq[N + 1];
@@ -885,23 +1017,31 @@ class Simulator {
       boilup: vUp,
       qc: nan,
       qr: nan,
-      columnDp: 0,
-      maxFloodPct: 0,
+      columnDp: columnDp,
+      maxFloodPct: 100 * maxFlood,
+      maxWeepFraction: maxWeep,
       drumLevelPct: drumPct,
       sumpLevelPct: sumpPct,
       pTop: _config.condenser.pTopDesign,
       balanceResidual: fz > 0 ? (fz - dFlow * xD - bFlow * xB).abs() / fz : 0.0,
       energyResidual: nan,
     );
+    final alarms = <Alarm>[
+      if (100 * maxFlood > 90)
+        Alarm('flooding', 'Flooding: max flood ${(100 * maxFlood).toStringAsFixed(0)} %',
+            100 * maxFlood > 100 ? AlarmPriority.high : AlarmPriority.medium, false, s.time),
+      if (maxWeep > 0.3) Alarm('weeping', 'Weeping: ${(100 * maxWeep).toStringAsFixed(0)} % of inlet liquid', AlarmPriority.medium, false, s.time),
+      if (anyDcLimited) Alarm('downcomer', 'Downcomer backup limiting the liquid flow', AlarmPriority.high, false, s.time),
+      if (drumPct > 95) Alarm('drum.high', 'Drum level high', AlarmPriority.medium, false, s.time),
+      if (drumPct < 5) Alarm('drum.low', 'Drum level low', AlarmPriority.high, false, s.time),
+      if (sumpPct > 95) Alarm('sump.high', 'Sump level high', AlarmPriority.medium, false, s.time),
+      if (sumpPct < 5) Alarm('sump.low', 'Sump level low', AlarmPriority.high, false, s.time),
+    ];
     final fl = <int>[_inputs.feedStage];
     final layout = ColumnLayoutInfo(
       nTrays: N,
       feedStages: fl,
-      kinds: [
-        StageKind.drum,
-        for (var j = 1; j <= N; j++) StageKind.tray,
-        StageKind.sump
-      ],
+      kinds: [StageKind.drum, for (var j = 1; j <= N; j++) StageKind.tray, StageKind.sump],
       names: ['Drum', for (var j = 1; j <= N; j++) 'Tray $j', 'Sump'],
       sectionEnds: [N],
     );
@@ -915,17 +1055,15 @@ class Simulator {
       stages: stages,
       streams: Map.unmodifiable(streams),
       condenser: CondenserSnapshot(s.holdup[0], drumPct),
-      reboiler: ReboilerSnapshot(s.holdup[N + 1], sumpPct,
-          mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0),
+      reboiler: ReboilerSnapshot(s.holdup[N + 1], sumpPct, mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0),
       loops: [
-        for (final l in _control.loops)
-          LoopSnapshot(l.tag, l.mode, l.pv, l.sp, l.op),
+        for (final l in _control.loops) LoopSnapshot(l.tag, l.mode, l.pv, l.sp, l.op),
       ],
-      alarms: const [],
+      alarms: alarms,
       kpis: kpis,
       steady: SteadyInfo(_steady, _residual),
       solverHealth: _health.copy(),
-      visibleFaults: const [],
+      visibleFaults: _faults.activeAt(s.time),
       levers: {for (final l in _levers) l.id: lever(l.id)},
       feedQ: _inputs.feedQ,
       murphree: _inputs.murphree,
@@ -982,6 +1120,7 @@ class Simulator {
         },
         'alpha': _thermo.alpha.toList(),
         'dynamic': _dumpDynamic(),
+        'faults': _faults.toJson(),
         'carry': _carry,
         'serial': _serial,
         'monitor': {
@@ -1026,6 +1165,7 @@ class Simulator {
       sim._thermo.alpha[i] = (a[i]! as num).toDouble();
     }
     sim._loadDynamic(saved['dynamic']! as Map<String, Object?>);
+    if (saved['faults'] != null) sim._faults.loadJson(saved['faults']! as Map<String, Object?>);
     sim._carry = (saved['carry']! as num).toDouble();
     sim._serial = (saved['serial']! as num).toInt();
     final m = saved['monitor']! as Map<String, Object?>;
@@ -1061,7 +1201,9 @@ class _Carry {
   final double time;
   final List<Map<String, Object?>> loops;
   final double dFlow, bFlow, feedAct, refluxAct, boilupAct;
+  final FaultManager faults;
   _Carry({
+    required this.faults,
     required this.oldN,
     required this.oldNc,
     required this.x,

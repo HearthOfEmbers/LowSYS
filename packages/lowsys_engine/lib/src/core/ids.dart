@@ -35,7 +35,14 @@ class SimOptions {
   /// PRNG seed (noise, drills).
   final int seed;
   final bool measurementNoise;
+
+  /// Physics switches of the full hydraulics (PHYSICS.md 5). With all three off the full model reproduces
+  /// the ideal-hydraulics composition result and still reports the pressure drop (VALIDATION.md VC-12.3).
+  final bool entrainment, weeping, downcomerLimit;
   const SimOptions({
+    this.entrainment = true,
+    this.weeping = true,
+    this.downcomerLimit = true,
     this.dt = 0.5,
     this.dtFastForward = 2.0,
     this.murphreePasses = 2,

@@ -1,5 +1,7 @@
 import '../config/column_config.dart';
 import '../core/ids.dart';
+import '../explain/explain_types.dart';
+import '../faults/fault_spec.dart';
 import '../sim/lever_spec.dart';
 import '../sim/simulator.dart';
 import '../snapshot/sim_snapshot.dart';
@@ -22,6 +24,9 @@ abstract class SimRunner {
   Future<void> setLoopOp(LoopTag tag, double op);
   Future<SteadyStateResult> runToSteadyState(
       {double maxSimSeconds = 172800, void Function(double progress)? onProgress});
+  Future<FaultId> injectFault(FaultSpec spec);
+  Future<void> clearFault(FaultId id);
+  Future<ExplainResult> explain(ExplainTarget target);
   Future<Map<String, Object?>> save();
   Stream<SimEvent> get events;
   Future<void> dispose();

@@ -123,9 +123,9 @@ class UnitSystem {
       case Quantity.volumeFlowLiquid:
         return _us ? v / 6.30901964e-5 : v * 3600;
       case Quantity.volumeFlowCrude:
-        return _us ? v * 86400 / 0.158987295 : v * 3600;
+        return _us ? v * 86400 / 0.158987294928 : v * 3600;
       case Quantity.energyRate:
-        return _us ? v * 3600 / 1.05505585e9 : v / 1e3;
+        return _us ? v * 3600 / 1.05505585262e9 : v / 1e3;
       case Quantity.enthalpyMolar:
         return v / 1e3;
       case Quantity.length:
@@ -149,7 +149,7 @@ class UnitSystem {
       case Quantity.heatTransferCoeff:
         return _us ? v / 5.678263 : v;
       case Quantity.ua:
-        return _us ? v * 3600 / 1.05505585e3 / 1.8 : v / 1e3;
+        return _us ? v * 3600 / 1.05505585262e3 / 1.8 : v / 1e3;
       case Quantity.velocity:
         return _us ? v / _ft : v;
       case Quantity.specificArea:
@@ -180,9 +180,9 @@ class UnitSystem {
       case Quantity.volumeFlowLiquid:
         return _us ? v * 6.30901964e-5 : v / 3600;
       case Quantity.volumeFlowCrude:
-        return _us ? v * 0.158987295 / 86400 : v / 3600;
+        return _us ? v * 0.158987294928 / 86400 : v / 3600;
       case Quantity.energyRate:
-        return _us ? v * 1.05505585e9 / 3600 : v * 1e3;
+        return _us ? v * 1.05505585262e9 / 3600 : v * 1e3;
       case Quantity.enthalpyMolar:
         return v * 1e3;
       case Quantity.length:
@@ -206,7 +206,7 @@ class UnitSystem {
       case Quantity.heatTransferCoeff:
         return _us ? v * 5.678263 : v;
       case Quantity.ua:
-        return _us ? v * 1.8 * 1.05505585e3 / 3600 : v * 1e3;
+        return _us ? v * 1.8 * 1.05505585262e3 / 3600 : v * 1e3;
       case Quantity.velocity:
         return _us ? v * _ft : v;
       case Quantity.specificArea:
