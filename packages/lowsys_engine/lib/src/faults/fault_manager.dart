@@ -70,7 +70,8 @@ class FaultManager {
               id: f.id,
               type: f.spec.type,
               location: f.spec.location,
-              severity: severityAt(f.spec, t) * (f.spec.type == FaultType.foaming ? _foamFactor(t) : 1.0),
+              severity: severityAt(f.spec, t) *
+                  (f.spec.type == FaultType.foaming ? _foamFactor(t) : 1.0),
               finalSeverity: f.spec.severity,
               onset: f.spec.onset,
               ramp: f.spec.ramp,
@@ -103,8 +104,10 @@ class FaultManager {
           final mode = (f.spec.params['mode'] as String?) ?? 'both';
           for (var j = 1; j < ep.n - 1; j++) {
             if (!loc.coversStage(j)) continue;
-            if (mode == 'holes' || mode == 'both') ep.holeScale[j] *= 1 - 0.8 * s;
-            if (mode == 'downcomer' || mode == 'both') ep.apronScale[j] *= 1 - 0.9 * s;
+            if (mode == 'holes' || mode == 'both')
+              ep.holeScale[j] *= 1 - 0.8 * s;
+            if (mode == 'downcomer' || mode == 'both')
+              ep.apronScale[j] *= 1 - 0.9 * s;
           }
         case FaultType.foaming:
           final se = s * _foamFactor(t);
@@ -147,7 +150,8 @@ class FaultManager {
         'antifoam': _antifoam,
         'antifoamSince': _antifoamSince,
         'faults': [
-          for (final f in _faults) {'id': f.id, 'spec': f.spec.toJson(), 'cleared': f.cleared},
+          for (final f in _faults)
+            {'id': f.id, 'spec': f.spec.toJson(), 'cleared': f.cleared},
         ],
       };
 
@@ -158,7 +162,8 @@ class FaultManager {
     _antifoamSince = (j['antifoamSince']! as num).toDouble();
     for (final e in (j['faults']! as List<Object?>)) {
       final m = e! as Map<String, Object?>;
-      final f = _Fault(m['id']! as String, FaultSpec.fromJson(m['spec']! as Map<String, Object?>));
+      final f = _Fault(m['id']! as String,
+          FaultSpec.fromJson(m['spec']! as Map<String, Object?>));
       f.cleared = m['cleared']! as bool;
       _faults.add(f);
     }

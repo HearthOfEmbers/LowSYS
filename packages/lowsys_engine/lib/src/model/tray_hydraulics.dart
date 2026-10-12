@@ -21,24 +21,30 @@ class TrayGeometryDerived {
 /// Closed-form tray correlations of PHYSICS.md 5, exposed for the overlay and tests.
 abstract final class TrayCorrelations {
   /// PHYSICS.md 5.3 Bennett froth density: alpha_e = exp(-12.55 K_s^0.91).
-  static double bennettAlphaE(double ks) => ks <= 0 ? 1.0 : math.exp(-12.55 * math.pow(ks, 0.91));
+  static double bennettAlphaE(double ks) =>
+      ks <= 0 ? 1.0 : math.exp(-12.55 * math.pow(ks, 0.91));
 
   /// PHYSICS.md 5.3: C = 0.501 + 0.438 exp(-137.8 h_w).
   static double bennettC(double hw) => 0.501 + 0.438 * math.exp(-137.8 * hw);
 
   /// PHYSICS.md 5.5 Lygeros-Magoulas fit of Fair's flooding chart (tray spacing in m, result m/s).
   static double csbLygerosMagoulas(double tsMetres, double fLV) =>
-      0.0105 + 8.127e-4 * math.pow(tsMetres * 1000, 0.755) * math.exp(-1.463 * math.pow(fLV, 0.842));
+      0.0105 +
+      8.127e-4 *
+          math.pow(tsMetres * 1000, 0.755) *
+          math.exp(-1.463 * math.pow(fLV, 0.842));
 
   /// PHYSICS.md (5.7) entrainment fraction fit, capped at 0.6.
   static double psiEq(double fLV, double phi) =>
       math.min(0.60, 4.0e-5 * math.pow(fLV / 0.1, -0.83) * math.exp(7.5 * phi));
 
   /// PHYSICS.md (5.13) weeping fraction from the stability factor.
-  static double weepFraction(double stability) => ((0.75 - stability) / 0.55).clamp(0.0, 1.0);
+  static double weepFraction(double stability) =>
+      ((0.75 - stability) / 0.55).clamp(0.0, 1.0);
 
   /// PHYSICS.md (5.15) dump rate constant (1/s).
-  static double dumpRate(double stability) => stability < 0.2 ? ((0.2 - stability) / 0.2) / 8.0 : 0.0;
+  static double dumpRate(double stability) =>
+      stability < 0.2 ? ((0.2 - stability) / 0.2) / 8.0 : 0.0;
 }
 
 /// Evaluates the tray hydraulics of PHYSICS.md 5 for every tray from the current state. Pure function of
@@ -150,7 +156,10 @@ class HydraulicSolver {
 
   /// Bennett inverse: clear-liquid height of a tray carrying liquid [q] (m3/s) at froth density [ae].
   double normalHcl(double q, double ae) =>
-      ae * (geom.weirHeight + TrayCorrelations.bennettC(geom.weirHeight) * math.pow(q / (d.lW * ae), 2.0 / 3.0));
+      ae *
+      (geom.weirHeight +
+          TrayCorrelations.bennettC(geom.weirHeight) *
+              math.pow(q / (d.lW * ae), 2.0 / 3.0));
 
   /// Fills the arrays from the state. [dt] only enters the cap on entrainment and the overflow time constant.
   void update(ColumnState s, EffectiveParams ep, double dt) {
@@ -195,7 +204,10 @@ class HydraulicSolver {
         uh[j] = u;
         dd = rhoV / 2 * (u / geom.orificeCoeff) * (u / geom.orificeCoeff);
       } else {
-        final aMin = (geom.valveClosedRatio * geom.valveOpenFraction * aA * scale) * (1 - sB) + sB * aA;
+        final aMin =
+            (geom.valveClosedRatio * geom.valveOpenFraction * aA * scale) *
+                    (1 - sB) +
+                sB * aA;
         final aMax = (geom.valveOpenFraction * aA * scale) * (1 - sB) + sB * aA;
         ah = aMax;
         ahEff[j] = ah;
@@ -240,7 +252,11 @@ class HydraulicSolver {
       csb[j] = cs;
       final ratio = ah / aA;
       final fHole = ratio >= 0.10 ? 1.0 : math.max(0.5, 5 * ratio + 0.5);
-      final un = cs * math.pow(sigma / 0.020, 0.2) * math.sqrt((rhoL - rhoV) / rhoV) * ep.sfFlood[j] * fHole;
+      final un = cs *
+          math.pow(sigma / 0.020, 0.2) *
+          math.sqrt((rhoL - rhoV) / rhoV) *
+          ep.sfFlood[j] *
+          fHole;
       unf[j] = un;
       final ph = (qOut[j] / d.aN) / un;
       phi[j] = ph;
@@ -257,7 +273,9 @@ class HydraulicSolver {
       final mm = geom.traySpacing * ae * aa / vl;
       mMax[j] = mm;
       fill[j] = s.holdup[j] / mm;
-      eOv[j] = (entrainment && st >= 0.2 && s.holdup[j] > mm) ? (s.holdup[j] - mm) / math.max(5.0, 4 * dt) : 0.0;
+      eOv[j] = (entrainment && st >= 0.2 && s.holdup[j] > mm)
+          ? (s.holdup[j] - mm) / math.max(5.0, 4 * dt)
+          : 0.0;
     }
     // second pass: downcomer backup (5.10, 5.11) needs the receiving tray's normal clear-liquid height
     for (var j = 1; j <= N; j++) {
@@ -276,7 +294,9 @@ class HydraulicSolver {
       final head = lim - dpHead - hn;
       final hap = geom.apronClearance * ep.apronScale[j];
       dcHead[j] = head;
-      lMax[j] = downcomerLimit ? d.lW * hap * math.sqrt(math.max(head, 0.0) / 0.166) / vlj : double.infinity;
+      lMax[j] = downcomerLimit
+          ? d.lW * hap * math.sqrt(math.max(head, 0.0) / 0.166) / vlj
+          : double.infinity;
       final uap = s.liquid[j] * vlj / (d.lW * hap);
       final hdc = dpHead + hn + 0.166 * uap * uap;
       hDc[j] = hdc;

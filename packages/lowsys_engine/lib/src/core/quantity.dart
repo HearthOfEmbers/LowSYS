@@ -247,12 +247,8 @@ abstract final class Fmt {
     if (v == 0) return '0';
     final a = v.abs();
     if (a >= 1e6 || a < 1e-3) return v.toStringAsExponential(digits - 1);
-    final intDigits = a.floor().toString().length;
-    final decimals = a >= 1
-        ? (digits - intDigits).clamp(0, 12)
-        : (digits - 1 + (-(_log10(a)).ceil())).clamp(0, 12);
+    final decimals =
+        (digits - 1 - (math.log(a) / math.ln10).floor()).clamp(0, 12);
     return v.toStringAsFixed(decimals);
   }
-
-  static double _log10(double x) => math.log(x) / math.ln10;
 }

@@ -227,7 +227,9 @@ class Simulator {
     final sec = config.traySection;
     _ep = EffectiveParams(N + 2, nc);
     _faults = carry?.faults ??
-        FaultManager(systemFactor: sec.geometry.systemFactor, phiDcBase: sec.geometry.downcomerAeration);
+        FaultManager(
+            systemFactor: sec.geometry.systemFactor,
+            phiDcBase: sec.geometry.downcomerAeration);
     _hyd = HydraulicSolver(
       nTrays: N,
       nc: nc,
@@ -400,7 +402,8 @@ class Simulator {
 
   /// Slowest-mode time constant (s) estimated from the last two residuals; null if not decaying.
   double? get slowModeTau {
-    if (!_prevResidual.isFinite || !_residual.isFinite || _residual <= 0) return null;
+    if (!_prevResidual.isFinite || !_residual.isFinite || _residual <= 0)
+      return null;
     if (_residual >= _prevResidual) return null;
     return 60 / math.log(_prevResidual / _residual);
   }
@@ -735,10 +738,12 @@ class Simulator {
         _thermo.alpha[1] = 1.0;
         _config = _config.copyWith(tier1Alpha: Float64List.fromList([v, 1.0]));
       case 'hydraulics':
-        setHydraulicsMode(v >= 0.5 ? HydraulicsMode.full : HydraulicsMode.ideal);
+        setHydraulicsMode(
+            v >= 0.5 ? HydraulicsMode.full : HydraulicsMode.ideal);
       case 'trayType.0':
         _hyd.trayType = v >= 0.5 ? TrayType.valve : TrayType.sieve;
-        _config = _config.copyWith(sections: [_config.traySection.copyWith(type: _hyd.trayType)]);
+        _config = _config.copyWith(
+            sections: [_config.traySection.copyWith(type: _hyd.trayType)]);
       case 'antifoam':
         _faults.setAntifoam(v >= 0.5, _state.time);
       case 'distillateValve':
@@ -921,7 +926,8 @@ class Simulator {
     final full = _stepper.full;
     _stepper.refreshHydraulics(options.dt);
     final h = _hyd;
-    Float64List copyOrZero(Float64List a) => full ? Float64List.fromList(a) : Float64List(n);
+    Float64List copyOrZero(Float64List a) =>
+        full ? Float64List.fromList(a) : Float64List(n);
     final hcl = Float64List(n);
     final froth = Float64List(n);
     final flags = Uint8List(n);
@@ -938,7 +944,10 @@ class Simulator {
     final p = Float64List(n)..fillRange(0, n, _config.condenser.pTopDesign);
     var maxFlood = 0.0, maxWeep = 0.0, columnDp = 0.0;
     var anyDcLimited = false;
-    final dcFlood = Float64List(n), fill = Float64List(n), jet = Float64List(n), weepFrac = Float64List(n);
+    final dcFlood = Float64List(n),
+        fill = Float64List(n),
+        jet = Float64List(n),
+        weepFrac = Float64List(n);
     final weepFlow = Float64List(n);
     if (full) {
       for (var j = 1; j <= n - 1; j++) {
@@ -951,7 +960,8 @@ class Simulator {
         fill[j] = h.fill[j];
         weepFrac[j] = h.weepW[j];
         weepFlow[j] = h.weepFlow[j];
-        maxFlood = math.max(maxFlood, math.max(jet[j], math.max(dcFlood[j], fill[j])));
+        maxFlood =
+            math.max(maxFlood, math.max(jet[j], math.max(dcFlood[j], fill[j])));
         maxWeep = math.max(maxWeep, weepFrac[j]);
         if ((flags[j] & 1) != 0) anyDcLimited = true;
       }
@@ -998,7 +1008,8 @@ class Simulator {
     final streams = <StreamId, StreamSnapshot>{
       StreamId.feed: StreamSnapshot(StreamId.feed, f, zEff, nan),
       StreamId.reflux: StreamSnapshot(StreamId.reflux, l0, xDrum, nan),
-      StreamId.distillate: StreamSnapshot(StreamId.distillate, dFlow, xDrum, nan),
+      StreamId.distillate:
+          StreamSnapshot(StreamId.distillate, dFlow, xDrum, nan),
       StreamId.bottoms: StreamSnapshot(StreamId.bottoms, bFlow, xSump, nan),
       StreamId.boilup: StreamSnapshot(StreamId.boilup, vUp, ySump, nan),
     };
@@ -1028,20 +1039,42 @@ class Simulator {
     );
     final alarms = <Alarm>[
       if (100 * maxFlood > 90)
-        Alarm('flooding', 'Flooding: max flood ${(100 * maxFlood).toStringAsFixed(0)} %',
-            100 * maxFlood > 100 ? AlarmPriority.high : AlarmPriority.medium, false, s.time),
-      if (maxWeep > 0.3) Alarm('weeping', 'Weeping: ${(100 * maxWeep).toStringAsFixed(0)} % of inlet liquid', AlarmPriority.medium, false, s.time),
-      if (anyDcLimited) Alarm('downcomer', 'Downcomer backup limiting the liquid flow', AlarmPriority.high, false, s.time),
-      if (drumPct > 95) Alarm('drum.high', 'Drum level high', AlarmPriority.medium, false, s.time),
-      if (drumPct < 5) Alarm('drum.low', 'Drum level low', AlarmPriority.high, false, s.time),
-      if (sumpPct > 95) Alarm('sump.high', 'Sump level high', AlarmPriority.medium, false, s.time),
-      if (sumpPct < 5) Alarm('sump.low', 'Sump level low', AlarmPriority.high, false, s.time),
+        Alarm(
+            'flooding',
+            'Flooding: max flood ${(100 * maxFlood).toStringAsFixed(0)} %',
+            100 * maxFlood > 100 ? AlarmPriority.high : AlarmPriority.medium,
+            false,
+            s.time),
+      if (maxWeep > 0.3)
+        Alarm(
+            'weeping',
+            'Weeping: ${(100 * maxWeep).toStringAsFixed(0)} % of inlet liquid',
+            AlarmPriority.medium,
+            false,
+            s.time),
+      if (anyDcLimited)
+        Alarm('downcomer', 'Downcomer backup limiting the liquid flow',
+            AlarmPriority.high, false, s.time),
+      if (drumPct > 95)
+        Alarm('drum.high', 'Drum level high', AlarmPriority.medium, false,
+            s.time),
+      if (drumPct < 5)
+        Alarm('drum.low', 'Drum level low', AlarmPriority.high, false, s.time),
+      if (sumpPct > 95)
+        Alarm('sump.high', 'Sump level high', AlarmPriority.medium, false,
+            s.time),
+      if (sumpPct < 5)
+        Alarm('sump.low', 'Sump level low', AlarmPriority.high, false, s.time),
     ];
     final fl = <int>[_inputs.feedStage];
     final layout = ColumnLayoutInfo(
       nTrays: N,
       feedStages: fl,
-      kinds: [StageKind.drum, for (var j = 1; j <= N; j++) StageKind.tray, StageKind.sump],
+      kinds: [
+        StageKind.drum,
+        for (var j = 1; j <= N; j++) StageKind.tray,
+        StageKind.sump
+      ],
       names: ['Drum', for (var j = 1; j <= N; j++) 'Tray $j', 'Sump'],
       sectionEnds: [N],
     );
@@ -1055,9 +1088,11 @@ class Simulator {
       stages: stages,
       streams: Map.unmodifiable(streams),
       condenser: CondenserSnapshot(s.holdup[0], drumPct),
-      reboiler: ReboilerSnapshot(s.holdup[N + 1], sumpPct, mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0),
+      reboiler: ReboilerSnapshot(s.holdup[N + 1], sumpPct,
+          mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0),
       loops: [
-        for (final l in _control.loops) LoopSnapshot(l.tag, l.mode, l.pv, l.sp, l.op),
+        for (final l in _control.loops)
+          LoopSnapshot(l.tag, l.mode, l.pv, l.sp, l.op),
       ],
       alarms: alarms,
       kpis: kpis,
@@ -1088,6 +1123,7 @@ class Simulator {
 
   void _loadDynamic(Map<String, Object?> d) {
     _state.loadJson(d['state']! as Map<String, Object?>);
+    _faults.apply(_state.time, _ep, _inputs.z);
     _control.loadJson(d['control']! as Map<String, Object?>);
     _stepper.refreshFromHoldups();
     _stepper.refreshVapour();
@@ -1164,8 +1200,9 @@ class Simulator {
     for (var i = 0; i < a.length; i++) {
       sim._thermo.alpha[i] = (a[i]! as num).toDouble();
     }
+    if (saved['faults'] != null)
+      sim._faults.loadJson(saved['faults']! as Map<String, Object?>);
     sim._loadDynamic(saved['dynamic']! as Map<String, Object?>);
-    if (saved['faults'] != null) sim._faults.loadJson(saved['faults']! as Map<String, Object?>);
     sim._carry = (saved['carry']! as num).toDouble();
     sim._serial = (saved['serial']! as num).toInt();
     final m = saved['monitor']! as Map<String, Object?>;

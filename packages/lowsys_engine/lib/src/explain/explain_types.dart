@@ -88,5 +88,9 @@ class ExplainResult {
 
   /// Sim time of the state explained.
   final double time;
-  const ExplainResult({required this.title, required this.groups, required this.notes, required this.time});
+  const ExplainResult(
+      {required this.title,
+      required this.groups,
+      required this.notes,
+      required this.time});
 }
