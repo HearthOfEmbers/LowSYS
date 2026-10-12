@@ -4,7 +4,7 @@ An interactive distillation column simulator built to teach how distillation wor
 
 ## Status
 
-Specification written; implementation not started. Start with M1 in the milestone plan.
+M1 (Tier-1 vertical slice) implemented: engine in `packages/lowsys_engine`, Flutter app in `app/`. See docs/DEVIATIONS.md.
 
 ## Specification
 

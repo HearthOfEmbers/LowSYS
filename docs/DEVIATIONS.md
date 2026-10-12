@@ -30,3 +30,12 @@ See the section appended by the app work (fonts, layout choices) below.
 - E16: Closed valve flows are clamped to exactly 0 below 1e-12 mol/s.
 - E17: `runToSteadyState` hitting its cap (default 48 h) is not a failure when the column is just slow: `SteadyStateResult.slowModeTau` (estimated from the residual decay) and `stillConverging` are set, and the app reports "still converging (slow mode tau about X h)" and offers to continue. Callers may pass a larger `maxSimSeconds`.
 - E18: The 1 s flow-controller lag (E2) is kept; VC-7.2 depends on it.
+
+## App (M1)
+
+- A1 Fonts: the OFL fonts of ENGINE_API.md 13.6 are NOT bundled (downloading font files needs the user's go-ahead). The Blueprint typography tokens name Architects Daughter / Share Tech Mono / STIX Two Math and carry fallbacks (Ink Free, Consolas, Cambria on Windows; `casual`/`cursive`/`monospace` on Android). To bundle, drop the .ttf files in `app/assets/fonts/` and add a `fonts:` section to `app/pubspec.yaml`; no code change is needed.
+- A2 The tray inspector sits under the chart (portrait, medium, desktop) or on top of the lever panel (landscape, only while a stage is selected).
+- A3 The expanded layout has a single diagram panel (McCabe-Thiele only in M1) and the KPI strip as the bottom strip.
+- A4 Frame loop: the debt cap is max(2 frames x speed, 1 s) so that slow speeds always reach one 0.5 s step; the "speed-limited" flag also fires when the cap is hit.
+- A5 No fps measurement from the emulator: `dumpsys gfxinfo` reports nothing for Flutter's surface and the emulator uses software GL. Engine cost is 5 us/step (JIT, 22 stages).
+- Screenshots: `docs/screenshots/m1/*` come from `flutter test test/layout_test.dart` with `LOWSYS_SHOTS=1` (real OS fonts loaded; Material icons render as boxes in those test images), plus real captures from the Windows exe and the emulator.

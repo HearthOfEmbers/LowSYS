@@ -93,8 +93,8 @@ class LocalSimRunner implements SimRunner {
 
   @override
   Future<SteadyStateResult> runToSteadyState(
-      {void Function(double progress)? onProgress}) async {
-    final run = sim.beginSteadyRun();
+      {double maxSimSeconds = 172800, void Function(double progress)? onProgress}) async {
+    final run = sim.beginSteadyRun(maxSimSeconds: maxSimSeconds);
     while (!run.advance(const Duration(milliseconds: 50))) {
       onProgress?.call(run.progress);
       await Future<void>.delayed(Duration.zero);
