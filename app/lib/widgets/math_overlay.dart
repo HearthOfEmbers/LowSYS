@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
@@ -142,13 +143,22 @@ class _Line extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = t.palette;
-    Widget tex(String src, Color color, double size) => SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Math.tex(
-            src,
-            textStyle: t.type.math.style(size, color),
-            mathStyle: MathStyle.text,
-            onErrorFallback: (e) => Text(src, style: t.type.number.style(12, color)),
+    // Long equations scroll sideways (touch or mouse drag) with a fade at the right edge as the hint.
+    Widget tex(String src, Color color, double size) => ShaderMask(
+          shaderCallback: (r) => const LinearGradient(colors: [Colors.white, Colors.white, Color(0x00FFFFFF)], stops: [0, 0.9, 1]).createShader(r),
+          blendMode: BlendMode.dstIn,
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(dragDevices: PointerDeviceKind.values.toSet(), scrollbars: false),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: 28),
+              child: Math.tex(
+                src,
+                textStyle: t.type.math.style(size, color),
+                mathStyle: MathStyle.text,
+                onErrorFallback: (e) => Text(src, style: t.type.number.style(12, color)),
+              ),
+            ),
           ),
         );
     var echo = '';

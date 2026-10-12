@@ -68,7 +68,7 @@ class KpiStrip extends StatelessWidget {
         },
       ),
     );
-    if (scroll) return Container(height: 54, decoration: decoration, child: chips);
+    if (scroll) return Container(height: MediaQuery.sizeOf(context).height < 500 ? 46 : 54, decoration: decoration, child: chips);
     return Container(decoration: decoration, padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), child: chips);
   }
 }

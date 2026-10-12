@@ -230,6 +230,7 @@ class Simulator {
         FaultManager(
             systemFactor: sec.geometry.systemFactor,
             phiDcBase: sec.geometry.downcomerAeration);
+    _faults.onChange = _noteChange;
     _hyd = HydraulicSolver(
       nTrays: N,
       nc: nc,

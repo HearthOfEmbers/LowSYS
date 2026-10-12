@@ -63,11 +63,18 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
 }
 
 /// Objective checklist, timer, hints and Finish (S2a).
-class ScenarioHud extends StatelessWidget {
+class ScenarioHud extends StatefulWidget {
   const ScenarioHud({super.key});
+  @override
+  State<ScenarioHud> createState() => _ScenarioHudState();
+}
+
+class _ScenarioHudState extends State<ScenarioHud> {
+  bool? _open; // null: decide from the window height (collapsed on short windows)
 
   @override
   Widget build(BuildContext context) {
+    final open = _open ?? MediaQuery.sizeOf(context).height >= 500;
     final sim = AppScope.of(context).sim;
     final t = LowsysThemeScope.of(context);
     final p = t.palette;
@@ -90,10 +97,15 @@ class ScenarioHud extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
                     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Row(children: [
-                        Expanded(child: Text(def.title, style: t.type.display.style(15, p.accent, weight: FontWeight.w700))),
-                        Text(formatClock(r.elapsed), style: t.type.number.style(13, p.inkMuted)),
-                      ]),
+                      InkWell(
+                        onTap: () => setState(() => _open = !open),
+                        child: Row(children: [
+                          Expanded(child: Text(def.title, style: t.type.display.style(15, p.accent, weight: FontWeight.w700))),
+                          Text(open ? formatClock(r.elapsed) : '${formatClock(r.elapsed)}  ${r.objectives.where((o) => o.achieved).length}/${r.objectives.length}', style: t.type.number.style(13, p.inkMuted)),
+                          Icon(open ? Icons.expand_less : Icons.expand_more, size: 20, color: p.inkMuted),
+                        ]),
+                      ),
+                      if (open)
                       for (final o in r.objectives)
                         Padding(
                           padding: const EdgeInsets.only(top: 3),
@@ -103,6 +115,7 @@ class ScenarioHud extends StatelessWidget {
                             Expanded(child: Text(o.text, style: t.type.label.style(12.5, o.achieved ? p.ok : p.ink))),
                           ]),
                         ),
+                      if (open)
                       Row(children: [
                         TextButton.icon(
                           onPressed: () => _hints(context, sim),

@@ -84,6 +84,28 @@ class _DiagramPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Phone portrait: the inspector floats over the free space under the (square) plot and scrolls, so
+    // selecting a tray never squeezes the chart.
+    if (compact && inspector && header == null) {
+      return SheetPanel(
+        child: LayoutBuilder(builder: (context, c) {
+          final plotSide = (c.maxWidth - 52).clamp(40.0, c.maxHeight - 120);
+          final free = (c.maxHeight - plotSide - 88).clamp(96.0, c.maxHeight * 0.6);
+          return Stack(children: [
+            Positioned.fill(child: DiagramBody(compact: compact)),
+            Positioned(
+              left: 4,
+              right: 4,
+              bottom: 4,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: free),
+                child: const SingleChildScrollView(child: TrayInspector()),
+              ),
+            ),
+          ]);
+        }),
+      );
+    }
     return SheetPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

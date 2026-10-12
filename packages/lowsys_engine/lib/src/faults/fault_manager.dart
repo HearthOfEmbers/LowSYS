@@ -25,9 +25,13 @@ class FaultManager {
   final double phiDcBase;
   FaultManager({this.systemFactor = 1.0, this.phiDcBase = 0.5});
 
+  /// Called when faults are injected, cleared or the antifoam changes (the simulator clears its steady flag).
+  void Function()? onChange;
+
   FaultId inject(FaultSpec spec) {
     final id = 'F${++_counter}';
     _faults.add(_Fault(id, spec));
+    onChange?.call();
     return id;
   }
 
@@ -35,6 +39,7 @@ class FaultManager {
     for (final f in _faults) {
       if (f.id == id) f.cleared = true;
     }
+    onChange?.call();
   }
 
   void clearAll() {
@@ -47,6 +52,7 @@ class FaultManager {
   void setAntifoam(bool on, double time) {
     if (on && !_antifoam) _antifoamSince = time;
     _antifoam = on;
+    onChange?.call();
   }
 
   /// Severity s(t) of [spec] at time [t] (PHYSICS.md 11.1).
