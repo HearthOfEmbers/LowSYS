@@ -1,4 +1,4 @@
-import 'dart:math' as _m;
+import 'dart:math' as math;
 import 'package:lowsys_engine/lowsys_engine.dart';
 import 'package:test/test.dart';
 
@@ -157,10 +157,4 @@ void main() {
   });
 }
 
-double _ln(double v) => v <= 0 ? double.nan : _log(v);
-double _log(double v) => _lg(v);
-double _lg(double v) => (v == 1) ? 0 : _dartLog(v);
-double _dartLog(double v) {
-  // tiny wrapper to avoid importing dart:math at top-level name clash
-  return _m.log(v);
-}
+double _ln(double v) => math.log(v);

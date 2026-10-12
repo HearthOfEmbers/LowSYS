@@ -30,7 +30,15 @@ class SteadyStateResult {
 
   /// Last steady-state residual delta (PHYSICS.md 13.3).
   final double residual;
+
+  /// When not reached: estimated time constant (s) of the slowest mode from the residual decay,
+  /// or null if the residual is not decaying. A caller can report "still converging" and extend the run.
+  final double? slowModeTau;
+
+  /// True when the run stopped at its cap while the residual was still decaying.
+  bool get stillConverging => !reached && slowModeTau != null;
   const SteadyStateResult({
+    this.slowModeTau,
     required this.reached,
     required this.simSeconds,
     double? totalSimSeconds,
@@ -71,6 +79,7 @@ class SteadyRun {
         simSeconds: _declaredAt ?? (_sim.time - _t0),
         totalSimSeconds: _sim.time - _t0,
         residual: _sim.steadyResidual,
+        slowModeTau: reached ? null : _sim.slowModeTau,
       );
 
   /// Marches until done or [budget] of wall time is used. Returns [done].
@@ -134,6 +143,7 @@ class Simulator {
   int _steadyCount = 0;
   bool _steady = false;
   double _residual = double.infinity;
+  double _prevResidual = double.infinity;
 
   static final Map<String, Map<String, Object?>> _warmCache = {};
 
@@ -362,6 +372,13 @@ class Simulator {
 
   bool get isSteady => _steady;
 
+  /// Slowest-mode time constant (s) estimated from the last two residuals; null if not decaying.
+  double? get slowModeTau {
+    if (!_prevResidual.isFinite || !_residual.isFinite || _residual <= 0) return null;
+    if (_residual >= _prevResidual) return null;
+    return 60 / math.log(_prevResidual / _residual);
+  }
+
   /// Last residual delta of PHYSICS.md 13.3 (infinity until the first check).
   double get steadyResidual => _residual;
 
@@ -381,6 +398,7 @@ class Simulator {
       delta = math.max(delta, (_control.loops[l].op - _prevOp[l]).abs() / 100);
     }
     _captureMonitor();
+    _prevResidual = _residual;
     _residual = delta;
     if (delta < 1e-7) {
       _steadyCount++;
