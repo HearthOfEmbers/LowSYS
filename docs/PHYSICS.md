@@ -488,7 +488,7 @@ Inputs per tray section (defaults for the B-T preset in brackets):
 | Input | Symbol | Default |
 |---|---|---|
 | Column diameter | D_c | 1.20 m |
-| Tray spacing | TS | 0.60 m |
+| Tray spacing | TS | 0.90 m (v1.1; was 0.60 m, see below) |
 | Downcomer area fraction | f_d = A_d/A_T | 0.12 |
 | Weir height | h_w | 0.050 m |
 | Downcomer clearance (apron) | h_ap | 0.038 m |
@@ -501,6 +501,17 @@ Inputs per tray section (defaults for the B-T preset in brackets):
 | Valve: orifice coefficient | C_v | 0.65 |
 | Downcomer froth density (aeration) | φ_dc | 0.5 |
 | System (foaming) factor | SF | 1.0 |
+
+**Why TS = 0.90 m (v1.1, 2026-10-12).** With 0.60 m spacing the default column ran at 83 % of jet flood. VC-8.1's "+10 kmol/h on L₀ and V_B" then reached 89 %, and xD *fell* (0.9673 → 0.9583): the tray-1 entrainment carried into the drum raises D under LV control, D = V₁ + e₁ − L₀. The physics is real, but the learner's first slider pull would contradict the textbook. Options compared with the engine:
+
+| Option | Design max flood | VC-8.1 xD | Other effects |
+|---|---|---|---|
+| D_c 1.4 m | 60.9 % | rises | Φ_min falls to 1.10, so weeping starts at about two-thirds load; ideal-mode holdups change, and VC-7.1 and VC-7.4 fail (cold start 6.3 h > 6 h) |
+| D_c 1.3 m, TS 0.75 m | 60.7 % | rises | Φ_min 1.33; ideal-mode dynamics shift |
+| TS 0.75 m | 71.3 % | still falls | |
+| **TS 0.90 m** | **62.9 %** | **0.97826 → 0.98001** | Tray spacing enters only jet flood (C_SB), the froth-fill limit M_max and the downcomer limit. Every ideal-hydraulics number (VC-3 to VC-7, xD 0.981183), all weeping and turndown behaviour and the pressure drop (14.49 kPa vs 14.68) stay as they were |
+
+0.9 m (36 in) is on the generous side for a 1.2 m column, but it is a standard spacing, and it buys the headroom without touching anything a textbook scenario measures.
 
 Derived:
 
@@ -567,11 +578,11 @@ Total tray drop and the pressure profile:
 
 ```
 ΔP_σ = 4 σ / d_h                     (bubble-formation residual; valve trays use d_h = 0.040 m)
-ΔP_j = ΔP_dry + ρ_L g h_cl + ΔP_σ                                                   (5.5)
+ΔP_j = ΔP_dry + (1 − s_broken,j) ρ_L g h_cl + ΔP_σ                                   (5.5)
 P_1 = P_top        P_{j+1} = P_j + ΔP_j        P_{N+1} = P_N + ΔP_N
 ```
 
-(ρ_L g h_cl is the hydrostatic head of the froth: the clear-liquid equivalent.) In ideal-hydraulics mode ΔP_j = 0.
+(ρ_L g h_cl is the hydrostatic head of the froth: the clear-liquid equivalent.) In ideal-hydraulics mode ΔP_j = 0. The factor (1 − s_broken,j) (F04, §11; DEVIATIONS.md E20) is there because an open deck holds no liquid head. The small liquid it still carries sits on the 2 % residual active area A_a,eff, where h_cl = M v_L/A_a,eff would otherwise look like a large head; without the factor a fully broken tray kept 18.7 % of its pressure drop instead of about 6 %.
 
 ### 5.5 Jet flooding (Fair)
 
@@ -613,6 +624,10 @@ e_ov,j  = (M_j − M_max,j) / max(τ_c, 4 dt)   if M_j > M_max,j and Φ_j ≥ 0.
 
 Liquid pushed above a full tray accumulates on the tray above, so flooding propagates upward over minutes. A flooded column carries liquid into the drum: xD drops and the drum level rises — the textbook symptoms.
 
+**How the two floods look.** In this model, *jet* flood (φ ≥ 1) happens through entrainment recycle: ψ climbs towards ψ_max = 0.6 while the froth fill M/M_max is still only about 0.35. The trays do not fill to the spacing; liquid is sprayed up and carried over (at tray 1, into the drum). *Downcomer* flood and full-tray overflow (dc fraction ≥ 1, M ≥ M_max) are the cases where froth really stacks up to the tray above. The column painter must draw them differently (ENGINE_API.md §13.5).
+
+**Carryover into the drum** is why VC-8.1 depends on headroom. Under LV control the drum receives V₁ + e₁, so D = V₁ + e₁ − L₀ rises with e₁. In a near-balanced split (D/F ≈ z) each extra kmol/h of D costs about 0.01 in xD. With D held constant, raising L₀ and V_B improves xD all the way to flood (VALIDATION.md VC-8.16).
+
 ### 5.7 Downcomer backup
 
 Downcomer j carries liquid from tray j to tray j+1. Liquid in it must balance the tray-j pressure drop, the liquid head on tray j+1 and the head loss under the apron (Coulson and Richardson, *Chemical Engineering* Vol. 6 (Sinnott), §11.13: h_dc = h_t + h_w + h_ow + h_dc,apron with h_apron = 166 (L_wd/(ρ_L A_m))² mm):
@@ -653,19 +668,25 @@ W_j = f_j · L_{j−1}                                                          
 
 Φ_j and hence w_j are evaluated at the start of the step; W_j uses the current step's L_{j−1} (known in the top-down sweep, §12.2). W_j is the inlet liquid that falls through the holes to tray j+1 without crossing the deck, keeping its arrival composition (§4.1). From the bottom tray it falls into the sump. Feed liquid is assumed to reach the deck (it does not bypass).
 
-**Dumping.** When the vapour can no longer hold liquid on the deck at all (Φ < 0.2, e.g. boilup lost), the tray drains through its holes:
+**Dumping** (revised v1.1, M3). When the vapour can no longer hold liquid on the deck (Φ < 0.2, e.g. boilup lost), the tray drains through its open area like an orifice:
 
 ```
-k_d,j = ((0.2 − Φ_j) / 0.2) / τ_d          τ_d = 8 s           (only when Φ_j < 0.2)
-L_j  += k_d,j · M_j          (implicit; part of the downflow with tray composition)              (5.15)
+L_dump,j = ((0.2 − Φ_j)/0.2) · C_dump A_h,eff √(2 g h_cl,j) / v_L        (only when Φ_j < 0.2)
+           C_dump = 0.6 ;  A_h,eff = A_h (sieve, fouled/broken as §11) or A_min (valve, closed) ;
+           h_cl,j = M_j v_L / A_a,eff
+dL_dump/dM = L_dump / (2 max(M_j, 10⁻⁹ mol))           (implicit, part of the downflow with tray composition)   (5.15)
 ```
+
+A fully dumping sieve deck fed 100 kmol/h therefore holds about 0.15 mm of clear liquid (≈ 1 mol), and a closed valve deck about 1.2 mm. Real dumping trays look like this: nearly empty, liquid raining through. The Murphree factor min(1, h_cl/5 mm) of §4.2 then removes almost all contact.
+
+v1.0 used L_dump = k_d M with k_d = ((0.2 − Φ)/0.2)/8 s. Any tray still receiving inlet liquid then kept about 8 s of inflow (≈ 220 mol, h_cl ≈ 28 mm, more than a normal tray), which contradicted the "near-zero holdup" a dumping tray should show (tester finding, DEVIATIONS.md T2). The change affects only trays with Φ < 0.2: broken trays (F04, s ≥ 0.5) and loss of boilup. Normal operation, weeping (0.2 ≤ Φ < 0.75) and every ideal-hydraulics number are unaffected. VALIDATION.md marks the F04 rows of VC-12.4 for re-pinning.
 
 Valve trays reach low Φ only when the valves are closed (§5.4), which is why they turn down further (about 5:1 versus 2:1 for sieve trays with the defaults).
 
 ### 5.9 Downflow summary
 
 ```
-L_j = smin( L_weir(M_j), L_max,j ) + k_d,j M_j          smin = plain min [impl may smooth]       (5.16)
+L_j = smin( L_weir(M_j), L_max,j ) + L_dump,j(M_j)      smin = plain min [impl may smooth]       (5.16)
 ```
 
 ### 5.10 Indicators reported per tray
@@ -1436,10 +1457,10 @@ Faults act only by changing physical parameters or adding physical flows. No fau
 
 | ID | Location | Parameter changes (applied every step from s(t)) | Default τ_r |
 |---|---|---|---|
-| F04 Broken / missing tray | tray j | Opening fraction s of the deck: liquid bypass s_broken,j = s added to the bypass fraction f_j (5.14) (the arriving liquid falls through with its inlet composition, like weeping); vapour bypass b_V,j = s in (4.2); hole area A_h,eff = A_h (1 − s) + s · A_a (the opening is a large hole, so ΔP_dry falls); active area A_a,eff = A_a · max(1 − s, 0.02), used for h_cl, the weir relation and M_max | 0 (sudden damage) |
+| F04 Broken / missing tray | tray j | Opening fraction s of the deck: liquid bypass s_broken,j = s added to the bypass fraction f_j (5.14) (the arriving liquid falls through with its inlet composition, like weeping); vapour bypass b_V,j = s in (4.2); hole area A_h,eff = A_h (1 − s) + s · A_a (the opening is a large hole, so ΔP_dry falls); active area A_a,eff = A_a · max(1 − s, 0.02), used for h_cl, the weir relation and M_max; liquid head in ΔP × (1 − s) (5.5) | 0 (sudden damage) |
 | F05 Fouled / plugged trays | trays j₁…j₂; mode holes / downcomer / both | holes: A_h,eff = A_h (1 − 0.8 s) (valve trays: A_min and A_max × (1 − 0.8 s)); downcomer: h_ap,eff = h_ap (1 − 0.9 s) | 4 h of sim time (represents weeks) |
 | F06 Foaming | section or whole column | SF = SF_froth = 1 − 0.45 s; φ_dc = 0.5 − 0.2 s. Antifoam on: after 300 s dead time s decays with τ = 600 s | 600 s |
-| F07 Feed composition upset | feed | z ← normalise(z + s Δz), Δz from the fault spec (default: light component +0.15) | 0 or ramp |
+| F07 Feed composition upset | feed | z ← z + σ s Δz with **Σ Δz = 0**. Components listed in `params.dz` get their value; unlisted components share −Σ(listed) in proportion to their current z (for a binary, the other component gets exactly −Δz). Any negative z_i is clamped to 0 and the result renormalised (only then does normalisation act). Default Δz: light component +0.15, so B-T z = 0.50 → 0.65. v1.0 added +0.15 to one component and then normalised, which gave 0.565 | 0 or ramp |
 | F08 Feed thermal upset | feed | T_F += s ΔT (Tier 2/3, default −40 K) or q += s Δq (Tier 1, default +0.3) | 0 |
 | F09 Loss of cooling | condenser | mode flow: m_cw,max × (1 − s); mode temperature: T_cw,in + 15 s K | 0 (pump trip) / 1800 s |
 | F10 Condenser fouling | condenser | R_f = s · 1.5/UA_clean (at s = 1, UA_eff = 0.4 UA_clean) | 6 h |
@@ -1521,7 +1542,7 @@ Solve R(M) = M − M_j^n − dt [ In_j − Out_j − L_j(M) ] = 0
 M̂_j = M,   L_j^(n+1) = L_j(M̂_j)
 ```
 
-L_j(M) is the downflow function of §5.9 for trays (weir capped by L_max, plus the dump drain k_d M; dL/dM = dL_weir/dM when the weir is below the cap, 0 when capped, plus k_d) or (6.4) for packed segments. L_j is monotone non-decreasing in M, so R is monotone and the Newton iteration converges.
+L_j(M) is the downflow function of §5.9 for trays (weir capped by L_max, plus the dump drain L_dump(M) of (5.15); dL/dM = dL_weir/dM when the weir is below the cap, 0 when capped, plus dL_dump/dM) or (6.4) for packed segments. L_j is monotone non-decreasing in M, so R is monotone and the Newton iteration converges.
 
 Drum and sump totals follow from their flows, each pump limited so that the holdup stays ≥ 0:
 
@@ -1611,7 +1632,7 @@ After the solve the new state is m_ij^(n+1); M_j = Σ_i m_ij (not M̂_j); x = m/
     limits and Q_max → the mean flows F̄ (10.0) used by every balance of this step.
  3. Thermo (from end of previous step, cached): T_j, K̃_ij, y_j, h_j, H_j, ρ, σ, v_L.
  4. Hydraulic coefficients at state n: Bennett α_e, ΔP_j, P_j profile, φ_j, ψ filter update, e_j,
-    bypass fractions f_j, L_max,j, k_d, M_max; packing φ_p, ΔP, holdup factor, HETP, E.
+    bypass fractions f_j, L_max,j, the dumping factor (0.2 − Φ_j)/0.2, M_max; packing φ_p, ΔP, holdup factor, HETP, E.
  5. Reboiler: kettle Q (8.2) or thermosyphon sub-steps (8.3) → Q_R,delivered.
  6. Vapour profile bottom-up: (4.4) Tier 1 or (4.6)/(4.7) Tiers 2/3; sump-starvation factor.
  7. Side strippers (crude): hydraulic + component step for each stripper chain.

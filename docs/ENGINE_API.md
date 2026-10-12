@@ -252,7 +252,7 @@ Preset JSON example (abbreviated, B-T default):
   "tier1Props": {"rhoL": 800, "rhoV": 2.9, "sigma": 0.020},
   "liquidViscosity": 0.00027,
   "sections": [{"kind": "trays", "trays": 20, "type": "sieve",
-    "geometry": {"diameter": 1.2, "traySpacing": 0.6, "downcomerFraction": 0.12, "weirHeight": 0.05,
+    "geometry": {"diameter": 1.2, "traySpacing": 0.9, "downcomerFraction": 0.12, "weirHeight": 0.05,
                  "apronClearance": 0.038, "holeFraction": 0.10, "holeDiameter": 0.0127, "orificeCoeff": 0.73,
                  "downcomerAeration": 0.5, "systemFactor": 1.0}}],
   "feeds": [{"stage": 10, "flow": 0.0277778, "z": [0.5, 0.5], "thermal": {"q": 1.0}}],
@@ -725,7 +725,9 @@ enum FaultType { trayDamage, trayFouling, foaming, feedComposition, feedThermal,
 // (e.g. coated on an FT) is a ConfigException. At most one F19/F28 fault per tag at a time
 // (injecting a second replaces the first).
 //   F07: {"type": "feedComposition", "params": {"dz": {"benzene": 0.08}, "sign": 1|-1|"random"}}
-//        z ← normalise(z + sign · s · dz) (PHYSICS.md §11); "random" only inside drill candidates.
+//        Σ dz = 0: unlisted components absorb −Σ(listed) in proportion to their z (binary: exactly −dz);
+//        z ← z + sign·s·dz, clamp ≥ 0, renormalise only if clamped (PHYSICS.md §11). The M2 fixture's
+//        list form [0.15, −0.15] is equivalent. "random" only inside drill candidates.
 
 @immutable
 class FaultSpec {
@@ -1333,7 +1335,7 @@ All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`,
 | G8 Pressure and volatility (M4) | B-T T2 | o1 lever.pTop ≥ 199 000 ∧ xD ≥ xD(start) − 0.002 ∧ xB ≤ xB(start) + 0.002 (use `from: start`) ∧ steady, hold 300; o2 choice "What happened to α?" → "it fell" | v1.0 said "hold specs" without defining them: they are now the 1-atm start values ± 0.002 | VC-10.3 α 2.71 (0.5 bar) → 2.20 (3 bar) |
 | G9 The azeotrope wall (M5) | ew T3, N 40, E 1 | o1 number "highest x_D you could reach" = 0.8956 ± 0.01; o2 choice "Tier 1 went past it. Why?" → "constant α cannot represent an azeotrope"; o3 choice "Lower pressure moves the azeotrope to…" → "higher ethanol" | | VC-10.5 |
 | G10 The other azeotrope (M5) | ac T3 | o1 choice "Where does the azeotrope leave?" → "in the bottoms"; o2 number x_B,acetone = 0.33 ± 0.03 | | VC-10.5, VC-8.11 |
-| G11 Flooding (shipped in M2, `scenarios.dart`) | as shipped: `steady`, Tier 1, full hydraulics, E 0.7 | As shipped: o1 kpi.maxFloodPct ≥ 100, hold 30, latch; o2 (after o1) maxFloodPct between 80 and 92 ∧ xD ≥ 0.95, hold 600. M3 adds o3: number "throughput at flood onset (% of design)" = 120 ± 10 | As shipped | Uniform scaling of F, L₀ and V_B keeps F_LV constant, so φ scales with the vapour rate: design max φ 0.832 (VC-12.3) → flood at ≈ 1/0.832 = 120 % |
+| G11 Flooding (shipped in M2, `scenarios.dart`) | as shipped: `steady`, Tier 1, full hydraulics, E 0.7; **briefing text must change** from "about 83 % of flood" to "about 63 %" (TS 0.9 m) | As shipped: o1 kpi.maxFloodPct ≥ 100, hold 30, latch; o2 (after o1) maxFloodPct between 80 and 92 ∧ xD ≥ 0.95, hold 600. M3 adds o3: number "throughput at flood onset (% of design)" = 160 ± 10 | As shipped; the first hint should add "about six steps of 10 %" | [P] at TS 0.9 m, uniform scaling ×k of F, L₀, V_B, steady state: ×1.0 62.9 % / xD 0.9783; ×1.1 69.2 / 0.9766; ×1.2 75.6 / 0.9737; ×1.3 81.9 / 0.9687; ×1.4 88.5 / 0.9601; ×1.5 95.2 / 0.9460; ×1.6 102.1 / 0.9236; ×1.7 109.7 / 0.8885. Flood onset ≈ ×1.57; o2 is reachable at ×1.3–1.4 |
 | G12 Turndown and weeping (shipped in M2) | as shipped | As shipped: o1 lever.feedFlow ≤ 11.12 mol/s ∧ lever.trayType.0 == 0 ∧ kpi.maxWeepFraction ≥ 0.3, hold 60, latch; o2 (after o1) the same throughput, lever.trayType.0 == 1, maxWeepFraction < 0.05, xB ≤ 0.03, hold 300. M3 adds o3: choice "Why don't valve trays weep yet?" → "closed valves keep the hole velocity up" | As shipped | VC-12.4 (w 0.51 on sieve trays at 35 %), VC-12.5 (w 0 on valve trays at 35 %) |
 
 Every guided scenario's JSON carries these objectives verbatim. Its hints must, followed literally, complete it (SCOPE.md M3 acceptance; VC-26.4 plays G1–G6 automatically by applying the hint values).
@@ -1474,7 +1476,7 @@ Painters read only tokens and style enums; there is no `if (theme.id == …)` an
 
 ### 13.5 Column painter contract
 
-Input: `SimSnapshot`, `LowsysTheme`, viewport, selection. It draws, per stage: tray deck, weir, downcomer (with backed-up liquid height from `dcFlood`), clear liquid (`hcl`) and froth (`froth`) with the composition colour, vapour particles whose spawn rate ∝ V_j and rise speed ∝ hole velocity, entrainment spray when ψ > 0.02, weep drips when weepFrac > 0.05, dumping and dry states, flooding overlay when frothFill ≥ 1 or jetFlood ≥ 1. Packed beds: bed texture with wetted fraction shading and HETP ticks. Drum and sump levels; condenser with CW flow animation; reboiler (kettle or thermosyphon loop with circulation arrows and quality-coloured riser). Hit-testing returns `ExplainTarget`s for taps. Particle positions use the UI clock (smooth at any sim speed); particle counts per SCOPE.md §7.3.
+Input: `SimSnapshot`, `LowsysTheme`, viewport, selection. It draws, per stage: tray deck, weir, downcomer (with backed-up liquid height from `dcFlood`), clear liquid (`hcl`) and froth (`froth`) with the composition colour, vapour particles whose spawn rate ∝ V_j and rise speed ∝ hole velocity, entrainment spray when ψ > 0.02, with density growing with ψ and carryover streams to the tray above (and from tray 1 into the vapour line) when jetFlood ≥ 1 (jet flood is spray, not a full tray: the fill is about 0.35, PHYSICS.md §5.6); weep drips when weepFrac > 0.05; dumping (near-empty deck, liquid raining) and dry states; full-froth flooding overlay only when frothFill ≥ 1 or dcFlood ≥ 1 (SCOPE.md §7.4). Packed beds: bed texture with wetted fraction shading and HETP ticks. Drum and sump levels; condenser with CW flow animation; reboiler (kettle or thermosyphon loop with circulation arrows and quality-coloured riser). Hit-testing returns `ExplainTarget`s for taps. Particle positions use the UI clock (smooth at any sim speed); particle counts per SCOPE.md §7.3.
 
 ### 13.6 Fonts and assets
 

@@ -157,6 +157,8 @@ Not asserted (information): lever to L₁ 63 % is 3.5 s in M1. With the M3 flow 
 
 Each check: start at a steady state, make the change, run to the new steady state, assert the sign of the change (and the stated magnitude when given). Tier 1 checks use B-T default; Tier 2 checks use B-T Tier 2 with constant pressure.
 
+**Hydraulics mode.** VC-8.1 to 8.6 are **ideal-hydraulics** checks (`HydraulicsMode.ideal`, as `Presets.byId('bt')`; DEVIATIONS.md E19): they test the textbook stage model. With full hydraulics, tray-1 entrainment reaches the drum and raises D under LV control (PHYSICS.md §5.6), which can reverse 8.1. Rows 8.15 and 8.16 are the full-hydraulics counterparts at the v1.1 default geometry (TS = 0.9 m).
+
 | # | Change | Expected | Tier |
 |---|---|---|---|
 | 8.1 | Raise reflux *and* boilup by the same amount (D constant): L₀, V_B +10 kmol/h | x_D up (0.981183 → 0.984504), x_B down; T1: boilup up; T2: Q_R up | T1, T2 |
@@ -173,6 +175,8 @@ Each check: start at a steady state, make the change, run to the new steady stat
 | 8.12 | Debutanizer: raise R at fixed D | LK recovery up, HK in distillate down | T1, T3 |
 | 8.13 | Methanol–water: switch T1 (α = 3.5) → T3 | top-section staircase changes (equilibrium curve no longer symmetric); actual operating locus curves | T1→T3 |
 | 8.14 | Cut CW flow capacity to 50 % (F09) with PC in AUTO | PC output → 100 %; P_top rises until Q_C balances; all temperatures rise | T2 |
+| 8.15 | **Full hydraulics**, default (TS 0.9 m), LV control: L₀ and V_B +10 kmol/h | x_D up 0.97826 → 0.98001 (± 0.0005), x_B down 0.01459 → 0.00997, max flood 62.9 → 67.1 % (no flooding alarm). [P] Further steps of +10: x_D 0.9796 (+20, 71 %), 0.9767 (+30, 75 %), 0.9709 (+40, 80 %). Beyond about +20 kmol/h the carryover into the drum outweighs the better L/V. Assert only the +10 row | T1 full |
+| 8.16 | **Full hydraulics**, default, **D held at 50 kmol/h** (adjust L₀ until D = 50 ± 0.01): L₀ and V_B +0, +10, +20, +30, +40 kmol/h | x_D rises monotonically: 0.9810, 0.9843, 0.9866, 0.9883, 0.9896 (± 0.0005) [P]. This is the textbook lesson. The entrainment efficiency loss alone is small; it is D drifting up that turns 8.15 over | T1 full |
 
 ## VC-9 Multicomponent shortcut (FUG) [I]
 
@@ -300,7 +304,9 @@ Further references (same method): L₀ = 150, D = 50 → x_D = 0.998569, x_B = 0
 
 ## VC-12 Tray hydraulics and hydraulic fault symptoms [P]
 
-All on B-T, Tier 1, full hydraulics, sieve trays, defaults of PHYSICS.md §5.1 (D_c = 1.2 m, TS = 0.6 m, A_d/A_T = 0.12, h_w = 50 mm, A_h/A_a = 0.10, d_h = 12.7 mm, C₀ = 0.73), ρ_L = 800, ρ_V = 2.9 kg/m³, σ = 0.020 N/m.
+All on B-T, Tier 1, full hydraulics, sieve trays, defaults of PHYSICS.md §5.1 (D_c = 1.2 m, **TS = 0.9 m** (v1.1; v1.0 used 0.6 m), A_d/A_T = 0.12, h_w = 50 mm, A_h/A_a = 0.10, d_h = 12.7 mm, C₀ = 0.73), ρ_L = 800, ρ_V = 2.9 kg/m³, σ = 0.020 N/m.
+
+The v1.1 numbers below were recomputed on 2026-10-12 with the committed M2 engine. The tester had independently confirmed it against the v1.0 prototype table (DEVIATIONS.md, 180/180), and the same harness reproduces the v1.0 values at TS = 0.6 m. VC-12.1 and VC-12.2 do not depend on TS (VC-12.2's C_SB spot values are at fixed TS).
 
 **VC-12.1 Geometry [I]:** A_T = 1.1310 m², A_a = 0.8595 m², A_n = 0.9953 m², L_w = 0.9171 m (θ from (θ − sin θ)/2π = 0.12). Tolerance 1×10⁻⁴.
 
@@ -315,36 +321,50 @@ Tolerance 1×10⁻⁴ (relative for ψ).
 
 | Quantity | Value | Tolerance |
 |---|---|---|
-| x_D | 0.96725 | ± 0.002 |
-| x_B | 0.00839 | ± 0.001 |
-| D | 51.27 kmol/h (entrained liquid from tray 1, 1.27 kmol/h, reaches the drum) | ± 0.3 |
-| Column ΔP (20 trays) | 14.68 kPa | ± 5 % |
-| Tray 1: φ, ψ, F_LV, Φ, h_cl, α_e, ΔP_dry, ΔP | 0.666, 0.0125, 0.0403, 1.687, 21.1 mm, 0.286, 472 Pa, 645 Pa | φ ± 0.02, ψ ± 20 %, h_cl ± 1 mm, ΔP ± 5 % |
-| Tray 15: φ, ψ, F_LV, Φ, h_cl, ΔP | 0.804, 0.0194, 0.0832, 1.804, 23.7 mm, 798 Pa | same |
-| Tray 20: φ, ψ, h_cl, ΔP | 0.832, 0.0246, 23.1 mm, 829 Pa | same |
-| Tray 15 downcomer backup | 0.131 m clear liquid = 40 % of the limit | ± 10 % |
+| x_D | 0.97826 | ± 0.002 |
+| x_B | 0.01459 | ± 0.001 |
+| D | 50.37 kmol/h (the 0.37 kmol/h of entrained liquid from tray 1 reaches the drum) | ± 0.3 |
+| Column ΔP (20 trays) | 14.49 kPa | ± 5 % |
+| Max flood % (KPI) | 62.9 (tray 20, jet) | ± 2 |
+| Tray 1: φ, ψ, F_LV, Φ, h_cl, α_e, ΔP_dry, ΔP | 0.503, 0.0037, 0.0403, 1.681, 21.2 mm, 0.287, 470 Pa, 642 Pa | φ ± 0.02, ψ ± 20 %, h_cl ± 1 mm, ΔP ± 5 % |
+| Tray 15: φ, ψ, F_LV, Φ, h_cl, ΔP | 0.599, 0.0042, 0.0832, 1.772, 23.8 mm, 781 Pa | same |
+| Tray 20: φ, ψ, h_cl, ΔP | 0.629, 0.0053, 23.2 mm, 827 Pa | same |
+| Tray 15 downcomer backup | 0.128 m clear liquid = 27.0 % of the limit φ_dc (TS + h_w) = 0.475 m | ± 10 % |
 | Weeping anywhere | none (Φ > 1.6) | – |
+
+v1.0 (TS 0.6 m) for reference: x_D 0.96725, x_B 0.00839, D 51.27, ΔP 14.68 kPa, max flood 83.2 %. Tray hydraulics other than jet flood are unchanged (the same h_cl, α_e, Φ, ΔP_dry within 1 %).
 
 With entrainment, weeping and the downcomer limit switched off, the same run returns exactly the ideal-hydraulics result (VC-4.1, 0.981183 / 0.018817).
 
-**VC-12.4 Fault and operating-condition symptoms [P].** From the design steady state; values after 10 min and after 4 h of sim time. "Max φ" = highest jet-flood fraction; "w" = highest weeping fraction; "fill" = highest M/M_max; "dc" = trays with the downcomer limit active.
+**VC-12.4 Fault and operating-condition symptoms [P].** From the design steady state; values after 10 min and after 4 h of sim time.
+
+Terms:
+- **"Load +x %"** is a *vapour-load* increment: F stays at 100 kmol/h, and L₀ and V_B each gain x × 150 kmol/h. +20 % means +30 kmol/h on each, so D stays at 50 plus the change in e₁. This is `addLoad` in `fixtures_m2.dart` (DEVIATIONS.md T1).
+- **"Turndown to x %"** scales F, L₀ and V_B by x.
+- "Max φ" is the highest jet-flood fraction, "w" the highest weeping fraction, "fill" the highest M/M_max, and "dc" the number of trays with the downcomer limit active.
 
 | Case | After 10 min | After 4 h | Must hold (test assertions) |
 |---|---|---|---|
-| Load +20 % (L₀ +30, V_B +30 kmol/h) | ΔP 19.62 kPa, max φ 1.00, x_D 0.9659 | ΔP 19.92, x_D 0.9124, x_B 0.0018 | ΔP ≥ 1.25 × base; x_D(4 h) ≤ 0.94 |
-| Same, entrainment off | ΔP 19.03 | x_D 0.9886, x_B 0.0114 | x_D(4 h) ≥ 0.98 (so the loss above is entrainment) |
-| Load +30 % | ΔP 22.79, max φ 1.10 | ΔP 23.08, x_D 0.8364 | ΔP ≥ 1.45 × base; x_D(4 h) ≤ 0.88 |
-| Load +45 % | ΔP 28.90, max φ 1.41, x_D 0.831 | ΔP 29.44, x_D 0.497, D at valve limit, drum level high | ΔP ≥ 1.8 × base; x_D(4 h) ≤ 0.6; LC-101 output 100 % |
-| Turndown to 50 % (F, L₀, V_B × 0.5) | w 0.08 | x_D 0.9783, x_B 0.0184 (no-weep: 0.9798, 0.0167) | weeping starts (0 < w < 0.2); x_B with weeping > x_B without |
-| Turndown to 35 % | w 0.51 | x_D 0.9647, x_B 0.0307 (no-weep: 0.9780, 0.0147) | w ≥ 0.3; x_B(weep) ≥ 1.5 × x_B(no weep); x_D(weep) < x_D(no weep) |
-| Foaming F06, s = 0.33 (SF 0.85, φ_dc 0.433) | max φ 0.98 | x_D 0.935, ΔP ≈ unchanged (14.56) | x_D drops ≥ 0.02; max φ ≥ 0.95 at unchanged load |
-| Foaming F06, s = 0.67 (SF 0.70, φ_dc 0.367) | max φ 1.48, x_D 0.736 | x_D 0.500, drum level ≥ 90 %, sump level ≈ 5 % | x_D(4 h) ≤ 0.6; flooding alarm raised |
-| Fouling F05 holes, s = 0.3, trays 12–16 | ΔP 16.84 | ΔP 16.84, x_D 0.9670 | ΔP +10…+20 %; abs(Δx_D) ≤ 0.002 (fouling shows in ΔP before separation) |
-| Fouling F05 holes, s = 0.6, trays 12–16 | ΔP 45.3, dc 14, sump level 5 % | flooded and cycling: x_D ≈ 0.50 | ΔP ≥ 2 × base within 10 min; downcomer limit active on ≥ 5 trays; sump level ≤ 10 % within 10 min |
-| Downcomer clearance F05 downcomer mode, s = 1 (90 % blocked), trays 12–16 | ΔP 34.3, dc 12, sump 5 % | x_D ≈ 0.50 | ΔP ≥ 1.8 × base within 10 min; liquid accumulates above tray 12 (fill ≥ 1 on some tray above 12) |
-| Broken tray F04, tray 5, s = 1 | tray-5 ΔP falls from 664 Pa to ≈ 38 Pa; column ΔP 14.06 | x_D 0.9648, x_B 0.0109 | tray-5 ΔP ≤ 15 % of its base; both x_D and x_B worse than base |
-| Broken tray F04, tray 15, s = 1 | column ΔP 14.00 | x_D 0.9642, x_B 0.0115 | as above |
-| Broken tray F04, tray 5, s = 0.5 | | x_D 0.9648, x_B 0.0109 (the opening short-circuits the vapour, the rest of the deck weeps) | tray-5 weeping fraction ≥ 0.5 |
+| Load +20 % (L₀ 130, V_B 180 kmol/h) | ΔP 18.93 kPa, max φ 0.75, x_D 0.9840 | ΔP 19.29, x_D 0.9768, x_B 0.0039, max flood 75 % | ΔP ≥ 1.25 × base; x_B(4 h) < x_B(base); no flooding alarm |
+| Same, entrainment off | ΔP 18.69 | x_D 0.9886, x_B 0.0114 | x_D(4 h) = 0.9886 ± 0.001 (the ideal-hydraulics value), so the gap to the row above is carryover |
+| Load +30 % | ΔP 21.56, max φ 0.81 | ΔP 22.25, x_D 0.9668, x_B 0.0020, max flood 82 % | ΔP ≥ 1.45 × base; x_D(4 h) < x_D(4 h) of +20 % |
+| Load +45 % | ΔP 26.22, max φ 0.91 | ΔP 27.29, x_D 0.9356, D 53.4 | ΔP ≥ 1.8 × base; x_D(4 h) ≤ 0.95; flooding alarm (max flood > 90 %) |
+| Load +60 % (flood onset) | ΔP 32.09, max φ 1.01 | ΔP 33.07, x_D 0.8703, D 57.4, max flood 101 % | max flood ≥ 100 %; x_D(4 h) ≤ 0.90 |
+| Load +75 % | ΔP 38.99, max φ 1.13 | ΔP 39.67, x_D 0.7323, D 68.3 | ΔP ≥ 2.5 × base; x_D(4 h) ≤ 0.80 |
+| Turndown to 50 % (F, L₀, V_B × 0.5) | w 0.09 | x_D 0.9788, x_B 0.0192 (no-weep: 0.9804, 0.0174) | weeping starts (0 < w < 0.2); x_B with weeping > x_B without |
+| Turndown to 35 % | w 0.51 | x_D 0.9653, x_B 0.0313 (no-weep: 0.9788, 0.0155) | w ≥ 0.3; x_B(weep) ≥ 1.5 × x_B(no weep); x_D(weep) < x_D(no weep) |
+| Foaming F06, s = 0.33 (SF 0.85, φ_dc 0.433) | max φ 0.74 | x_D 0.9746, ΔP 14.18 | max φ ≥ 0.70 at unchanged load; ΔP within ± 10 % of base; no flooding (the headroom absorbs it) |
+| Foaming F06, s = 0.67 (SF 0.70, φ_dc 0.367) | max φ 0.90 | x_D 0.9564, ΔP 14.01 | x_D drops ≥ 0.015; max φ ≥ 0.85; ΔP within ± 10 % |
+| Foaming F06, s = 1.0 (SF 0.55, φ_dc 0.30) | max φ 1.16, flooding alarm | x_D 0.8171, max φ 1.24, ΔP 14.25 | flooding alarm; x_D(4 h) ≤ 0.90; ΔP within ± 10 % of base (foam floods *without* a pressure-drop rise, unlike load flooding) |
+| Fouling F05 holes, s = 0.3, trays 12–16 | ΔP 16.58 | ΔP 16.58, x_D 0.9782 | ΔP +10…+20 %; |Δx_D| ≤ 0.002 (fouling shows in ΔP before separation) |
+| Fouling F05 holes, s = 0.6, trays 12–16 | ΔP 22.20 (× 1.53) | the same; x_D 0.9782 | ΔP ≥ 1.4 × base; |Δx_D| ≤ 0.002; no downcomer limit (headroom) |
+| Fouling F05 holes, s = 0.8, trays 12–16 | ΔP 57.5 (× 3.97), dc 12, sump 6 % | flooded and cycling: x_D 0.51 | ΔP ≥ 2 × base within 10 min; downcomer limit active on ≥ 5 trays; sump level ≤ 10 % within 10 min |
+| Downcomer clearance F05 downcomer mode, s = 1 (90 % blocked), trays 12–16 | ΔP 27.97 (× 1.93), dc 5, sump 20 % | x_D ≈ 0.50, drum 115 % | ΔP ≥ 1.8 × base within 10 min; liquid accumulates above tray 12 (fill ≥ 1 on some tray above 12) |
+| Broken tray F04, tray 5, s = 1 | tray-5 ΔP falls to 1.7 % of its base (E20 head factor); column ΔP 13.76 | x_D 0.9743, x_B 0.0186 | tray-5 ΔP ≤ 15 % of its base; both x_D and x_B worse than base |
+| Broken tray F04, tray 15, s = 1 | column ΔP 13.73 | x_D 0.9753, x_B 0.0176 | as above |
+| Broken tray F04, tray 5, s = 0.5 | | x_D 0.9743, x_B 0.0186; tray-5 weeping fraction 0.68 | tray-5 weeping fraction ≥ 0.5 |
+
+The three F04 rows were computed with the v1.0 dumping law (k_d = (0.2 − Φ)/0.2/8 s). With the orifice-drainage law of PHYSICS.md (5.15) (M3), the broken tray holds almost no liquid. Its numbers move a little and are to be re-pinned when that law lands. The must-hold assertions stay.
 
 Robustness assertion for every case: no NaN, no negative holdup, solver fatal flag never set, over 4 h.
 
@@ -362,7 +382,7 @@ Robustness assertion for every case: no NaN, no negative holdup, solver fatal fl
 | pall50m (F_p 27) | 204.7 | 944 | 54.8 % |
 | pall25m (F_p 56) | 469.5 | 1573 | 69.9 % |
 
-Tolerance: ΔP ± 0.5 %, flood approach ± 0.5 points. Teaching cross-check: 20 sieve trays at the same load have ΔP = 14.7 kPa and 68–83 % jet flood (VC-12.3); 9 m of struct250 gives ≈ 1.3 kPa and 50 % — the textbook retrofit argument (scenario G15).
+Tolerance: ΔP ± 0.5 %, flood approach ± 0.5 points. Teaching cross-check: 20 sieve trays at the same load have ΔP = 14.5 kPa and 50–63 % jet flood (VC-12.3, TS 0.9 m); 9 m of struct250 gives ≈ 1.3 kPa and 50 % — the textbook retrofit argument (scenario G15) rests on the pressure drop, about 11× lower.
 
 - **Maldistribution** (parallel-column model, PHYSICS.md (6.6)):
 
@@ -497,7 +517,7 @@ The PID unit tests drive a bare `ControlLoop` with scripted PVs. Unless stated: 
 | Density | 800 kg/m³ | 49.942 lb/ft³ | 1×10⁻³ |
 | Temperature difference | 10 K | 18 °F | 1×10⁻⁹ |
 
-Round trip toSI(fromSI(v)) = v to 1×10⁻¹² relative for every quantity.
+Round trip toSI(fromSI(v)) = v: linear quantities (every conversion that is a pure factor) to 1×10⁻¹² relative; temperature (an affine conversion, K ↔ °C/°F) to 1×10⁻⁹ K absolute, since the 273.15 offset makes a relative test meaningless near 0 °C. Dimensionless quantities (fractions, ratios, `dimensionless`) convert by 1 and carry no unit symbol: `symbol(q)` returns the empty string, and percent returns "%".
 
 ## VC-18 McCabe–Thiele data invariants
 
@@ -686,12 +706,12 @@ For each drill candidate the test injects the fault (fixed seed, onset at 600 s,
 | Drill | Fault | Key evidence to assert |
 |---|---|---|
 | H1 | F05 fouling, stripping trays 12–18, holes | ΔP across trays 12–18 up ≥ 10 % at constant flows; ΔP of trays 1–11 up < 3 %; x_D change < 0.003 in the first hour |
-| H1 | F07 feed lighter (Δz = +0.1) | ΔP change < 3 %; T profile shifts (Tier 2: tray 10 T down ≥ 1 K); D rises via LC-101 |
+| H1 | F07 feed lighter (Δz = +0.1 benzene, −0.1 toluene; PHYSICS.md §11 sum-zero convention) | ΔP change < 3 %; T profile shifts (Tier 2: tray 10 T down ≥ 1 K); Tier 2: D rises by ≥ 0.3 kmol/h via LC-101, because the lighter bottoms have the smaller molar latent heat, so the same duty boils more moles. Under Tier-1 LV control D would not move (D = V₁ + e₁ − L₀ is fixed by the flows) and the extra benzene would leave in the bottoms (x_B up). H1 runs in Tier 2 |
 | H2 | F09 CW temperature +15 K | P_top up; CW valve to 100 %; reflux subcooling down |
 | H2 | F10 condenser fouling | P_top creeps up over ≥ 30 min; CW valve creeps up; subcooling down |
 | H2 | F11 non-condensables | P_top up while CW valve is not saturated at first; reflux subcooling **up** (≥ 5 K); opening the vent restores P within 10 min |
 | H3 | F04 broken tray, rectifying (tray 5) | column ΔP down; tray-5 ΔP ≤ 15 % of neighbours; x_D down at constant L/D |
-| H3 | F06 foaming s = 0.5 | ΔP up or erratic (std over 5 min ≥ 3× base); x_D down; antifoam restores within 40 min |
+| H3 | F06 foaming s = 0.9 (with the v1.1 headroom, s ≤ 0.67 no longer floods; drill range [0.8, 1.0]) | max flood ≥ 100 % at unchanged load while column ΔP stays within ± 10 % of base ([P]: φ 1.08, ΔP × 0.97); x_D down ≥ 0.03 within 1 h ([P] 0.9783 → 0.908 at 60 min). Antifoam: max φ < 0.75 within 20 min, and x_D back within 0.03 of base within 40 min ([P] 0.953) |
 | H3 | F19 FT-102 bias, sign +1, s = 0.5 (+15 kmol/h; F19 biases are additive in % of span, PHYSICS.md §10.6) | displayed reflux = SP, true reflux 15 kmol/h lower; C3a: V₁ from the condenser duty disagrees with displayed L + D by ≥ 8 %; C4:FV-102 `fail` |
 | H4 | F13 reboiler fouling | steam valve rises over ≥ 30 min then saturates; duty falls below SP after saturation |
 | H4 | F14 condensate backup | duty falls below SP within 5 min with the steam valve at 100 % |

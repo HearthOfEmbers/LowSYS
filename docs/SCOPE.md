@@ -185,13 +185,13 @@ Each fault has a physical model (PHYSICS.md §11 gives the equations), a severit
 
 | ID | Fault | Physical model (summary) | Observable symptoms | Fix in the sim | M |
 |---|---|---|---|---|---|
-| F01 | Jet / entrainment flooding (operating condition) | Vapour velocity exceeds the Fair flood limit; entrainment ψ rises steeply; liquid is carried up; trays fill to the tray spacing; liquid is carried into the overhead | ΔP rises sharply and becomes erratic; xD falls (heavy component overhead); drum level rises, sump level falls; T profile flattens in the flooded zone | Cut boilup and reflux; cut feed | M2 |
+| F01 | Jet / entrainment flooding (operating condition) | Vapour velocity exceeds the Fair flood limit; entrainment ψ rises steeply towards 0.6, so liquid is sprayed up and recycled tray to tray and into the overhead. The froth fill stays near 0.35: trays do *not* fill to the spacing (that is F02 / full-tray overflow) | ΔP rises sharply and becomes erratic; xD falls (heavy component overhead); drum level rises, sump level falls; T profile flattens in the flooded zone | Cut boilup and reflux; cut feed | M2 |
 | F02 | Downcomer-backup flooding | Downcomer liquid head (tray ΔP + receiving-tray head + apron loss) exceeds tray spacing; downflow is capped; liquid accumulates upward from the restriction | ΔP jumps across the section *above* the restriction; liquid inventory grows there; sump level drops; separation collapses | Cut liquid and vapour load | M2 |
-| F03 | Weeping / dumping (operating condition) | Tray stability factor Φ = √(h_dry/h_cl) below 0.75 makes inlet liquid bypass the tray; below 0.2 the tray dumps (drains) | Low ΔP; efficiency loss (xB and xD both worse at the same L/V); dumping trays show near-zero holdup | Raise boilup; switch to valve trays (design) | M2 |
+| F03 | Weeping / dumping (operating condition) | Tray stability factor Φ = √(h_dry/h_cl) below 0.75 makes inlet liquid bypass the tray; below 0.2 the tray dumps: it drains through its holes like an orifice (PHYSICS.md (5.15), revised for M3) | Low ΔP; efficiency loss (xB and xD both worse at the same L/V); dumping trays hold almost no liquid (sieve ≈ 0.15 mm, valve ≈ 1 mm clear liquid at 100 kmol/h inflow), drawn as liquid raining through an empty deck | Raise boilup; switch to valve trays (design) | M2 |
 | F04 | Broken or missing tray | Fraction `s` of the tray deck is open: liquid bypass fraction `s` straight to the tray below, vapour bypass fraction `s` uncontacted; ΔP of that tray falls | Lower ΔP across the damaged tray; flatter T and composition profile at that location; lower separation; staircase shows a "missing step" | None in operation (needs shutdown); reduce rates to limit damage | M2 |
 | F05 | Fouled / plugged trays | Mode holes / downcomer / both. Holes: open hole area × (1 − 0.8 s) (valve trays: A_min and A_max × (1 − 0.8 s)); downcomer: apron clearance h_ap × (1 − 0.9 s), so s = 1 is 90 % blocked; ramp 4 h of sim time (weeks of plant time compressed) | Gradual ΔP rise in the fouled section at constant rates; earlier flooding (downcomer backup) at a lower throughput; little separation change until flooding | Reduce throughput | M2 |
-| F06 | Foaming | System (foam) factor SF = 1 − 0.45 s on flood capacity; froth density α_e × SF_froth (SF_froth = SF); downcomer aeration φ_dc = 0.5 − 0.2 s; ramp 600 s. Antifoam on: after a 300 s dead time s decays with τ = 600 s | Flooding symptoms at normal loads; erratic ΔP; recovery starts 5 min after antifoam and is mostly complete within 20–30 min | Antifoam on; cut rates | M2 |
-| F07 | Feed composition upset | z ← normalise(z + s Δz), step or ramp; default Δz = +0.15 on the light component | Profile moves up/down the column; temperatures shift (T2/3); product specs drift; drum/sump levels shift | Re-target reflux/boilup | M2 |
+| F06 | Foaming | System (foam) factor SF = 1 − 0.45 s on flood capacity; froth density α_e × SF_froth (SF_froth = SF); downcomer aeration φ_dc = 0.5 − 0.2 s; ramp 600 s. Antifoam on: after a 300 s dead time s decays with τ = 600 s | Flooding at normal load (max flood % up, xD down, carryover into the drum) while the column ΔP barely changes; with the default headroom it floods only for s ≳ 0.8. Recovery starts 5 min after antifoam and is mostly complete within 20–40 min | Antifoam on; cut rates | M2 |
+| F07 | Feed composition upset | z ← z + s Δz with Σ Δz = 0 (for a binary the other component gets −Δz), step or ramp; default Δz = +0.15 light, so B-T z = 0.50 → 0.65 (PHYSICS.md §11) | Profile moves up/down the column; temperatures shift (T2/3); product specs drift; drum/sump levels shift | Re-target reflux/boilup | M2 |
 | F08 | Feed temperature / vaporisation upset | Preheater change, step: T_F += s ΔT (Tiers 2/3, default −40 K) or q += s Δq (Tier 1, default +0.3) | V and L change below the feed; stripping section loads change; ΔP shift below feed | Adjust duty | M4 |
 | F09 | Loss of condenser cooling | Mode flow: CW flow capacity × (1 − s) (pump trip at s = 1, step); mode temperature: CW inlet T + 15 s K (ramp 1800 s) | Pressure rises; PC output saturates at 100 %; all temperatures rise; separation degrades (α falls); drum level falls; relief valve lifts at its set pressure (preset; B-T 3.5 bar(a)) | Cut reboiler duty | M4 |
 | F10 | Condenser fouling | UA × 1/(1 + UA R_f) with R_f = s · 1.5/UA_clean (UA_eff = 0.4 UA_clean at s = 1); s ramps over 6 h | Slow pressure creep; PC output creeping up; subcooling falls | Cut duty; clean (not in sim) | M4 |
@@ -236,7 +236,7 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G8 | Pressure and volatility | B-T, T2 | Raise P_top from 0.5 to 3 bar | Observe α fall (2.71 → 2.20) and duty rise for the same purity; hold specs at 2 bar | M4 |
 | G9 | The azeotrope wall | Ethanol–water, T3 then T1 | Try to exceed x = 0.90 in the distillate | Discover the azeotrope at about 0.896 / 78.1 °C; see Tier 1 "beat" it falsely; lower pressure moves the azeotrope | M5 |
 | G10 | The other azeotrope | Acetone–chloroform, T3 | Find where the azeotrope ends up | Identify that the maximum-boiling azeotrope (x ≈ 0.33) leaves in the bottoms | M5 |
-| G11 | Flooding | B-T, T2, full hydraulics | Push throughput up 10 % per step | Find the onset of flooding (ΔP slope change, xD collapse); back off to 85 % flood | M2 (T1), upgraded in M4 |
+| G11 | Flooding | B-T, T2, full hydraulics | Push throughput up 10 % per step | The default column runs at 63 % of flood and floods at about 160 % throughput. Find the onset (ΔP slope change, xD collapse); back off to 80–92 % flood (≈ 130–140 %) with xD ≥ 0.95 | M2 (T1), upgraded in M4 |
 | G12 | Turndown and weeping | B-T, sieve then valve trays | Cut throughput to 35 % | See weeping cost separation on sieve trays and not (yet) on valve trays | M2 |
 | G13 | Debutanizer keys and FUG | Debutanizer, T3 | Compare the FUG panel to the rigorous column | Meet 98 % LK/HK recoveries; compare N and R_min with Fenske/Underwood/Gilliland | M7 |
 | G14 | Thermosyphon tuning | B-T, T2, thermosyphon | Restore stable boilup after a low sump level causes surging | Stop the oscillation (amplitude < 2 % of boilup) without losing more than 10 % duty | M6 |
@@ -253,7 +253,7 @@ In a drill the engine injects one fault (from the drill's candidate list, chosen
 |---|---|---|---|---|
 | H1 | Creeping ΔP | B-T, T2 | F05 fouling (stripping trays 12–18) vs F07 lighter feed | ΔP rise at constant rates in one section → fouling; profile shift without ΔP change → feed |
 | H2 | Pressure won't hold | B-T, T2 | F09 CW loss (partial), F10 condenser fouling, F11 non-condensables | Subcooling trend separates inerts (rises) from fouling/CW loss (falls); CW temperature/flow readings |
-| H3 | Lost separation | B-T, T2 | F04 broken tray (rectifying), F06 foaming, F19 reflux flow meter bias | ΔP down (broken tray) vs up (foam) vs balance mismatch (meter bias: L + D ≠ V₁ from heat balance) |
+| H3 | Lost separation | B-T, T2 | F04 broken tray (rectifying), F06 foaming (s 0.8–1.0), F19 reflux flow meter bias | One tray's ΔP near zero (broken tray) vs flood % high at normal load with unchanged column ΔP (foam) vs balance mismatch (meter bias: L + D ≠ V₁ from heat balance) |
 | H4 | Reboiler can't keep up | B-T, T2 | F13 fouling, F14 condensate backup, F15 steam header loss | Onset speed; steam flow vs valve position; header pressure reading |
 | H5 | Bottoms level swings | B-T, T2, thermosyphon | F19 sump level transmitter drift (true level low → surge), F17 inlet restriction, F18 outlet restriction | Thermosyphon circulation and exit quality; compare level with mass balance |
 | H6 | Off-spec overhead | Debutanizer, T3 | F07 feed upset (more nC4/iC5), F12 partial reflux loss, F20 reflux valve stuck | Feed analyser trend vs reflux flow vs valve OP–flow mismatch |
@@ -329,6 +329,15 @@ Style switches (enums): `vesselStyle` {outline, flat, bevel, vector}, `liquidSty
 - At most 400 vapour particles on screen (High) / 120 (Low), pooled; positions advance on the UI clock.
 - Blur/glow/bloom and scanline shaders are disabled on Low quality and when the measured frame time exceeds 14 ms for 2 s.
 - No `saveLayer` per tray; one `saveLayer` per panel at most.
+
+### 7.4 Drawing hydraulic states (all themes)
+
+The two kinds of flooding look different in the model, and must look different on screen (PHYSICS.md §5.6):
+- **Jet flood** (`jetFlood` ≥ 1, or high ψ): spray and carryover. Dense entrainment particles leave the froth and land on the tray above; at tray 1 liquid streams up the vapour line into the condenser. The froth itself stays at its normal height, since the fill is about 0.35 at jet flood.
+- **Downcomer flood and full-tray overflow** (`dcFlood` ≥ 1 or `frothFill` ≥ 1): froth stacks up to the tray above, and the downcomer is shown backed up to the next deck.
+- **Weeping:** drips under the deck, scaled with the weeping fraction.
+- **Dumping** (flag bit 2): an almost empty deck with liquid raining through the holes.
+- **Dry tray** (flag bit 8): an empty deck with no froth.
 
 ---
 
@@ -447,6 +456,7 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 | Time step | Fixed 0.5 s (deterministic); fast-forward uses 2.0 s | Stable and accurate per the prototype study in PHYSICS.md §12 |
 | State management | Plain `ChangeNotifier`s + `InheritedNotifier`, no third-party package | Fewest concepts for the implementer; hot path uses `ValueListenable` |
 | Fonts | Bundled OFL fonts (offline) | Works on phones without network |
+| Default tray spacing (B-T and its variants) | 0.90 m (was 0.60 m): the default runs at 63 % of jet flood | Raising reflux and boilup then improves xD as the textbook says; flooding needs about +60 % load. Spacing changes nothing in ideal hydraulics or in weeping (PHYSICS.md §5.1) |
 | Flow control | Real PI flow loops (Kc 0.6, Ti 2 s) on measured flow, sub-stepped at 0.1 s; closed-loop 63 % in 3 s | Instrument and valve faults need a controller that acts on a reading and owns an OP; the sub-step keeps it identical at every dt (PHYSICS.md §10.4) |
 | VC-7.2 | Tray lag timed from the delivered reflux, not the lever | That is what the case was written to test; holds for any flow-loop speed (VALIDATION.md VC-7.2) |
 | Random numbers | xoshiro128** with per-process streams (32-bit operations only) | Bit-identical on native and web; adding a fault never changes another instrument's noise (PHYSICS.md §12.9) |
