@@ -36,6 +36,7 @@ class McCabePainter extends CustomPainter {
     final plot = mccabePlotRect(size);
     final num = theme.type.number;
     final lab = theme.type.label;
+    final narrow = plot.width < 220; // phone portrait: thin the markers, one-line legend
 
     // --- paper: hand-ruled grid
     final minor = Paint()
@@ -65,7 +66,7 @@ class McCabePainter extends CustomPainter {
       _text(canvas, v.toStringAsFixed(1), _pt(plot, v, 0) + const Offset(0, 4), num.style(12, p.inkMuted), Alignment.topCenter);
       _text(canvas, v.toStringAsFixed(1), _pt(plot, 0, v) + const Offset(-4, 0), num.style(12, p.inkMuted), Alignment.centerRight);
     }
-    _text(canvas, 'x  ${d.lightLabel.toLowerCase()}, liquid', Offset(plot.center.dx, plot.bottom + 19), lab.style(12, p.inkMuted), Alignment.topCenter);
+    _text(canvas, compact ? 'x  ${d.lightLabel.toLowerCase()}  \u00B7  t ${_clock(snap.time)}' : 'x  ${d.lightLabel.toLowerCase()}, liquid', Offset(plot.center.dx, plot.bottom + 19), lab.style(12, p.inkMuted), Alignment.topCenter);
     canvas.save();
     canvas.translate(8, plot.center.dy);
     canvas.rotate(-math.pi / 2);
@@ -134,8 +135,10 @@ class McCabePainter extends CustomPainter {
 
     // --- actual operating locus (dots)
     final dot = Paint()..color = p.opLine;
-    for (final q in d.operatingLocus) {
-      canvas.drawCircle(_pt(plot, q.x, q.y), 2.0, dot);
+    for (var i = 0; i < d.operatingLocus.length; i++) {
+      if (narrow && i % 2 == 1) continue;
+      final q = d.operatingLocus[i];
+      canvas.drawCircle(_pt(plot, q.x, q.y), narrow ? 1.5 : 2.0, dot);
     }
 
     // --- staircase with arrowheads at the mid-point of each segment
@@ -159,23 +162,48 @@ class McCabePainter extends CustomPainter {
       _arrow(canvas, a + (b - a) * 0.5 + (b - a) / len * 3, b - a, 4.5, arrow);
     }
 
-    // --- stage corners: hollow circles; the feed stage is ringed in the accent colour
+    // --- stage corners: hollow circles (thinned on phones); the feed stage is a filled accent dot
     final cornerP = Paint()
       ..color = p.stepLine
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
+    final selStage = selected.value;
     for (final c in d.corners) {
       final o = _pt(plot, c.x, c.y);
-      canvas.drawCircle(o, 3.0, cornerP);
-      if (c.isFeed) {
-        canvas.drawCircle(
-            o,
-            6.5,
-            Paint()
-              ..color = p.accent
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.6);
-      }
+      if (c.isFeed) continue;
+      if (narrow && c.stage % 4 != 0 && c.stage != selStage) continue;
+      canvas.drawCircle(o, narrow ? 2.4 : 3.0, cornerP);
+    }
+    for (final c in d.corners) {
+      if (!c.isFeed) continue;
+      final o = _pt(plot, c.x, c.y);
+      canvas.drawCircle(o, 8.5, Paint()..color = p.accent.withValues(alpha: 0.22));
+      canvas.drawCircle(o, 4.6, Paint()..color = p.accent);
+      canvas.drawCircle(
+          o,
+          8.5,
+          Paint()
+            ..color = p.accent
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4);
+      _text(canvas, narrow ? 'F' : 'feed tray ${c.stage}', o + const Offset(-11, 3), num.style(12, p.accent, weight: FontWeight.w700), Alignment.topRight);
+    }
+    // the pinch: where the q-line meets the equilibrium curve
+    if (d.qLine != null) {
+      final o = _pt(plot, d.qLine!.b.x, d.qLine!.b.y);
+      final dm = Path()
+        ..moveTo(o.dx, o.dy - 4.5)
+        ..lineTo(o.dx + 4.5, o.dy)
+        ..lineTo(o.dx, o.dy + 4.5)
+        ..lineTo(o.dx - 4.5, o.dy)
+        ..close();
+      canvas.drawPath(
+          dm,
+          Paint()
+            ..color = p.qLine
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4);
+      if (!narrow) _text(canvas, 'pinch', o + const Offset(8, -3), lab.style(12, p.qLine), Alignment.bottomLeft);
     }
 
     // --- Murphree gap markers + highlight for the selected tray
@@ -207,8 +235,10 @@ class McCabePainter extends CustomPainter {
       _text(canvas, '$sel', _pt(plot, x, y) + const Offset(-9, -5), num.style(12, p.selection, weight: FontWeight.w700), Alignment.bottomRight);
     }
 
-    // --- product / feed markers on the diagonal
-    void marker(double x, String name, double dy) {
+    canvas.restore();
+
+    // --- product and feed compositions on the diagonal (outside the clip so labels are never cut)
+    void marker(double x, String name, Alignment a, Offset off) {
       final o = _pt(plot, x, x);
       final tri = Path()
         ..moveTo(o.dx, o.dy + 1)
@@ -216,15 +246,32 @@ class McCabePainter extends CustomPainter {
         ..lineTo(o.dx + 5, o.dy + 9)
         ..close();
       canvas.drawPath(tri, Paint()..color = p.marker);
-      _text(canvas, name, o + Offset(0, dy), num.style(12, p.marker), Alignment.topCenter);
+      _text(canvas, name, o + off, num.style(12, p.marker), a);
     }
 
-    marker(d.xB, 'xB', 11);
-    marker(d.xF, 'xF', 11);
-    marker(d.xD, 'xD', 11);
-    canvas.restore();
+    marker(d.xB, 'xB ${d.xB.toStringAsFixed(3)}', Alignment.centerLeft, const Offset(9, 4));
+    marker(d.xF, 'xF', Alignment.topCenter, const Offset(0, 11));
+    marker(d.xD, 'xD ${d.xD.toStringAsFixed(3)}', Alignment.centerRight, const Offset(-9, 6));
 
-    // --- legend (top-left inside the plot, wide layouts only)
+    // --- legend (top-left inside the plot, wide layouts only) (top-left inside the plot, wide layouts only)
+    if (narrow) {
+      var lx = plot.left;
+      final ly = plot.bottom + 52;
+      for (final (name, color, dashed) in [('eq', p.eqCurve, false), ('op', p.opLineCmo, true), ('q', p.qLine, false), ('stages', p.stepLine, false)]) {
+        final pn = Paint()
+          ..color = color
+          ..strokeWidth = 1.6;
+        if (dashed) {
+          canvas.drawLine(Offset(lx, ly), Offset(lx + 5, ly), pn);
+          canvas.drawLine(Offset(lx + 8, ly), Offset(lx + 13, ly), pn);
+        } else {
+          canvas.drawLine(Offset(lx, ly), Offset(lx + 13, ly), pn);
+        }
+        final tp = TextPainter(text: TextSpan(text: name, style: lab.style(12, p.inkMuted)), textDirection: TextDirection.ltr)..layout();
+        tp.paint(canvas, Offset(lx + 16, ly - tp.height / 2));
+        lx += 16 + tp.width + 9;
+      }
+    }
     if (!compact) {
       final items = [
         ('equilibrium', p.eqCurve, false),
@@ -250,20 +297,15 @@ class McCabePainter extends CustomPainter {
     }
 
     // --- title block (lower right, drafting-sheet style); a one-line caption when space is tight
-    if (compact) {
-      final cap = 't = ${_clock(snap.time)}  ·  Tier ${snap.tier.name.substring(1)}';
-      _text(canvas, cap, Offset(size.width / 2, plot.bottom + 34), num.style(12, p.inkMuted), Alignment.topCenter, maxWidth: size.width - 16);
-    } else {
-      _titleBlock(canvas, plot, d, snap, compact);
-    }
+    if (!compact) _titleBlock(canvas, plot, d, snap, compact);
 
     // --- transient stamp (inside the plot, top centre, on a backing pill)
     if (d.transient) {
-      var msg = 'transient — operating lines not yet consistent';
+      var msg = 'transient: stairs from live compositions, dashed lines from current flows';
       final tp = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr)..layout();
       if (tp.width > plot.width - 12) msg = 'transient';
       final w = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr)..layout();
-      final r = Rect.fromCenter(center: Offset(plot.center.dx, plot.top + 14), width: w.width + 12, height: w.height + 4);
+      final r = Rect.fromCenter(center: Offset(plot.right - (w.width + 12) / 2 - 6, plot.top + 30), width: w.width + 12, height: w.height + 4);
       canvas.drawRect(r, Paint()..color = p.bg.withValues(alpha: 0.85));
       canvas.drawRect(
           r,

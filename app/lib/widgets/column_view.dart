@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
 import '../painters/column_geometry.dart';
@@ -23,25 +24,31 @@ class ColumnView extends StatelessWidget {
         onTapUp: (d) {
           final s = sim.snapshot.value;
           if (s == null) return;
-          final hit = ColumnGeometry(size, s.layout.nTrays, s.layout.feedStages.first).hitTest(d.localPosition);
+          final g = ColumnGeometry(size, s.layout.nTrays, s.layout.feedStages.first);
+          final stream = g.hitStream(d.localPosition);
+          if (stream != null) {
+            sim.openMath(ExplainStream(stream));
+            return;
+          }
+          final hit = g.hitTest(d.localPosition);
           sim.selectStage(hit == sim.selectedStage.value ? null : hit);
         },
         child: Stack(
           fit: StackFit.expand,
           children: [
             RepaintBoundary(
-              child: ValueListenableBuilder<({int trays, int feed})>(
-                valueListenable: sim.structure,
-                builder: (_, st, __) => CustomPaint(
+              child: ListenableBuilder(
+                listenable: Listenable.merge([sim.structure, sim.brokenStages]),
+                builder: (_, __) => CustomPaint(
                   isComplex: true,
                   willChange: false,
-                  painter: ColumnVesselPainter(theme: t, trays: st.trays, feedStage: st.feed),
+                  painter: ColumnVesselPainter(theme: t, trays: sim.structure.value.trays, feedStage: sim.structure.value.feed, broken: sim.brokenStages.value),
                 ),
               ),
             ),
             RepaintBoundary(
               child: CustomPaint(
-                painter: ColumnLivePainter(snapshot: sim.snapshot, selected: sim.selectedStage, anim: scope.anim, theme: t),
+                painter: ColumnLivePainter(snapshot: sim.snapshot, selected: sim.selectedStage, anim: scope.anim, theme: t, units: sim.units),
               ),
             ),
           ],

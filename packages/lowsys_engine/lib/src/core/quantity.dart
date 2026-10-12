@@ -44,7 +44,7 @@ class UnitSystem {
   static const double _lb = 0.45359237;
   static const double _ft = 0.3048;
   static const double _in = 0.0254;
-  static const double _psi = 6894.757293;
+  static const double _psi = 6894.757293168;
 
   String symbol(Quantity q) {
     switch (q) {
@@ -137,7 +137,7 @@ class UnitSystem {
       case Quantity.volume:
         return _us ? v / (_ft * _ft * _ft) : v;
       case Quantity.density:
-        return _us ? v / 16.01846 : v;
+        return _us ? v / 16.018463373960138 : v;
       case Quantity.molarAmount:
         return _us ? v / _lbMol : v / 1e3;
       case Quantity.mass:
@@ -194,7 +194,7 @@ class UnitSystem {
       case Quantity.volume:
         return _us ? v * _ft * _ft * _ft : v;
       case Quantity.density:
-        return _us ? v * 16.01846 : v;
+        return _us ? v * 16.018463373960138 : v;
       case Quantity.molarAmount:
         return _us ? v * _lbMol : v * 1e3;
       case Quantity.mass:

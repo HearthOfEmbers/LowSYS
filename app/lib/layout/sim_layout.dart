@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import '../painters/effects/blueprint_grid.dart';
 import '../theme/lowsys_theme.dart';
 import '../widgets/column_view.dart';
+import '../widgets/diagram_panel.dart';
+import '../widgets/fault_panel.dart';
 import '../widgets/kpi_strip.dart';
-import '../widgets/lever_panel.dart';
 import '../widgets/time_bar.dart';
 import '../widgets/tray_inspector.dart';
 import 'breakpoints.dart';
@@ -83,18 +84,16 @@ class _DiagramPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = LowsysThemeScope.of(context);
     return SheetPanel(
-      title: header == null ? 'McCabe–Thiele' : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (header != null) header!,
-          Expanded(child: McCabeChart(compact: compact)),
+          Expanded(child: DiagramBody(compact: compact)),
           if (inspector)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-              child: TrayInspector(key: ValueKey(t.id)),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 0, 4, 4),
+              child: TrayInspector(),
             ),
         ],
       ),
@@ -138,15 +137,12 @@ class _CompactPortrait extends StatelessWidget {
               border: Border(top: BorderSide(color: p.accent, width: 1.5)),
               boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 10)],
             ),
-            child: LeverPanel(
+            child: ControlTabs(
               controller: ctl,
-              header: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Column(children: [
-                  Container(width: 44, height: 4, decoration: BoxDecoration(color: p.inkMuted, borderRadius: BorderRadius.circular(2))),
-                  const SizedBox(height: 6),
-                  Text('LEVERS — drag up for more', style: t.type.display.style(13, p.inkMuted)),
-                ]),
+              scrollTabs: true,
+              handle: Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Container(width: 44, height: 4, decoration: BoxDecoration(color: p.inkMuted, borderRadius: BorderRadius.circular(2))),
               ),
             ),
           ),
@@ -175,7 +171,7 @@ class _CompactLandscape extends StatelessWidget {
           child: SheetPanel(
             child: Column(children: const [
               Padding(padding: EdgeInsets.fromLTRB(4, 4, 4, 0), child: TrayInspector(hideWhenEmpty: true)),
-              Expanded(child: LeverPanel()),
+              Expanded(child: ControlTabs()),
             ]),
           ),
         ),
@@ -214,13 +210,13 @@ class _MediumState extends State<_Medium> {
               color: p.bgAlt,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(children: [
-                Text('LEVERS', style: t.type.display.style(14, p.accent, weight: FontWeight.w700)),
+                Text('CONTROLS', style: t.type.display.style(14, p.accent, weight: FontWeight.w700)),
                 const Spacer(),
                 Icon(open ? Icons.expand_more : Icons.expand_less, color: p.inkMuted),
               ]),
             ),
           ),
-          if (open) SizedBox(height: c.maxHeight * 0.40, child: const ColoredBox(color: Color(0x33000000), child: LeverPanel())),
+          if (open) SizedBox(height: c.maxHeight * 0.40, child: const ColoredBox(color: Color(0x33000000), child: ControlTabs())),
         ],
       );
     });
@@ -238,7 +234,7 @@ class _Expanded extends StatelessWidget {
           child: Row(children: [
             Expanded(flex: 25, child: _ColumnPanel()),
             Expanded(flex: 50, child: _DiagramPanel()),
-            Expanded(flex: 25, child: SheetPanel(title: 'LEVERS', child: LeverPanel())),
+            Expanded(flex: 25, child: SheetPanel(child: ControlTabs())),
           ]),
         ),
         KpiStrip(scroll: false),
