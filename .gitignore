@@ -19,3 +19,11 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Dart / Flutter
+.dart_tool/
+.packages
+packages/*/pubspec.lock
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
