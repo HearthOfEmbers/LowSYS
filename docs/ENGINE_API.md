@@ -257,7 +257,7 @@ Preset JSON example (abbreviated, B-T default):
                  "downcomerAeration": 0.5, "systemFactor": 1.0}}],
   "feeds": [{"stage": 10, "flow": 0.0277778, "z": [0.5, 0.5], "thermal": {"q": 1.0}}],
   "condenser": {"type": "total", "drumVolume": 3.0, "overheadVolume": 3.0, "pTopDesign": 101325,
-                "reliefSet": 350000, "cwInletT": 303.15, "cwMaxFlow": 41.54, "uaClean": 28500},
+                "reliefSet": 350000, "cwInletT": 303.15, "cwMaxFlow": 41.54, "uaClean": 29900},
   "reboiler": {"type": "kettle", "sumpHeight": 2.4, "sumpArea": 1.131, "steamHeaderPressure": 451325, "uaClean": 57500},
   "control": {"loops": "default"},
   "hydraulics": "ideal",
@@ -268,9 +268,21 @@ Preset JSON example (abbreviated, B-T default):
 
 All JSON values are SI (mol/s, K, Pa, m, kg/s, W). The UI converts for display.
 
+**M4 additions to the condenser and reboiler JSON** (PHYSICS.md §7, §8.2). Defaults are shown; a preset only lists what differs:
+
+- `condenser.uaClean`: B-T 29 900 W/K. This is the 50 % CW design of PHYSICS.md §7.2; v1.0's 28 500 W/K was the 70 % design and must be changed in `bt.dart` before Tier 2 is enabled.
+- `condenser.dvMax`: the design D (mol/s), used for the partial condenser.
+- `condenser.pDown`: `pTopDesign` − 30 000 Pa.
+- `condenser.ventMax`: 2.0 mol/s.
+- `condenser.pVent`: 50 000 Pa if `pTopDesign` < 3×10⁵ Pa, else 101 325 Pa.
+- `condenser.reliefMax`: 2 × the design V₁ (mol/s; B-T 83.3).
+- `reboiler.steamHeaderPressure`: absolute, Pa (B-T 451 325 = 3.5 bar(g)).
+
+New lever `cwOP`: CW valve OP (%), effective when PC-101 does not manipulate the CW, i.e. with a partial condenser or with PC-101 in MAN (then it is PC-101's OP lever).
+
 ### 4.1 Presets to ship
 
-`bt` (M1), `bt_custom_alpha` (M1), `mw`, `ew`, `ac`, `c4` (M5), `debut`, `deprop` (M7), `bt_packed` (M8), `crude` (M9), plus scenario-specific variants defined inside scenario JSON as `overrides`.
+`bt` (M1), `bt_custom_alpha` (M1), `mw` (M4: Tier 1 and Tier 2, for G7; Tier 3 NRTL from M5), `ew`, `ac`, `c4` (M5), `debut`, `deprop` (M7), `bt_packed` (M8), `crude` (M9), plus scenario-specific variants defined inside scenario JSON as `overrides`.
 
 ---
 
@@ -505,7 +517,8 @@ class InstrumentReading {
   final String? qualityText;        // 'IOP−', 'IOP+', 'OOR▲', 'OOR▼', 'STALE', 'OOS' or null
   final double lastGoodValue;       // shown greyed when BAD
   final double sigma5min;           // std of the readings over the last 300 s (signal look)
-  final double typicalSigma;        // σ_disp of a healthy transmitter (PHYSICS.md §10.5 table)
+  final double typicalSigma;        // σ_disp of a healthy transmitter (PHYSICS.md §10.5 table); for flows moved by a
+                                    // level loop (FT-104, FT-105) σ_typ including the loop's noise (PHYSICS.md §10.5)
   final double digitsAge;           // s since the displayed digits last changed (Fmt resolution)
   final double? resultAge;          // AT only: age of the shown result (s)
   final String? loopTag;            // loop that uses it as PV, if any
@@ -927,7 +940,7 @@ An objective counts for scoring if it is achieved when the scenario finishes. Ev
 - Numbers are SI. Booleans compare `true`/`false`. A NaN metric makes every comparison false, except `!=`.
 
 **Metric paths**
-- `time`, `steady`
+- `time`, `steady`, `tier` (1, 2 or 3), `preset` (string; `==`/`!=` only)
 - `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFraction (M2, DEVIATIONS.md E23), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, balanceResidual.
 - `stage[<j>].<t|p|x|holdup|weepFrac|jetFlood>` (x = light component)
 - `loop[<tag>].<pv|sp|op|mode>` (pv is the reading)
@@ -1105,7 +1118,7 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
    - flow-meter bias ≥ 4 % of span;
    - flow drift ≥ 6 % of span per hour;
    - level bias ≥ 8 % (paired with a field gauge);
-   - PT bias ≥ 3 % of span (6 kPa on PT-101, so C7 moves by 2 K);
+   - PT bias ≥ 5 % of span (10 kPa on PT-101, so C7 moves by 3.3 K = 3.3 × its band; at 3 % the margin was exactly 2.0, too thin for a phone);
    - TI bias ≥ 5 K;
    - plugged s ≥ 0.85.
 2. **One screen.** The evidence must be readable on one compact-portrait screen: a Balance-tab row, a faceplate with its signal look and valve curve, one trend, or the C6 chart. Nothing may require the learner to overlay two trends.
@@ -1176,7 +1189,7 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
      "protect": [{"tag": "LC-102", "modes": ["man"]}],
      "debrief": "**LT-102 froze at {fault.onset:time}.** The trend became a perfectly flat line — the same digits for minutes, σ = 0 against a typical 0.8 %. LC-102 stopped correcting, so when the feed went up at 45 min the real sump level started to climb while the reading stayed put. C5 for the sump failed from then on."},
     {"id": "pt101_bias", "weight": 1,
-     "fault": {"type": "instrument", "location": {"tag": "PT-101"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.3, 0.5], "ramp": 0},
+     "fault": {"type": "instrument", "location": {"tag": "PT-101"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.5, 0.7], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:PT-101", "mode": "bias"},
      "protect": [{"tag": "PC-101", "modes": ["man"]}],
      "debrief": "**PT-101 (top pressure) read {fault.magnitude} wrong from {fault.onset:time}.** PC-101 moved the real pressure the other way, so every temperature shifted together, smoothly — that looks like a process change. What gave it away was C7: the drum temperature and the bottom temperature no longer matched the bubble points of the analysed products *at the measured pressure*, both off with the same sign (about 0.33 K per kPa). The local gauge PG-101 confirmed it."},
@@ -1331,8 +1344,8 @@ All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`,
 | G4 The q-line | `steady` (defaults) | o1 lever.feedQ between 1.19 and 1.21 ∧ xD ≥ 0.95 ∧ xB ≤ 0.05 ∧ steady ∧ kpi.boilup ≤ 1.05 V_min(1.2), hold 300; o2 (after o1) the same at q = 1.0; o3 (after o2) at q = 0.5; o4 (after o3) at q = 0; o5 choice "Where does the q-line pivot?" → "(z, z) on the diagonal" | "Keep D = 50: reflux = boilup + (1 − q) × 100 − 50 kmol/h" | [P] minimum boilup (D = 50, specs exactly met): q 1.2 → V_B 129.0, L₀ 59.0; q 1.0 → 115.5, 65.5; q 0.5 → 87.05, 87.05; q 0 → 66.96, 116.96 kmol/h. Limit 172 800 s |
 | G5 Where to feed | `steady` (defaults) | o1 answer `stage`/number: "Which feed tray gives the highest xD?" correct [11]; o2 feedStage == 11 ∧ steady, hold 300 | "The optimum is where the staircase crosses the operating-line intersection" | VC-4.14 scan (x_D 0.98203 at tray 11). Limit 172 800 s |
 | G6 Real trays (Murphree) | `steady`; murphree 0.5 (locked), feedStage locked (it follows the fractional rule of PHYSICS.md §13.4) | o1 xD ≥ 0.98 ∧ steady, hold 300; o2 number "fewest trays that reached 0.98" = 28 ± 1; o3 choice "What stays about constant?" → "N × E (the equilibrium stages)" | "Add trays a few at a time" | [P] E = 0.5: N 20 → 0.95331, 24 → 0.96968, 26 → 0.97568, 27 → 0.97761, **28 (feed 14) → 0.98056**. 20 × 0.7 = 28 × 0.5 = 14 |
-| G7 What CMO hides (M4) | B-T T1 → T2, then mw | o1 tier == t2 ∧ steady; o2 choice "Why is V at the bottom smaller than at the top?" → "toluene's latent heat is larger"; o3 choice for methanol–water | | VC-11 profile |
-| G8 Pressure and volatility (M4) | B-T T2 | o1 lever.pTop ≥ 199 000 ∧ xD ≥ xD(start) − 0.002 ∧ xB ≤ xB(start) + 0.002 (use `from: start`) ∧ steady, hold 300; o2 choice "What happened to α?" → "it fell" | v1.0 said "hold specs" without defining them: they are now the 1-atm start values ± 0.002 | VC-10.3 α 2.71 (0.5 bar) → 2.20 (3 bar) |
+| G7 What CMO hides (M4) | B-T T1 at its default steady state; then preset `mw` (VC-27.1) | o1 tier == 2 ∧ steady, hold 300; o2 choice "Why is V at the bottom smaller than at the top?" → "toluene's latent heat is larger, so the same heat boils fewer moles"; o3 (after o2) preset == "mw" ∧ tier == 2 ∧ steady, hold 300 (loaded by an event or by the learner via the Learn screen's "Next"); o4 choice "How much smaller is the boilup than the top vapour here?" → "about 12 %" (options 2 %, 6 %, 12 %, 25 %) | "Switch tiers with the T1/T2 badge; the switch keeps D, so compare the V profile (Profiles tab)" | B-T: V₁ 150 → V_B 141.9 kmol/h after the switch (VC-8.9); mw: V₁ 90.0, V_B 79.0 kmol/h (VC-27.1) |
+| G8 Pressure and volatility (M4) | B-T T2 at 1 atm, **overrides `reboiler.steamHeaderPressure` 1 101 325 Pa (10 bar(g)) and `condenser.cwInletT` 288.15 K (15 °C)**. Without them the column cannot run at 0.5–0.7 bar (condenser) or at 2–3 bar (reboiler); VC-27.3 | o1 lever.pTop ≤ 70 500 ∧ steady, hold 300 (visit 0.7 bar); o2 (after o1) lever.pTop ≥ 299 000 ∧ steady, hold 300 (visit 3 bar); o3 (after o2) lever.pTop between 199 000 and 201 000 ∧ xD ≥ xD(start) − 0.002 ∧ xB ≤ xB(start) + 0.002 (`from: start`) ∧ steady, hold 300; o4 choice "What happened to α as the pressure rose?" → "it fell"; o5 choice "To hold the specs at 2 bar you had to…" → "raise reflux and duty" | v1.0 said "0.5 → 3 bar" (infeasible at 0.5 bar, VC-27.3) and "hold specs" without defining them | VC-10.3 α at x = 0.5: 2.60 (0.7 bar) → 2.49 (1 atm) → 2.30 (2 bar) → 2.20 (3 bar); VC-27.2: at fixed L₀ and D, x_D falls 0.97662 → 0.96080 at 2 bar |
 | G9 The azeotrope wall (M5) | ew T3, N 40, E 1 | o1 number "highest x_D you could reach" = 0.8956 ± 0.01; o2 choice "Tier 1 went past it. Why?" → "constant α cannot represent an azeotrope"; o3 choice "Lower pressure moves the azeotrope to…" → "higher ethanol" | | VC-10.5 |
 | G10 The other azeotrope (M5) | ac T3 | o1 choice "Where does the azeotrope leave?" → "in the bottoms"; o2 number x_B,acetone = 0.33 ± 0.03 | | VC-10.5, VC-8.11 |
 | G11 Flooding (shipped in M2, `scenarios.dart`) | as shipped: `steady`, Tier 1, full hydraulics, E 0.7; **briefing text must change** from "about 83 % of flood" to "about 63 %" (TS 0.9 m) | As shipped: o1 kpi.maxFloodPct ≥ 100, hold 30, latch; o2 (after o1) maxFloodPct between 80 and 92 ∧ xD ≥ 0.95, hold 600. M3 adds o3: number "throughput at flood onset (% of design)" = 160 ± 10 | As shipped; the first hint should add "about six steps of 10 %" | [P] at TS 0.9 m, uniform scaling ×k of F, L₀, V_B, steady state: ×1.0 62.9 % / xD 0.9783; ×1.1 69.2 / 0.9766; ×1.2 75.6 / 0.9737; ×1.3 81.9 / 0.9687; ×1.4 88.5 / 0.9601; ×1.5 95.2 / 0.9460; ×1.6 102.1 / 0.9236; ×1.7 109.7 / 0.8885. Flood onset ≈ ×1.57; o2 is reachable at ×1.3–1.4 |
@@ -1462,7 +1475,8 @@ class LowsysTheme {
 }
 @immutable class ThemePalette { final Color bg, bgAlt, surface, surfaceAlt, ink, inkMuted, inkFaint,
   grid, gridMajor, accent, accent2, steel, liquidLight, liquidHeavy, froth, vapor, hot, cold, ok, warn,
-  alarm, info, selection, eqCurve, opLine, opLineCmo, qLine, stepLine, diagonal, pseudoEq, marker; }
+  alarm, info, selection, eqCurve, opLine, opLineCmo, qLine, stepLine, diagonal, pseudoEq, marker;
+  final List<Color> series;        // 6 trend/series colours (SCOPE.md §7.1, added for M3 trends) }
 enum VesselStyle { outline, flat, bevel, vector }
 enum LiquidStyle { hatch, gradient, glyph, amber }
 enum VaporStyle { circles, glowDots, glyphs, puffs, dots }
