@@ -40,6 +40,7 @@ class Valve {
       ValveFault.failClosed => 0.0,
     };
     flow += (cmd - flow) * dt / (lag + dt);
+    if (flow.abs() < 1e-12) flow = 0; // no denormal tails after a valve closes
   }
 }
 

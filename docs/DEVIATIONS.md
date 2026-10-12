@@ -25,3 +25,8 @@ Everything in this file is a place where the M1 implementation differs from, or 
 ## App
 
 See the section appended by the app work (fonts, layout choices) below.
+
+## Later engine notes
+- E16: Closed valve flows are clamped to exactly 0 below 1e-12 mol/s.
+- E17: `runToSteadyState` hitting its cap (default 48 h) is not a failure when the column is just slow: `SteadyStateResult.slowModeTau` (estimated from the residual decay) and `stillConverging` are set, and the app reports "still converging (slow mode tau about X h)" and offers to continue. Callers may pass a larger `maxSimSeconds`.
+- E18: The 1 s flow-controller lag (E2) is kept; VC-7.2 depends on it.
