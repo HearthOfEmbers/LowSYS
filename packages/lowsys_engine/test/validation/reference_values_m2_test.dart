@@ -33,18 +33,29 @@ void main() {
   });
   test('reference: VC-12.3 design point reconstructs within the doc tolerances',
       () {
+    // v1.0 table at TS 0.6 (the v1.1 default is 0.9)
+    const gm06 = TrayGeom(ts: 0.6);
     final t1 = sieveTray(
         150 * kmolh,
         100 * kmolh,
         const Fluid(
-            mwL: 0.95 * 78.11 + 0.05 * 92.14,
-            mwV: 0.97 * 78.11 + 0.03 * 92.14));
+            mwL: 0.95 * 78.11 + 0.05 * 92.14, mwV: 0.97 * 78.11 + 0.03 * 92.14),
+        gm: gm06);
     final t15 = sieveTray(
         150 * kmolh,
         200 * kmolh,
         const Fluid(
-            mwL: 0.14 * 78.11 + 0.86 * 92.14,
-            mwV: 0.25 * 78.11 + 0.75 * 92.14));
+            mwL: 0.14 * 78.11 + 0.86 * 92.14, mwV: 0.25 * 78.11 + 0.75 * 92.14),
+        gm: gm06);
+    // v1.1 default (TS 0.9): only jet flood changes
+    final b20 = sieveTray(
+        150 * kmolh,
+        200 * kmolh,
+        const Fluid(
+            mwL: 0.02 * 78.11 + 0.98 * 92.14, mwV: 0.05 * 78.11 + 0.95 * 92.14),
+        hNormBelow: 0);
+    expect(100 * b20.phi, closeTo(vc123.maxFloodPct, 2));
+    expect(b20.dp, closeTo(827, 0.05 * 827));
     expect(t1.phi, closeTo(0.666, 0.02));
     expect(t1.dp, closeTo(645, 0.05 * 645));
     expect(1000 * t1.hCl, closeTo(21.1, 1.0));

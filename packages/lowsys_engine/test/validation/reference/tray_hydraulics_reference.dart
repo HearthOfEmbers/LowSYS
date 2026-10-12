@@ -16,7 +16,7 @@ class TrayGeom {
   final double phiDc;
   const TrayGeom({
     this.dC = 1.2,
-    this.ts = 0.6,
+    this.ts = 0.9, // v1.1 default; v1.0 was 0.6
     this.fd = 0.12,
     this.hW = 0.05,
     this.hAp = 0.038,
@@ -163,7 +163,8 @@ TrayPoint sieveTray(double v, double ln, Fluid fl,
     double sFoul = 0,
     double sf = 1,
     double phiDcOverride = double.nan,
-    double hNormBelow = double.nan}) {
+    double hNormBelow = double.nan,
+    bool recycle = true}) {
   final qV = v * fl.mwV / 1000 / fl.rhoV;
   final aHeff = gm.aH * (1 - 0.8 * sFoul);
   final ks = qV / gm.aA * math.sqrt(fl.rhoV / (fl.rhoL - fl.rhoV));
@@ -184,7 +185,7 @@ TrayPoint sieveTray(double v, double ln, Fluid fl,
     uNf = unf(csb, fl.sigma, fl.rhoL, fl.rhoV,
         sf: sf, fHole: fairHoleCorrection(aHeff / gm.aA));
     phi = qV / gm.aN / uNf;
-    final psiNew = math.min(0.45, psiEq(fLv, phi));
+    final psiNew = recycle ? math.min(0.45, psiEq(fLv, phi)) : 0.0;
     if ((psiNew - psi).abs() < 1e-12) break;
     psi = 0.5 * psi + 0.5 * psiNew;
   }

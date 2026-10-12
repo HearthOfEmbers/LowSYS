@@ -6,6 +6,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import 'package:test/test.dart';
 
 import 'fixtures_m2.dart';
+import 'reference/validation_expectations_m2.dart';
 
 (Simulator, Profile, Hyd) _design() {
   final sim = newSim(btFull());
@@ -21,7 +22,7 @@ void main() {
       final (sim, p0, h0) = _design();
       final dp = <double>[h0.columnDp];
       final xd = <double>[p0.xD];
-      for (final f in [0.1, 0.2, 0.3, 0.45]) {
+      for (final f in [0.2, 0.45, 0.6, 0.75]) {
         addLoad(sim, f);
         advanceSampling(sim, 3600, 300,
             (t, s) => expectHydraulicallySane(s, where: 'load $f @ $t'));
@@ -31,21 +32,24 @@ void main() {
       for (var i = 1; i < dp.length; i++) {
         expect(dp[i], greaterThan(dp[i - 1]),
             reason: 'ΔP monotone with load (step $i)');
-        expect(xd[i], lessThan(xd[i - 1] + 1e-6),
-            reason: 'xD not better with more load (step $i)');
+        // v1.1 headroom: +20 % still improves xD (VC-8.15); from +45 % it falls
+        if (i >= 2) {
+          expect(xd[i], lessThan(xd[i - 1] + 1e-6),
+              reason: 'xD not better with more load (step $i)');
+        }
       }
       // ΔP grows faster than linearly in load past flood: last increment largest
       final inc = [for (var i = 1; i < dp.length; i++) dp[i] - dp[i - 1]];
       expect(inc.last, greaterThan(inc.first),
           reason: 'ΔP accelerates toward flooding');
-      expect(xd.last, lessThan(0.7), reason: 'separation collapses at +45 %');
+      expect(xd.last, lessThan(0.80), reason: 'separation collapses at +75 %');
       expect(hyd(sim).maxFloodPct, greaterThanOrEqualTo(100));
     });
 
     test('flooding propagates upward and liquid reaches the drum (level rises)',
         () {
       final (sim, _, _) = _design();
-      addLoad(sim, 0.45);
+      addLoad(sim, 0.75);
       var drumMax = 0.0;
       var frothFillSeen = 0.0;
       advanceSampling(sim, 2 * 3600, 120, (t, s) {
@@ -61,12 +65,13 @@ void main() {
       final h = hyd(sim);
       final psiMax = h.maxOverTrays(
           (j) => h.entrain(j) / (h.s.stages.liquidDown[j] + h.entrain(j)));
-      expect(psiMax, greaterThanOrEqualTo(0.3), reason: 'ψ near its cap');
-      expect(frothFillSeen, greaterThan(0.25), reason: 'froth grows');
+      expect(psiMax, greaterThanOrEqualTo(0.15),
+          reason: 'heavy entrainment (ψ ≈ 0.2 at φ 1.13)');
+      expect(frothFillSeen, greaterThan(0.15), reason: 'froth grows');
       expect(drumMax, greaterThan(55),
           reason: 'entrained liquid raises the drum level');
-      expect(sim.control.loop('LC-101').op, closeTo(100, 1e-6),
-          reason: 'D at the valve limit');
+      expect(prof(sim).dKmolh, greaterThan(60),
+          reason: 'carryover raises D (proto 68.3)');
     });
   });
 
@@ -129,10 +134,9 @@ void main() {
         expect(hd.s.stages.dpDry[j], lessThan(1.0), reason: 'tray $j dry drop');
         expect(hd.s.stages.vaporUp[j], closeTo(0, 1e-9), reason: 'tray $j V');
         if (j == feedTray) {
-          // F × τ_d = 27.8 mol/s × 8 s ≈ 222 mol (433 while the reflux chain
-          // still lands here too)
-          expect(hd.holdup(j), inInclusiveRange(150, 600),
-              reason: 'feed tray holds F × τ_d');
+          // orifice drainage (PHYSICS.md (5.15), VC-12.6): κ√M = F → ≈ 1.35 mol
+          expect(hd.holdup(j), inInclusiveRange(0.5, 2.0),
+              reason: 'feed tray holds (F/κ)² ≈ 1.35 mol');
         } else {
           // bypassed liquid lands two trays down and dumps from there, so
           // trays alternate between ≈ 0 and ≈ inflow × τ_d; none accumulates
@@ -155,7 +159,8 @@ void main() {
           reason: 'reflux lost');
       sim.setLever('boilup', 150 * kmolh);
       final p = runSteady(sim);
-      expect(p.xD, closeTo(0.96725, 0.003), reason: 'back to the design point');
+      expect(p.xD, closeTo(vc123.xD, 0.003),
+          reason: 'back to the design point');
       for (var j = 1; j <= 20; j++) {
         expect(hyd(sim).holdup(j), closeTo(hold0[j - 1], 0.02 * hold0[j - 1]),
             reason: 'tray $j holdup restored');
@@ -198,8 +203,9 @@ void main() {
         'raises ΔP/froth and floods at an unchanged load; antifoam-style clear recovers',
         () {
       final (sim, p0, h0) = _design();
+      // v1.1 (TS 0.9): s = 0.67 only reaches φ 0.90; s = 1.0 floods (φ 1.16)
       final id = injectTrayFault(sim, FaultType.foaming,
-          from: 1, to: 20, severity: 0.67, ramp: 600);
+          from: 1, to: 20, severity: 1.0, ramp: 600);
       var phiMax = 0.0;
       advanceSampling(sim, 3600, 120, (t, s) {
         expectHydraulicallySane(s, where: 'foam @ $t');
@@ -389,7 +395,7 @@ void main() {
             reason: 'V[$j]');
       }
       final pf = runSteady(sim);
-      expect(pf.xD, closeTo(0.96725, 0.003));
+      expect(pf.xD, closeTo(vc123.xD, 0.003));
     });
 
     test(
@@ -397,7 +403,7 @@ void main() {
         () {
       final ideal = runSteady(newSim(btConfig()));
       final full = runSteady(newSim(btFull()));
-      expect(ideal.xD - full.xD, inInclusiveRange(0.005, 0.02));
+      expect(ideal.xD - full.xD, inInclusiveRange(0.001, 0.006));
       expect(full.dKmolh, greaterThan(ideal.dKmolh),
           reason: 'entrained liquid adds to D');
     });

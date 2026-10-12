@@ -124,7 +124,7 @@ void main() {
             h.frothFill(j)
           ].reduce((a, b) => a > b ? a : b));
       expect(h.maxFloodPct, closeTo(100 * m, 1e-6));
-      expect(h.maxFloodPct, inInclusiveRange(65, 85));
+      expect(h.maxFloodPct, closeTo(vc123.maxFloodPct, 2));
     });
 
     test('holdups and froth heights are in the Bennett range', () {

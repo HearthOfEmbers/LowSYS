@@ -65,31 +65,35 @@ void main() {
 
   group('VC-7.2 hydraulic lag', () {
     test('VC-7.2 liquid leaving tray 1 and tray 20 after L0 +10 kmol/h', () {
+      // Amended VC-7.2 (2026-10-12): t63 of each tray is measured from
+      // t63 of the DELIVERED reflux (streams[reflux].flow), so the test is
+      // independent of the flow-loop speed (M1 1 s lag, M3 3 s loop).
       final sim = _steadyDefault();
       final p0 = prof(sim);
+      final l0Zero = p0.s.streams[StreamId.reflux]!.flow;
       final l1Zero = p0.liquidDown(1);
       final l20Zero = p0.liquidDown(20);
       const step = 10 * kmolh;
       sim.setLever('refluxFlow', 110 * kmolh);
-      double? t63Tray1, t63Tray20;
-      double? frac20at20, frac20at30;
+      double? t63L0, t63Tray1, t63Tray20;
       advanceSampling(sim, 120, 0.5, (t, s) {
         final p = Profile(s);
+        final f0 = (s.streams[StreamId.reflux]!.flow - l0Zero) / step;
         final f1 = (p.liquidDown(1) - l1Zero) / step;
         final f20 = (p.liquidDown(20) - l20Zero) / step;
+        t63L0 ??= f0 >= 0.63 ? t : null;
         t63Tray1 ??= f1 >= 0.63 ? t : null;
         t63Tray20 ??= f20 >= 0.63 ? t : null;
-        if ((t - 20).abs() < 0.26) frac20at20 = f20;
-        if ((t - 30).abs() < 0.26) frac20at30 = f20;
       });
+      expect(t63L0, isNotNull, reason: 'delivered reflux never reached 63 %');
       expect(t63Tray1, isNotNull, reason: 'tray 1 never reached 63 %');
-      expect(t63Tray1!, inInclusiveRange(1, 4), reason: 'tray 1 63 % time (s)');
       expect(t63Tray20, isNotNull, reason: 'tray 20 never reached 63 %');
-      expect(t63Tray20!, inInclusiveRange(20, 45),
-          reason: 'tray 20 63 % time (s)');
-      // informative: prototype 24 % at 20 s, 67 % at 30 s
-      expect(frac20at20!, inInclusiveRange(0.05, 0.6));
-      expect(frac20at30!, inInclusiveRange(0.3, 0.95));
+      expect(t63Tray1! - t63L0!, inInclusiveRange(1, 4),
+          reason: 't63(L1) − t63(L0) (M1 engine 1.5 s)');
+      expect(t63Tray20! - t63L0!, inInclusiveRange(20, 45),
+          reason: 't63(L20) − t63(L0) (M1 engine 29.0 s)');
+      // information only: lever → delivered reflux 63 % (M1 ≈ 2 s, M3 ≈ 3 s)
+      expect(t63L0!, inInclusiveRange(0.5, 6));
     });
   });
 
