@@ -64,8 +64,8 @@ List<Margin> staticMargins() {
   // LT-101 bias 8 %: measured jump 8 pts with no flow change → r5 = 8 for one window
   out.add(Margin('LT-101 bias 8 %', 'C5:drum (W 600)', 8, band5(600)));
   // PT-101 bias 3 % of 202.65 kPa = 6.08 kPa → C7 both rows shift 0.33 K/kPa
-  out.add(Margin(
-      'PT-101 bias 3 % span (6.08 kPa)', 'C7 (each row)', 0.33 * 6.08, band7));
+  out.add(Margin('PT-101 bias 5 % span (10.13 kPa)', 'C7 (each row)',
+      0.33 * 10.13, band7));
   // TI bias 5 K with neighbours quiet: |ΔT_k − ½(ΔT_a + ΔT_b)| = 5 vs max(1.0, 0) = 1
   out.add(Margin('TI bias 5 K', 'C6 (lone bar)', 5, 1.0));
   // FV-102 stuck then SP +5 kmol/h: OP runs to 100 % while the flow stays 100:

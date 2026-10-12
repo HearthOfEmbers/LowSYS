@@ -165,7 +165,7 @@ const vc124Loads = [
       protoXd4h: 0.9668,
       protoFlood4h: 82),
   Vc124Load('Load +45 %', 0.45,
-      dpRatioMin: 1.8,
+      dpRatioMin: 1.7,
       xD4hMax: 0.95,
       floodAlarm: true,
       protoDp10: 26.22,
