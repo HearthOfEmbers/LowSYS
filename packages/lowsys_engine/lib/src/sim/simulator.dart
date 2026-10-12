@@ -7,6 +7,9 @@ import 'package:meta/meta.dart';
 
 import '../config/column_config.dart';
 import '../control/control_system.dart';
+import '../control/cross_checks.dart';
+import '../control/trend_buffer.dart';
+import '../core/rng.dart';
 import '../core/ids.dart';
 import '../core/quantity.dart';
 import '../faults/fault_effects.dart';
@@ -61,8 +64,20 @@ class SteadyRun {
   SteadyStateResult? _result;
   double? _declaredAt;
 
+  final bool _noiseWas;
+
   SteadyRun._(this._sim, this.maxSimSeconds, this.dt, this.polishTolerance)
-      : _t0 = _sim.time;
+      : _t0 = _sim.time,
+        _noiseWas = _sim._control.noise {
+    if (_noiseWas) _sim._setNoise(false);
+  }
+
+  /// Result, restoring the noise lever (PHYSICS.md 13.3: noise is suspended while the run marches).
+  SteadyStateResult _finalize(bool reached) {
+    final r = _make(reached);
+    if (_noiseWas) _sim._setNoise(true);
+    return r;
+  }
 
   bool get done => _result != null;
   SteadyStateResult? get result => _result;
@@ -97,19 +112,19 @@ class SteadyRun {
       for (var i = 0; i < steps; i++) {
         _sim._stepOnce(dt);
         if (_sim._halted) {
-          _result = _make(false);
+          _result = _finalize(false);
           return true;
         }
       }
       k++;
       if (_declaredAt == null && _sim.isSteady) _declaredAt = _sim.time - _t0;
       if (_sim.isSteady && _sim.steadyResidual <= polishTolerance) {
-        _result = _make(true);
+        _result = _finalize(true);
         _sim._emit(SimEventType.steadyReached, 'Steady state reached');
         return true;
       }
       if (_sim.time - _t0 >= maxSimSeconds) {
-        _result = _make(false);
+        _result = _finalize(false);
         return true;
       }
       if (sw.elapsedMicroseconds > budget.inMicroseconds && k > 0) return false;
@@ -133,6 +148,13 @@ class Simulator {
   late HydraulicSolver _hyd;
   late EffectiveParams _ep;
   late FaultManager _faults;
+  late TrendBuffer _trends;
+  late CrossCheckEngine _checks;
+  final Map<String, Rng> _fieldRng = {};
+  final Map<String, _FieldReq> _fields = {};
+  double _lastEvalEnd = -1;
+  double _levelViolation = 0;
+  double? _pinDrum;
   late StepDebug _debug;
   late List<LeverSpec> _levers;
   final SolverHealth _health = SolverHealth();
@@ -147,7 +169,18 @@ class Simulator {
   double _nextCheck = 60;
   Float64List _prevX = Float64List(0);
   Float64List _prevM = Float64List(0);
-  final Float64List _prevOp = Float64List(2);
+  final Float64List _prevOp = Float64List(5);
+  // noise-on monitor: 300-s means (PHYSICS.md 13.3)
+  Float64List _sumX = Float64List(0),
+      _sumM = Float64List(0),
+      _prevMeanX = Float64List(0),
+      _prevMeanM = Float64List(0);
+  final Float64List _sumOp = Float64List(5), _prevMeanOp = Float64List(5);
+  int _nSum = 0;
+  bool _hasPrevMean = false;
+  double _nextCheckNoisy = 300;
+  int _noisyCount = 0;
+  SimView _view = SimView.model;
   int _steadyCount = 0;
   bool _steady = false;
   double _residual = double.infinity;
@@ -211,16 +244,26 @@ class Simulator {
         (d0 > 0 ? 2 * d0 : math.max(2 * f0, 1e-6));
     final bMax =
         config.control.bottomsMax ?? (b0 > 0 ? 2 * b0 : math.max(2 * f0, 1e-6));
-    _control = ControlSystem.levels(
-      kc: config.control.levelKc,
-      ti: config.control.levelTi,
-      drumSp: config.control.drumLevelSp,
-      sumpSp: config.control.sumpLevelSp,
-      dMax: dMax,
-      bMax: bMax,
-      dInit: d0,
-      bInit: b0,
-    );
+    _control = ControlSystem.bt(
+        ControlDesign(
+          feedFlow: f0,
+          refluxFlow: l0,
+          boilup: inp.boilupSp,
+          distillate: d0,
+          bottoms: b0,
+          dMax: dMax,
+          bMax: bMax,
+          drumLevelSp: config.control.drumLevelSp,
+          sumpLevelSp: config.control.sumpLevelSp,
+          levelKc: config.control.levelKc,
+          levelTi: config.control.levelTi,
+        ),
+        options.seed);
+    _trends = TrendBuffer();
+    _control.attachTrends(_trends);
+    _control.setNoise(options.measurementNoise);
+    _checks = CrossCheckEngine();
+    _control.onMaintenanceDone = (tag) => _faults.clearTag(tag);
 
     _state = ColumnState(N, nc);
     _debug = StepDebug(nc);
@@ -231,6 +274,8 @@ class Simulator {
             systemFactor: sec.geometry.systemFactor,
             phiDcBase: sec.geometry.downcomerAeration);
     _faults.onChange = _noteChange;
+    _faults.componentIds = config.components;
+    _faults.validator = (spec) => _control.validateFault(spec);
     _hyd = HydraulicSolver(
       nTrays: N,
       nc: nc,
@@ -259,17 +304,43 @@ class Simulator {
       murphreePasses: options.murphreePasses,
     );
     _stepper.initializeCold();
+    _initControl();
     _levers = _buildLevers();
     _carry = 0;
     _halted = false;
     _resetMonitor(capture: true);
     if (carry != null) _applyCarry(carry);
-    // after carry the loop PV filters must follow the state
-    _stepper.bus.drumLevelPct = _stepper.drumLevelPct;
-    _stepper.bus.sumpLevelPct = _stepper.sumpLevelPct;
-    _control.loops[0].pv = _stepper.drumLevelPct;
-    _control.loops[1].pv = _stepper.sumpLevelPct;
-    _control.loops[0].toJson();
+  }
+
+  void _initFromCarry() {
+    _stepper.bus
+      ..drumLevelPct = _stepper.drumLevelPct
+      ..sumpLevelPct = _stepper.sumpLevelPct;
+  }
+
+  /// Instruments, loop histories, trends and alarms start at the current true values (PHYSICS.md 13.1 step 6).
+  void _initControl() {
+    _stepper.bus
+      ..drumLevelPct = _stepper.drumLevelPct
+      ..sumpLevelPct = _stepper.sumpLevelPct
+      ..columnDp = 0
+      ..feedLight = _inputs.z[0]
+      ..xD = _state.x[0]
+      ..xB = _state.x[(_state.nTrays + 1) * _state.nc];
+    _control.initialise(_stepper.bus, _state.time);
+    _trends.reset();
+    _control.alarms.reset();
+    _control.alarms.journal.clear();
+    _computeLevelConstants();
+    _lastEvalEnd = -1;
+    _fields.clear();
+    _checks.results = const [];
+  }
+
+  void _computeLevelConstants() {
+    final s = _state;
+    _control.n01 = 0.01 * _config.condenser.drumVolume / s.vLiq[0];
+    _control.ns1 = 0.01 * _config.reboiler.sumpVolume / s.vLiq[s.nTrays + 1];
   }
 
   void _resetMonitor({bool capture = false}) {
@@ -287,8 +358,9 @@ class Simulator {
     }
     _prevX.setAll(0, _state.x);
     _prevM.setAll(0, _state.holdup);
-    _prevOp[0] = _control.loops[0].op;
-    _prevOp[1] = _control.loops[1].op;
+    for (var l = 0; l < 5; l++) {
+      _prevOp[l] = _control.loops[l].op;
+    }
   }
 
   void _applyWarmStart() {
@@ -298,7 +370,7 @@ class Simulator {
       _loadDynamic(cached);
     } else {
       runToSteadyState();
-      _warmCache[key] = _dumpDynamic();
+      _warmCache[key] = _dumpDynamic(includeTrends: false);
     }
     _state.time = 0;
     _carry = 0;
@@ -306,6 +378,11 @@ class Simulator {
     _steady = true;
     _steadyCount = 5;
     _captureMonitor();
+    // the cache was made with another seed: re-key the streams, then restart instruments, trends and alarms
+    _control.reseed(options.seed);
+    _initControl();
+    _levelViolation = 0;
+    if (_control.noise) _resetNoisyMonitor();
   }
 
   // ---------------------------------------------------------------- time
@@ -349,9 +426,11 @@ class Simulator {
     var halvings = 0;
     while (remaining > 1e-12) {
       final hh = math.min(h, remaining);
+      if (_pinDrum != null) _applyPin();
       if (_stepper.step(hh)) {
         remaining -= hh;
         _monitor();
+        _afterStep(hh);
       } else {
         halvings++;
         _health.stepRetries++;
@@ -413,6 +492,10 @@ class Simulator {
   double get steadyResidual => _residual;
 
   void _monitor() {
+    if (_control.noise) {
+      _monitorNoisy();
+      return;
+    }
     if (_state.time + 1e-9 < _nextCheck) return;
     _nextCheck += 60;
     var delta = 0.0;
@@ -424,7 +507,7 @@ class Simulator {
       delta = math.max(delta,
           (s.holdup[j] - _prevM[j]).abs() / math.max(s.holdup[j], 1e-12));
     }
-    for (var l = 0; l < 2; l++) {
+    for (var l = 0; l < 5; l++) {
       delta = math.max(delta, (_control.loops[l].op - _prevOp[l]).abs() / 100);
     }
     _captureMonitor();
@@ -438,6 +521,97 @@ class Simulator {
     final was = _steady;
     _steady = _steadyCount >= 5;
     if (_steady && !was) _emit(SimEventType.steadyReached, 'Steady state');
+  }
+
+  // Noise-on monitor tolerances (PHYSICS.md 13.3, [impl-tunable]; DEVIATIONS.md E30): the 300-s means move by
+  // up to 1.1e-2 (x), 5.3e-3 (relative holdup) and 1.1 % (OP) from noise alone.
+  static const double _tolX = 1.8e-2, _tolM = 8e-3, _tolOp = 2.0;
+
+  /// Noise-on monitor: successive 300-s means (thresholds [impl-tunable], DEVIATIONS.md E30).
+  void _monitorNoisy() {
+    final s = _state;
+    if (_sumX.length != s.x.length) {
+      _sumX = Float64List(s.x.length);
+      _sumM = Float64List(s.holdup.length);
+      _prevMeanX = Float64List(s.x.length);
+      _prevMeanM = Float64List(s.holdup.length);
+      _hasPrevMean = false;
+      _nSum = 0;
+    }
+    for (var k = 0; k < s.x.length; k++) {
+      _sumX[k] += s.x[k];
+    }
+    for (var j = 0; j < s.holdup.length; j++) {
+      _sumM[j] += s.holdup[j];
+    }
+    for (var l = 0; l < 5; l++) {
+      _sumOp[l] += _control.loops[l].op;
+    }
+    _nSum++;
+    if (s.time + 1e-9 < _nextCheckNoisy) return;
+    _nextCheckNoisy += 300;
+    final inv = 1.0 / _nSum;
+    var delta = 0.0;
+    if (_hasPrevMean) {
+      for (var k = 0; k < s.x.length; k++) {
+        delta = math.max(delta, (_sumX[k] * inv - _prevMeanX[k]).abs() / _tolX);
+      }
+      for (var j = 0; j < s.holdup.length; j++) {
+        final m = _sumM[j] * inv;
+        delta = math.max(
+            delta, (m - _prevMeanM[j]).abs() / (_tolM * math.max(m, 1e-12)));
+      }
+      for (var l = 0; l < 5; l++) {
+        delta =
+            math.max(delta, (_sumOp[l] * inv - _prevMeanOp[l]).abs() / _tolOp);
+      }
+      _prevResidual = _residual;
+      _residual = delta;
+      if (delta < 1) {
+        _noisyCount++;
+      } else {
+        _noisyCount = 0;
+      }
+      final was = _steady;
+      _steady = _noisyCount >= 3;
+      if (_steady && !was) _emit(SimEventType.steadyReached, 'Steady state');
+    }
+    for (var k = 0; k < s.x.length; k++) {
+      _prevMeanX[k] = _sumX[k] * inv;
+      _sumX[k] = 0;
+    }
+    for (var j = 0; j < s.holdup.length; j++) {
+      _prevMeanM[j] = _sumM[j] * inv;
+      _sumM[j] = 0;
+    }
+    for (var l = 0; l < 5; l++) {
+      _prevMeanOp[l] = _sumOp[l] * inv;
+      _sumOp[l] = 0;
+    }
+    _hasPrevMean = true;
+    _nSum = 0;
+  }
+
+  /// Switches the measurement noise (lever `noise`) and re-arms the steady monitor for the new mode.
+  void _setNoise(bool on) {
+    if (on == _control.noise) return;
+    _control.setNoise(on);
+    _resetNoisyMonitor();
+    if (!on) {
+      _nextCheck = _state.time + 60;
+      _steadyCount = _steady ? 5 : 0;
+      _captureMonitor();
+    }
+  }
+
+  void _resetNoisyMonitor() {
+    _sumX.fillRange(0, _sumX.length, 0);
+    _sumM.fillRange(0, _sumM.length, 0);
+    _sumOp.fillRange(0, 5, 0);
+    _nSum = 0;
+    _hasPrevMean = false;
+    _nextCheckNoisy = _state.time + 300;
+    _noisyCount = _steady ? 3 : 0;
   }
 
   void _noteChange() {
@@ -633,6 +807,69 @@ class Simulator {
           defaultValue: 50,
           boundLoop: 'LC-102',
           group: 'advanced'),
+      const LeverSpec(
+          id: 'feedFlowOp',
+          label: 'Feed valve OP',
+          quantity: Quantity.percent,
+          min: 0,
+          max: 100,
+          defaultValue: 40,
+          boundLoop: 'FC-101',
+          group: 'advanced'),
+      const LeverSpec(
+          id: 'refluxOp',
+          label: 'Reflux valve OP',
+          quantity: Quantity.percent,
+          min: 0,
+          max: 100,
+          defaultValue: 33,
+          boundLoop: 'FC-102',
+          group: 'advanced'),
+      const LeverSpec(
+          id: 'boilupOp',
+          label: 'Boilup valve OP',
+          quantity: Quantity.percent,
+          min: 0,
+          max: 100,
+          defaultValue: 50,
+          boundLoop: 'FC-103',
+          group: 'advanced'),
+      LeverSpec(
+          id: 'noise',
+          label: 'Measurement noise',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: options.measurementNoise ? 1 : 0,
+          group: 'advanced',
+          integer: true),
+      const LeverSpec(
+          id: 'view',
+          label: 'View (0 model, 1 plant)',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: 0,
+          group: 'advanced',
+          integer: true),
+      const LeverSpec(
+          id: 'badPvShed',
+          label: 'Shed loops on bad PV',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: 1,
+          group: 'advanced',
+          integer: true),
+      for (final v in _control.valves)
+        LeverSpec(
+            id: 'bypass.${v.id}',
+            label: 'Bypass ${v.id}',
+            quantity: Quantity.percent,
+            min: -1,
+            max: 100,
+            defaultValue: -1,
+            group: 'advanced'),
     ];
   }
 
@@ -647,25 +884,27 @@ class Simulator {
       if (k < 0) throw ArgumentError('Unknown lever "$id"');
       return inp.z[k];
     }
+    if (id.startsWith('bypass.'))
+      return _control.valve(id.substring(7)).bypassTarget;
     switch (id) {
       case 'feedFlow':
-        return inp.feedFlowSp;
+        return _control.fc101.sp;
       case 'feedQ':
         return inp.feedQ;
       case 'feedStage':
         return inp.feedStage.toDouble();
       case 'refluxFlow':
-        return inp.refluxFlowSp;
+        return _control.fc102.sp;
       case 'refluxRatio':
         return inp.refluxRatio;
       case 'refluxMode':
         return inp.ratioMode ? 1 : 0;
       case 'boilup':
-        return inp.boilupSp;
+        return _control.fc103.sp;
       case 'drumLevelSp':
-        return _control.loops[0].sp;
+        return _control.lc101.sp;
       case 'sumpLevelSp':
-        return _control.loops[1].sp;
+        return _control.lc102.sp;
       case 'nTrays':
         return _config.trayCount.toDouble();
       case 'murphree':
@@ -679,9 +918,21 @@ class Simulator {
       case 'antifoam':
         return _faults.antifoam ? 1 : 0;
       case 'distillateValve':
-        return _control.loops[0].op;
+        return _control.lc101.op;
       case 'bottomsValve':
-        return _control.loops[1].op;
+        return _control.lc102.op;
+      case 'feedFlowOp':
+        return _control.fc101.op;
+      case 'refluxOp':
+        return _control.fc102.op;
+      case 'boilupOp':
+        return _control.fc103.op;
+      case 'noise':
+        return _control.noise ? 1 : 0;
+      case 'view':
+        return _view == SimView.plant ? 1 : 0;
+      case 'badPvShed':
+        return _control.badPvShed ? 1 : 0;
     }
     throw ArgumentError('Unknown lever "$id"');
   }
@@ -697,6 +948,17 @@ class Simulator {
     }
     final v = value.clamp(spec.min, spec.max).toDouble();
     final inp = _inputs;
+    if (id.startsWith('bypass.')) {
+      final valve = _control.valve(id.substring(7));
+      valve.bypassTarget = v < 0 ? -1 : v;
+      if (v >= 0) {
+        for (final l in _control.loops) {
+          if (l.mvRef == valve.id && l.mode != LoopMode.man)
+            _control.setMode(l.tag, LoopMode.man);
+        }
+      }
+      return;
+    }
     if (id.startsWith('feedZ.')) {
       final k = _config.components.indexOf(id.substring(6));
       final nc = _config.nc;
@@ -716,18 +978,21 @@ class Simulator {
     switch (id) {
       case 'feedFlow':
         inp.feedFlowSp = v;
+        _control.setSp('FC-101', v);
       case 'feedQ':
         inp.feedQ = v;
       case 'feedStage':
         inp.feedStage = v.round();
       case 'refluxFlow':
         inp.refluxFlowSp = v;
+        _control.setSp('FC-102', v);
       case 'refluxRatio':
         inp.refluxRatio = v;
       case 'refluxMode':
         inp.ratioMode = v >= 0.5;
       case 'boilup':
         inp.boilupSp = v;
+        _control.setSp('FC-103', v);
       case 'drumLevelSp':
         _control.setSp('LC-101', v);
       case 'sumpLevelSp':
@@ -748,14 +1013,129 @@ class Simulator {
       case 'antifoam':
         _faults.setAntifoam(v >= 0.5, _state.time);
       case 'distillateValve':
-        _control.setOp('LC-101', v);
+        _opLever('LC-101', v);
       case 'bottomsValve':
-        _control.setOp('LC-102', v);
+        _opLever('LC-102', v);
+      case 'feedFlowOp':
+        _opLever('FC-101', v);
+      case 'refluxOp':
+        _opLever('FC-102', v);
+      case 'boilupOp':
+        _opLever('FC-103', v);
+      case 'noise':
+        _setNoise(v >= 0.5);
+        return;
+      case 'view':
+        _view = v >= 0.5 ? SimView.plant : SimView.model;
+        return;
+      case 'badPvShed':
+        _control.badPvShed = v >= 0.5;
+        return;
       case 'nTrays':
         _rebuildTrays(v.round());
         return;
     }
     _noteChange();
+  }
+
+  /// OP levers act only while the loop is in MAN (ENGINE_API.md 6.3).
+  void _opLever(LoopTag tag, double v) {
+    final l = _control.loop(tag);
+    if (l.mode == LoopMode.man) l.setOp(v);
+  }
+
+  // ---------------------------------------------------------------- operator actions (M3)
+
+  void acknowledgeAlarm(String alarmId) =>
+      _control.alarms.acknowledge(alarmId, _state.time);
+  void acknowledgeAllAlarms() => _control.alarms.acknowledgeAll(_state.time);
+
+  /// Field gauge reading (LG-101 drum sight glass, LG-102 sump): the result arrives 180 s later. One
+  /// request per gauge can be pending (PHYSICS.md 10.5).
+  void requestFieldCheck(String gaugeTag) {
+    if (gaugeTag != 'LG-101' && gaugeTag != 'LG-102') {
+      throw ArgumentError('Unknown gauge "$gaugeTag"');
+    }
+    final cur = _fields[gaugeTag];
+    if (cur != null && cur.value == null) return;
+    _fields[gaugeTag] = _FieldReq(gaugeTag, _state.time, _state.time + 180);
+    _control.alarms.log(_state.time, 'FIELD CHECK requested $gaugeTag');
+  }
+
+  void _processFields(double t) {
+    for (final f in _fields.values) {
+      if (f.value != null || t + 1e-9 < f.readyAt) continue;
+      final rng = _fieldRng.putIfAbsent(
+          f.tag, () => Rng.stream(options.seed, 'field:${f.tag}'));
+      final truth =
+          f.tag == 'LG-101' ? _stepper.drumLevelPct : _stepper.sumpLevelPct;
+      final raw = truth + 1.0 * rng.normal();
+      f.value = ((raw / 2).roundToDouble() * 2).clamp(0.0, 100.0);
+      _control.alarms
+          .log(t, 'FIELD CHECK ${f.tag} = ${f.value!.toStringAsFixed(0)} %');
+    }
+  }
+
+  /// Takes an instrument out of service for 1800 s (sandbox only; PHYSICS.md 10.5).
+  void requestMaintenance(String tag) {
+    if (_scenarioIsDrill)
+      throw StateError('Maintenance is not available in a drill');
+    final inst = _control.instrument(tag);
+    inst.startMaintenance(_state.time);
+    _control.alarms.log(_state.time, 'MAINTENANCE started $tag');
+  }
+
+  /// Window of the cross-checks: 300, 600, 1800 or 3600 s.
+  void setCheckWindow(double seconds) {
+    _checks.setWindow(seconds);
+    _evalChecks();
+  }
+
+  /// C6 reference (Tiers 2/3); nothing to do in Tier 1.
+  void setTemperatureReference() {}
+
+  bool get _scenarioIsDrill => false;
+
+  /// Seconds the true drum or sump level was below 5 % or above 95 % (safety score, VC-25.4).
+  double get safetyLevelViolationSeconds => _levelViolation;
+
+  /// The trend buffer (5-s bins, PHYSICS.md 14.6).
+  TrendBuffer get trends => _trends;
+
+  /// Fast-layer recorder for tests (VALIDATION.md VC-16.4).
+  @visibleForTesting
+  FastTrace get fastLayerTrace => _control.fastTrace ??= FastTrace();
+
+  /// Pins the true drum level for tests (VC-25.1): the holdup is reset to this level before every step.
+  @visibleForTesting
+  void holdDrumLevelForTest(double? level) {
+    _pinDrum = level;
+    if (level != null) _applyPin();
+  }
+
+  void _applyPin() {
+    final s = _state;
+    final nc = s.nc;
+    final m0 = _pinDrum! / 100 * _config.condenser.drumVolume / s.vLiq[0];
+    for (var i = 0; i < nc; i++) {
+      s.m[i] = s.x[i] * m0;
+    }
+    s.holdup[0] = m0;
+  }
+
+  void _evalChecks() {
+    _checks.evaluate(_trends, _control, _inputs.feedQ, _steady);
+  }
+
+  /// Everything that follows a successful main step (PHYSICS.md 12.4 step 13).
+  void _afterStep(double h) {
+    final d = _stepper.drumLevelPct, sp = _stepper.sumpLevelPct;
+    if (d < 5 || d > 95 || sp < 5 || sp > 95) _levelViolation += h;
+    _processFields(_state.time);
+    if (_trends.newestEnd > _lastEvalEnd + 1e-9) {
+      _lastEvalEnd = _trends.newestEnd;
+      _evalChecks();
+    }
   }
 
   // ---------------------------------------------------------------- structure
@@ -792,6 +1172,17 @@ class Simulator {
   /// Equation trace for the math overlay (ENGINE_API.md 8). Recomputes the hydraulics for the current state
   /// with the same code the stepper and the snapshot use.
   ExplainResult explain(ExplainTarget target) {
+    if (_view == SimView.plant &&
+        target is! ExplainInstrument &&
+        target is! ExplainValve &&
+        target is! ExplainLoop &&
+        target is! ExplainCheck) {
+      return ExplainResult(
+          title: 'Not observable',
+          groups: const [],
+          notes: const ['Not observable on a real plant.'],
+          time: _state.time);
+    }
     _stepper.refreshHydraulics(options.dt);
     final snap = snapshot();
     return ExplainEngine(
@@ -810,7 +1201,7 @@ class Simulator {
     final inp = _inputs;
     final feed = _config.feeds.first.copyWith(
       stage: inp.feedStage,
-      flow: inp.feedFlowSp,
+      flow: _control.fc101.sp,
       z: Float64List.fromList(inp.z),
       thermal: FeedQ(inp.feedQ),
     );
@@ -818,20 +1209,20 @@ class Simulator {
       feeds: [feed, ..._config.feeds.skip(1)],
       murphree: inp.murphree,
       initialLevers: {
-        'feedFlow': inp.feedFlowSp,
-        'refluxFlow': inp.refluxFlowSp,
+        'feedFlow': _control.fc101.sp,
+        'refluxFlow': _control.fc102.sp,
         'refluxRatio': inp.refluxRatio,
         'refluxMode': inp.ratioMode ? 1.0 : 0.0,
-        'boilup': inp.boilupSp,
+        'boilup': _control.fc103.sp,
         'feedQ': inp.feedQ,
       },
       control: ControlConfig(
         levelKc: _config.control.levelKc,
         levelTi: _config.control.levelTi,
-        drumLevelSp: _control.loops[0].sp,
-        sumpLevelSp: _control.loops[1].sp,
-        distillateMax: _control.distillateValve.maxFlow,
-        bottomsMax: _control.bottomsValve.maxFlow,
+        drumLevelSp: _control.lc101.sp,
+        sumpLevelSp: _control.lc102.sp,
+        distillateMax: _control.lv101.fMax,
+        bottomsMax: _control.lv102.fMax,
       ),
     );
   }
@@ -854,9 +1245,7 @@ class Simulator {
       x: Float64List.fromList(old.x),
       holdup: Float64List.fromList(old.holdup),
       time: old.time,
-      loops: [for (final l in _control.loops) l.toJson()],
-      dFlow: _control.distillateValve.flow,
-      bFlow: _control.bottomsValve.flow,
+      control: _control.toJson(),
       feedAct: old.feedAct,
       refluxAct: old.refluxAct,
       boilupAct: old.boilupAct,
@@ -905,11 +1294,8 @@ class Simulator {
     s.feedAct = c.feedAct;
     s.refluxAct = c.refluxAct;
     s.boilupAct = c.boilupAct;
-    for (var l = 0; l < 2; l++) {
-      _control.loops[l].loadJson(c.loops[l]);
-    }
-    _control.distillateValve.flow = c.dFlow;
-    _control.bottomsValve.flow = c.bFlow;
+    _control.loadJson(c.control);
+    _initFromCarry();
     _resetMonitor(capture: true);
   }
 
@@ -944,7 +1330,6 @@ class Simulator {
     }
     final p = Float64List(n)..fillRange(0, n, _config.condenser.pTopDesign);
     var maxFlood = 0.0, maxWeep = 0.0, columnDp = 0.0;
-    var anyDcLimited = false;
     final dcFlood = Float64List(n),
         fill = Float64List(n),
         jet = Float64List(n),
@@ -964,7 +1349,6 @@ class Simulator {
         maxFlood =
             math.max(maxFlood, math.max(jet[j], math.max(dcFlood[j], fill[j])));
         maxWeep = math.max(maxWeep, weepFrac[j]);
-        if ((flags[j] & 1) != 0) anyDcLimited = true;
       }
     }
     final stages = StageArrays(
@@ -998,8 +1382,8 @@ class Simulator {
     // snapshot flows closes the component balance exactly (the valves already hold next step's flow).
     final used = _debug.dt > 0;
     final f = used ? _debug.feedFlow : s.feedAct;
-    final dFlow = used ? _debug.distillateFlow : _control.distillateValve.flow;
-    final bFlow = used ? _debug.bottomsFlow : _control.bottomsValve.flow;
+    final dFlow = used ? _debug.distillateFlow : _control.lv101.flow;
+    final bFlow = used ? _debug.bottomsFlow : _control.lv102.flow;
     final l0 = used ? _debug.refluxFlow : s.liquid[0];
     final vUp = used ? _debug.boilupFlow : s.vapor[N + 1];
     final xDrum = Float64List.fromList(s.x.sublist(0, nc));
@@ -1038,34 +1422,10 @@ class Simulator {
       balanceResidual: fz > 0 ? (fz - dFlow * xD - bFlow * xB).abs() / fz : 0.0,
       energyResidual: nan,
     );
-    final alarms = <Alarm>[
-      if (100 * maxFlood > 90)
-        Alarm(
-            'flooding',
-            'Flooding: max flood ${(100 * maxFlood).toStringAsFixed(0)} %',
-            100 * maxFlood > 100 ? AlarmPriority.high : AlarmPriority.medium,
-            false,
-            s.time),
-      if (maxWeep > 0.3)
-        Alarm(
-            'weeping',
-            'Weeping: ${(100 * maxWeep).toStringAsFixed(0)} % of inlet liquid',
-            AlarmPriority.medium,
-            false,
-            s.time),
-      if (anyDcLimited)
-        Alarm('downcomer', 'Downcomer backup limiting the liquid flow',
-            AlarmPriority.high, false, s.time),
-      if (drumPct > 95)
-        Alarm('drum.high', 'Drum level high', AlarmPriority.medium, false,
-            s.time),
-      if (drumPct < 5)
-        Alarm('drum.low', 'Drum level low', AlarmPriority.high, false, s.time),
-      if (sumpPct > 95)
-        Alarm('sump.high', 'Sump level high', AlarmPriority.medium, false,
-            s.time),
-      if (sumpPct < 5)
-        Alarm('sump.low', 'Sump level low', AlarmPriority.high, false, s.time),
+    final plant = _view == SimView.plant;
+    final alarms = [
+      for (final a in _control.alarms.active())
+        if (!plant || !a.id.startsWith('model.') || a.id == 'model.relief') a,
     ];
     final fl = <int>[_inputs.feedStage];
     final layout = ColumnLayoutInfo(
@@ -1079,6 +1439,119 @@ class Simulator {
       names: ['Drum', for (var j = 1; j <= N; j++) 'Tray $j', 'Sump'],
       sectionEnds: [N],
     );
+    final instr = [for (final i in _control.instruments) i.readingAt(s.time)];
+    InstrumentReading rd(String tag) => instr.firstWhere((r) => r.tag == tag);
+    var stagesOut = stages;
+    var streamsOut = streams;
+    var kpisOut = kpis;
+    var condOut = CondenserSnapshot(s.holdup[0], drumPct);
+    var rebOut = ReboilerSnapshot(s.holdup[N + 1], sumpPct,
+        mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0);
+    if (plant) {
+      Float64List nanArr(int len) => Float64List(len)..fillRange(0, len, nan);
+      final lt1 = rd('LT-101').value, lt2 = rd('LT-102').value;
+      final hold = Float64List.fromList(stages.holdup);
+      hold[0] = lt1 * _control.n01;
+      hold[N + 1] = lt2 * _control.ns1;
+      stagesOut = StageArrays(
+        n: n,
+        nc: nc,
+        x: nanArr(n * nc),
+        y: nanArr(n * nc),
+        yStar: nanArr(n * nc),
+        t: nanArr(n),
+        p: stages.p,
+        liquidDown: nanArr(n),
+        vaporUp: nanArr(n),
+        entrain: nanArr(n),
+        weep: nanArr(n),
+        holdup: hold,
+        hcl: stages.hcl,
+        froth: stages.froth,
+        dp: nanArr(n),
+        dpDry: nanArr(n),
+        jetFlood: nanArr(n),
+        dcFlood: nanArr(n),
+        frothFill: nanArr(n),
+        stability: nanArr(n),
+        weepFrac: nanArr(n),
+        efficiency: nanArr(n),
+        hetp: nanArr(n),
+        packFlood: nanArr(n),
+        flags: stages.flags,
+      );
+      final at0 = rd('AT-100').value,
+          at1 = rd('AT-101').value,
+          at2 = rd('AT-102').value;
+      Float64List comp(double light) {
+        final c = Float64List(nc)..fillRange(0, nc, nan);
+        if (nc == 2) {
+          c[0] = light;
+          c[1] = 1 - light;
+        }
+        return c;
+      }
+
+      final ftF = rd('FT-101').value,
+          ftL = rd('FT-102').value,
+          ftV = rd('FT-103').value,
+          ftD = rd('FT-104').value,
+          ftB = rd('FT-105').value;
+      streamsOut = {
+        StreamId.feed: StreamSnapshot(StreamId.feed, ftF, comp(at0), nan),
+        StreamId.reflux:
+            StreamSnapshot(StreamId.reflux, ftL, comp(1 - at1), nan),
+        StreamId.distillate:
+            StreamSnapshot(StreamId.distillate, ftD, comp(1 - at1), nan),
+        StreamId.bottoms: StreamSnapshot(StreamId.bottoms, ftB, comp(at2), nan),
+        StreamId.boilup:
+            StreamSnapshot(StreamId.boilup, ftV, comp(double.nan), nan),
+      };
+      kpisOut = Kpis(
+        xD: 1 - at1,
+        xB: at2,
+        d: ftD,
+        b: ftB,
+        refluxRatio: ftD > 1e-9 ? ftL / ftD : nan,
+        boilup: ftV,
+        qc: nan,
+        qr: nan,
+        columnDp: rd('PDT-101').value,
+        maxFloodPct: nan,
+        maxWeepFraction: nan,
+        drumLevelPct: lt1,
+        sumpLevelPct: lt2,
+        pTop: _config.condenser.pTopDesign,
+        balanceResidual: nan,
+        energyResidual: nan,
+      );
+      condOut = CondenserSnapshot(hold[0], lt1);
+      rebOut = ReboilerSnapshot(hold[N + 1], lt2, rebOut.starvation);
+    }
+    final loopSnaps = <LoopSnapshot>[];
+    for (final l in _control.loops) {
+      final inst = _control.instrument(l.pvTag);
+      loopSnaps.add(LoopSnapshot(l.tag, l.mode, inst.value, l.sp, l.op,
+          shed: l.shed,
+          pvQuality: inst.quality,
+          spLo: l.spLo,
+          spHi: l.spHi,
+          opLo: l.params.opLo,
+          opHi: l.params.opHi,
+          kc: l.params.kc,
+          ti: l.params.ti,
+          td: l.params.td,
+          action: l.params.action,
+          spTracked: l.spTracked,
+          lastError: l.lastError,
+          lastDeltaOp: l.lastDeltaOp));
+    }
+    final valveSnaps = <ValveSnapshot>[];
+    for (final v in _control.valves) {
+      final loop = _control.loops.firstWhere((l) => l.mvRef == v.id);
+      valveSnaps.add(ValveSnapshot(v.id, loop.op, plant ? nan : v.position,
+          v.fMax, v.expectedFlow(loop.op), v.bypassActive ? v.bypassPos : -1));
+    }
     return SimSnapshot(
       serial: ++_serial,
       time: s.time,
@@ -1086,23 +1559,28 @@ class Simulator {
       hydraulics: _hydraulics,
       layout: layout,
       components: List.unmodifiable(_config.components),
-      stages: stages,
-      streams: Map.unmodifiable(streams),
-      condenser: CondenserSnapshot(s.holdup[0], drumPct),
-      reboiler: ReboilerSnapshot(s.holdup[N + 1], sumpPct,
-          mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0),
-      loops: [
-        for (final l in _control.loops)
-          LoopSnapshot(l.tag, l.mode, l.pv, l.sp, l.op),
-      ],
+      stages: stagesOut,
+      streams: Map.unmodifiable(streamsOut),
+      condenser: condOut,
+      reboiler: rebOut,
+      loops: loopSnaps,
       alarms: alarms,
-      kpis: kpis,
+      kpis: kpisOut,
       steady: SteadyInfo(_steady, _residual),
       solverHealth: _health.copy(),
-      visibleFaults: _faults.activeAt(s.time),
+      visibleFaults: plant ? const [] : _faults.activeAt(s.time),
       levers: {for (final l in _levers) l.id: lever(l.id)},
       feedQ: _inputs.feedQ,
       murphree: _inputs.murphree,
+      view: _view,
+      instruments: instr,
+      valves: valveSnaps,
+      crossChecks: _checks.results,
+      fieldChecks: [
+        for (final f in _fields.values)
+          FieldCheck(f.tag, f.requestedAt, f.readyAt, f.value)
+      ],
+      scenario: null,
     );
   }
 
@@ -1117,9 +1595,9 @@ class Simulator {
 
   // ---------------------------------------------------------------- persistence
 
-  Map<String, Object?> _dumpDynamic() => {
+  Map<String, Object?> _dumpDynamic({bool includeTrends = true}) => {
         'state': _state.toJson(),
-        'control': _control.toJson(),
+        'control': _control.toJson(includeTrends: includeTrends),
       };
 
   void _loadDynamic(Map<String, Object?> d) {
@@ -1135,7 +1613,7 @@ class Simulator {
 
   /// Config, levers, full state and controller states (JSON-encodable).
   Map<String, Object?> saveState() => {
-        'version': 1,
+        'version': 2,
         'config': _configWithCurrentLevers().toJson(),
         'options': {
           'dt': options.dt,
@@ -1159,6 +1637,29 @@ class Simulator {
         'dynamic': _dumpDynamic(),
         'faults': _faults.toJson(),
         'carry': _carry,
+        'view': _view.index,
+        'levelViolation': _levelViolation,
+        'checkWindow': _checks.window,
+        'lastEvalEnd': _lastEvalEnd,
+        'fields': [
+          for (final f in _fields.values)
+            [f.tag, f.requestedAt, f.readyAt, f.value]
+        ],
+        'fieldRng': {
+          for (final e in _fieldRng.entries) e.key: e.value.toJson()
+        },
+        'noisy': {
+          'sumX': _sumX.toList(),
+          'sumM': _sumM.toList(),
+          'prevX': _prevMeanX.toList(),
+          'prevM': _prevMeanM.toList(),
+          'sumOp': _sumOp.toList(),
+          'prevOp': _prevMeanOp.toList(),
+          'n': _nSum,
+          'has': _hasPrevMean,
+          'next': _nextCheckNoisy,
+          'count': _noisyCount,
+        },
         'serial': _serial,
         'monitor': {
           'nextCheck': _nextCheck,
@@ -1205,6 +1706,33 @@ class Simulator {
       sim._faults.loadJson(saved['faults']! as Map<String, Object?>);
     sim._loadDynamic(saved['dynamic']! as Map<String, Object?>);
     sim._carry = (saved['carry']! as num).toDouble();
+    sim._view = SimView.values[(saved['view']! as num).toInt()];
+    sim._levelViolation = (saved['levelViolation']! as num).toDouble();
+    sim._checks.window = (saved['checkWindow']! as num).toDouble();
+    sim._lastEvalEnd = (saved['lastEvalEnd']! as num).toDouble();
+    for (final e in saved['fields']! as List<Object?>) {
+      final l = e! as List<Object?>;
+      sim._fields[l[0]! as String] = _FieldReq(
+          l[0]! as String, (l[1]! as num).toDouble(), (l[2]! as num).toDouble())
+        ..value = (l[3] as num?)?.toDouble();
+    }
+    (saved['fieldRng']! as Map<String, Object?>).forEach((k, v) {
+      sim._fieldRng[k] = Rng.stream(sim.options.seed, 'field:$k')
+        ..loadJson(v! as Map<String, Object?>);
+    });
+    final nz = saved['noisy']! as Map<String, Object?>;
+    List<double> dl(String k) =>
+        [for (final v in nz[k]! as List<Object?>) (v! as num).toDouble()];
+    sim._sumX = Float64List.fromList(dl('sumX'));
+    sim._sumM = Float64List.fromList(dl('sumM'));
+    sim._prevMeanX = Float64List.fromList(dl('prevX'));
+    sim._prevMeanM = Float64List.fromList(dl('prevM'));
+    sim._sumOp.setAll(0, dl('sumOp'));
+    sim._prevMeanOp.setAll(0, dl('prevOp'));
+    sim._nSum = (nz['n']! as num).toInt();
+    sim._hasPrevMean = nz['has']! as bool;
+    sim._nextCheckNoisy = (nz['next']! as num).toDouble();
+    sim._noisyCount = (nz['count']! as num).toInt();
     sim._serial = (saved['serial']! as num).toInt();
     final m = saved['monitor']! as Map<String, Object?>;
     sim._nextCheck = (m['nextCheck']! as num).toDouble();
@@ -1220,8 +1748,9 @@ class Simulator {
       sim._prevM[i] = (pm[i]! as num).toDouble();
     }
     final po = m['prevOp']! as List<Object?>;
-    sim._prevOp[0] = (po[0]! as num).toDouble();
-    sim._prevOp[1] = (po[1]! as num).toDouble();
+    for (var i = 0; i < po.length; i++) {
+      sim._prevOp[i] = (po[i]! as num).toDouble();
+    }
     return sim;
   }
 
@@ -1237,8 +1766,8 @@ class _Carry {
   final int oldN, oldNc;
   final Float64List x, holdup;
   final double time;
-  final List<Map<String, Object?>> loops;
-  final double dFlow, bFlow, feedAct, refluxAct, boilupAct;
+  final Map<String, Object?> control;
+  final double feedAct, refluxAct, boilupAct;
   final FaultManager faults;
   _Carry({
     required this.faults,
@@ -1247,11 +1776,16 @@ class _Carry {
     required this.x,
     required this.holdup,
     required this.time,
-    required this.loops,
-    required this.dFlow,
-    required this.bFlow,
+    required this.control,
     required this.feedAct,
     required this.refluxAct,
     required this.boilupAct,
   });
+}
+
+class _FieldReq {
+  final String tag;
+  final double requestedAt, readyAt;
+  double? value;
+  _FieldReq(this.tag, this.requestedAt, this.readyAt);
 }

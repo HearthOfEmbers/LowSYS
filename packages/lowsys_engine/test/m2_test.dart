@@ -20,18 +20,20 @@ void main() {
     final sim = Simulator(def.buildConfig());
     final run = ScenarioRunner.forSimulator(def, sim);
     run.update();
-    // +67.5 kmol/h on reflux and boilup floods the column
-    sim.setLever('refluxFlow', kmolh(167.5));
-    sim.setLever('boilup', kmolh(217.5));
+    // uniform scaling x1.7 of feed, reflux and boilup floods the column (TS 0.9 m: onset near x1.57)
+    sim.setLever('feedFlow', kmolh(170));
+    sim.setLever('refluxFlow', kmolh(170));
+    sim.setLever('boilup', kmolh(255));
     for (var i = 0; i < 90; i++) {
       sim.advance(10);
       run.update();
     }
     expect(run.objectives[0].achieved, isTrue, reason: 'flooded');
     expect(run.objectives[1].achieved, isFalse);
-    sim.setLever('refluxFlow', kmolh(100));
-    sim.setLever('boilup', kmolh(150));
-    for (var i = 0; i < 600 && !run.objectives[1].achieved; i++) {
+    sim.setLever('feedFlow', kmolh(135));
+    sim.setLever('refluxFlow', kmolh(135));
+    sim.setLever('boilup', kmolh(202.5));
+    for (var i = 0; i < 900 && !run.objectives[1].achieved; i++) {
       sim.advance(10);
       run.update();
     }

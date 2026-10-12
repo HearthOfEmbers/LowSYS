@@ -45,9 +45,6 @@ class Stepper {
   final double drumVolume;
   final double sumpVolume;
 
-  /// Time constant of the ideal flow controllers (s). PHYSICS.md 10.2 says 3 s; 1 s is needed for VC-7.2 (docs/DEVIATIONS.md).
-  static const double tauFlow = 1.0;
-
   /// Time constants of the entrainment fraction and filtered liquid load (PHYSICS.md 5.5, 5.6).
   static const double tauPsi = 5.0, tauLbar = 10.0;
 
@@ -335,15 +332,25 @@ class Stepper {
     final N = nTrays;
     final fs = inp.feedStage;
     final q = inp.feedQ;
-    final F = s.feedAct;
-    final VB = s.boilupAct;
-    var D = control.distillateValve.flow;
-    var B = control.bottomsValve.flow;
-    var L0 = s.refluxAct;
-
-    // --- 1. faults: effective parameters (PHYSICS.md 11)
+    // --- 1. faults: effective parameters (PHYSICS.md 11), then the control faults
     faults.apply(s.time, ep, inp.z);
     final z = ep.zEff;
+    control.time = s.time;
+    control.applyFaults(faults.controlSpecs);
+
+    // --- 2. control fast layer (PHYSICS.md 10.1): mean valve flows over the step
+    control.ratioMode = inp.ratioMode;
+    control.ratio = inp.refluxRatio;
+    control.runFastLayer(dt, s.time);
+    final mf = control.meanFlows;
+    final F = mf[0];
+    final VB = mf[2];
+    var D = mf[3];
+    var B = mf[4];
+    var L0 = mf[1];
+    s.feedAct = F;
+    s.refluxAct = L0;
+    s.boilupAct = VB;
 
     // --- 6. vapour profile, Tier 1 CMO (PHYSICS.md 4.4) with sump starvation (8.1)
     final mMin = 0.05 * sumpVolume / s.vLiq[N + 1];
@@ -399,6 +406,11 @@ class Stepper {
       final f = totD > 0 ? availD / totD : 0.0;
       L0 *= f;
       D *= f;
+      control.fv102.cap = L0;
+      control.lv101.cap = D;
+    } else {
+      control.fv102.cap = double.infinity;
+      control.lv101.cap = double.infinity;
     }
     s.liquid[0] = L0;
 
@@ -424,33 +436,63 @@ class Stepper {
       final kd = full ? hyd.kd[j] : 0.0;
       final mn = s.holdup[j];
       var mm = mn;
-      for (var it = 0; it < 40; it++) {
+      double lj;
+      if (kd > 0) {
+        // dumping tray (PHYSICS.md 5.15, 12.2): implicit solve for u = sqrt(M); the residual is convex in u
+        var u = math.sqrt(math.max(mn, 0.0));
+        for (var it = 0; it < 60; it++) {
+          final m2 = u * u;
+          final hcl = m2 * vl / aa;
+          final arg = (hcl / ae - weirHeight) / bennettC;
+          var lw = 0.0, dl = 0.0;
+          if (arg > 0) {
+            final sq = math.sqrt(arg);
+            lw = weirLength * ae * arg * sq / vl;
+            dl = 1.5 * weirLength * sq / (bennettC * aa);
+          }
+          if (lw > cap) {
+            lw = cap;
+            dl = 0;
+          }
+          final g = m2 - mn - dt * (inflow - lw - kd * u);
+          final gp = 2 * u + dt * (2 * u * dl + kd);
+          final un = math.max(0.0, u - g / gp);
+          final du = (un - u).abs();
+          u = un;
+          if (du < 1e-12 * math.max(1.0, u)) break;
+        }
+        mm = u * u;
         final hcl = mm * vl / aa;
         final arg = (hcl / ae - weirHeight) / bennettC;
-        var lw = 0.0, dl = 0.0;
-        if (arg > 0) {
-          final sq = math.sqrt(arg);
-          lw = weirLength * ae * arg * sq / vl; // PHYSICS.md (5.2)
-          dl = 1.5 * weirLength * sq / (bennettC * aa);
+        var lw = arg > 0 ? weirLength * ae * arg * math.sqrt(arg) / vl : 0.0;
+        if (lw > cap) lw = cap;
+        lj = lw + kd * u;
+      } else {
+        for (var it = 0; it < 40; it++) {
+          final hcl = mm * vl / aa;
+          final arg = (hcl / ae - weirHeight) / bennettC;
+          var lw = 0.0, dl = 0.0;
+          if (arg > 0) {
+            final sq = math.sqrt(arg);
+            lw = weirLength * ae * arg * sq / vl; // PHYSICS.md (5.2)
+            dl = 1.5 * weirLength * sq / (bennettC * aa);
+          }
+          if (lw > cap) {
+            lw = cap; // downcomer backup limit (5.11)
+            dl = 0;
+          }
+          final r = mm - mn - dt * (inflow - lw);
+          var mNew = mm - r / (1 + dt * dl);
+          if (mNew <= 0) mNew = mm / 2;
+          final dm = mNew - mm;
+          mm = mNew;
+          if (dm.abs() < 1e-10 * math.max(1.0, mm)) break;
         }
-        if (lw > cap) {
-          lw = cap; // downcomer backup limit (5.11)
-          dl = 0;
-        }
-        lw += kd * mm; // dumping drain (5.15)
-        dl += kd;
-        final r = mm - mn - dt * (inflow - lw);
-        var mNew = mm - r / (1 + dt * dl);
-        if (mNew <= 0) mNew = mm / 2;
-        final dm = mNew - mm;
-        mm = mNew;
-        if (dm.abs() < 1e-10 * math.max(1.0, mm)) break;
+        final hcl = mm * vl / aa;
+        final arg = (hcl / ae - weirHeight) / bennettC;
+        lj = arg > 0 ? weirLength * ae * arg * math.sqrt(arg) / vl : 0.0;
+        if (lj > cap) lj = cap;
       }
-      final hcl = mm * vl / aa;
-      final arg = (hcl / ae - weirHeight) / bennettC;
-      var lj = arg > 0 ? weirLength * ae * arg * math.sqrt(arg) / vl : 0.0;
-      if (lj > cap) lj = cap;
-      lj += kd * mm;
       _mhat[j] = mm;
       s.liquid[j] = lj;
       lPrev2 = lPrev;
@@ -460,7 +502,12 @@ class Stepper {
     final fN = full ? s.bypass[N] : 0.0;
     final lIntoSump = s.liquid[N] + fN * (N >= 2 ? s.liquid[N - 1] : L0);
     final availB = s.holdup[N + 1] / dt + lIntoSump - s.vapor[N + 1];
-    if (B > availB) B = math.max(0.0, availB);
+    if (B > availB) {
+      B = math.max(0.0, availB);
+      control.lv102.cap = B;
+    } else {
+      control.lv102.cap = double.infinity;
+    }
     _mhat[0] = s.holdup[0] + dt * (v1 + e1 - L0 - D);
     _mhat[N + 1] = s.holdup[N + 1] + dt * (lIntoSump - s.vapor[N + 1] - B);
     for (var j = 0; j < n; j++) {
@@ -567,22 +614,36 @@ class Stepper {
 
   // ---------------------------------------------------------------- controllers
 
+  /// Control main layer (PHYSICS.md 10.1, step 12) from the end-of-step state.
   void _controllers(double dt) {
     final N = nTrays;
     bus.drumLevelPct = 100 * s.holdup[0] * s.vLiq[0] / drumVolume;
     bus.sumpLevelPct = 100 * s.holdup[N + 1] * s.vLiq[N + 1] / sumpVolume;
-    control.execute(dt, bus);
-    // ideal flow controllers follow their setpoints through a first-order lag (PHYSICS.md 10.2)
-    final k = dt / (tauFlow + dt);
-    s.feedAct += (inp.feedFlowSp - s.feedAct) * k;
-    final lSp = inp.ratioMode
-        ? inp.refluxRatio * control.distillateValve.flow
-        : inp.refluxFlowSp;
-    s.refluxAct += (lSp - s.refluxAct) * k;
-    s.boilupAct += (inp.boilupSp - s.boilupAct) * k;
-    if (s.feedAct.abs() < 1e-12) s.feedAct = 0;
-    if (s.refluxAct.abs() < 1e-12) s.refluxAct = 0;
-    if (s.boilupAct.abs() < 1e-12) s.boilupAct = 0;
+    bus.columnDp = full ? hyd.pressureDropTotal : 0.0;
+    bus.feedLight = ep.zEff[0];
+    bus.xD = s.x[0];
+    bus.xB = s.x[(N + 1) * nc];
+    control.modelFull = full;
+    if (full) {
+      var maxFlood = 0.0, maxWeep = 0.0;
+      var dcLim = false;
+      for (var j = 1; j <= N; j++) {
+        maxFlood = math.max(maxFlood,
+            math.max(hyd.phi[j], math.max(hyd.dcFrac[j], hyd.fill[j])));
+        maxWeep = math.max(maxWeep, hyd.weepW[j]);
+        if ((hyd.flags[j] & 1) != 0) dcLim = true;
+      }
+      control.modelFlood = maxFlood > 0.9;
+      control.modelWeep = maxWeep > 0.3;
+      control.modelDc = dcLim;
+    } else {
+      control.modelFlood = false;
+      control.modelWeep = false;
+      control.modelDc = false;
+    }
+    control.pushModel(
+        bus.xD, bus.xB, bus.columnDp, 0, bus.drumLevelPct, bus.sumpLevelPct);
+    control.runMainLayer(dt, bus, s.time + dt);
   }
 
   /// Level (%) of the drum / sump from the current state.

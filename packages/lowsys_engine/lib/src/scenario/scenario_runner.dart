@@ -32,12 +32,12 @@ class SimulatorHost implements ScenarioHost {
   void clearFault(FaultId id) => sim.faults.clear(id);
 }
 
-class ObjectiveState {
+class ObjectiveRuntime {
   final ObjectiveDef def;
   bool achieved = false;
   double? achievedAt;
   double _holdSince = -1;
-  ObjectiveState(this.def);
+  ObjectiveRuntime(this.def);
   String get id => def.id;
   String get text => def.text;
 }
@@ -63,7 +63,7 @@ class ScoreCard {
 class ScenarioRunner {
   final ScenarioDef def;
   final ScenarioHost host;
-  final List<ObjectiveState> objectives;
+  final List<ObjectiveRuntime> objectives;
   final List<String> _hints = [];
   final Map<String, Object?> _answers = {};
   final List<String> messages = [];
@@ -75,7 +75,7 @@ class ScenarioRunner {
   double _elapsed = 0;
 
   ScenarioRunner(this.def, this.host)
-      : objectives = [for (final o in def.objectives) ObjectiveState(o)];
+      : objectives = [for (final o in def.objectives) ObjectiveRuntime(o)];
 
   factory ScenarioRunner.forSimulator(ScenarioDef def, Simulator sim) =>
       ScenarioRunner(def, SimulatorHost(sim));

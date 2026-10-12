@@ -7,7 +7,7 @@ Everything in this file is a place where the M1 implementation differs from, or 
 | # | Where | Deviation / choice | Reason |
 |---|---|---|---|
 | E1 | ENGINE_API.md 4 preset JSON | The example lists `feeds[0].flow`, `refluxFlow`, `boilup` as 0.0277778 / 0.0277778 / 0.0416667 and says "All JSON values are SI (mol/s)". Those numbers are kmol/s. The shipped preset uses 27.7778 / 27.7778 / 41.6667 mol/s (100 / 100 / 150 kmol/h). | VALIDATION.md 0 says 1 kmol/h = 0.2777778 mol/s; with the spec numbers the column would be fed 1000x too little and PHYSICS.md 5.3's holdup numbers (27.8 mol/s of liquid per tray) would not hold. |
-| E2 | PHYSICS.md 10.2 | Ideal flow controllers (FC-101/102/103) use a first-order lag of 1.0 s instead of 3 s. | VC-7.2: tray 1's liquid flow must reach 63 % of a reflux step within 1-4 s *measured from the lever change*. With 3 s the controller lag alone makes it 5.5 s. With 1 s: tray 1 3.5 s, tray 20 31 s (inside 20-45 s). Steady states are unaffected. |
+| E2 (superseded, see E26) | PHYSICS.md 10.2 | Ideal flow controllers (FC-101/102/103) use a first-order lag of 1.0 s instead of 3 s. | VC-7.2: tray 1's liquid flow must reach 63 % of a reflux step within 1-4 s *measured from the lever change*. With 3 s the controller lag alone makes it 5.5 s. With 1 s: tray 1 3.5 s, tray 20 31 s (inside 20-45 s). Steady states are unaffected. |
 | E3 | PHYSICS.md 13.1/13.3, ENGINE_API.md 6.1 | `runToSteadyState()` runs until the 13.3 monitor declares steady and then keeps marching until the residual is below `polishTolerance` (default 1e-11). `SteadyStateResult.simSeconds` is the time at which the monitor declared steady (VC-7.4: 5.15 h at dt = 0.5), `totalSimSeconds` includes the polish (about 8.3 h). | The monitor criterion alone (delta < 1e-7 for 5 checks) leaves a 2e-6 error in x_D because the slowest mode has tau = 1643 s. VC-4/VC-6 want 1e-6, VC-18 wants 1e-8 on the converged state. |
 | E4 | ENGINE_API.md 5.5 | No shipped `steady_cache/*.dart` JSON. The warm start runs `runToSteadyState()` once per distinct configuration and memoises the state in memory (about 0.15 s). | The same code path is exercised; nothing can go stale. A shipped cache can be added when presets multiply (M5+). |
 | E5 | ENGINE_API.md 7.1 | `SimSnapshot.streams` (and `Kpis.d`, `b`, `boilup`, reflux) report the flows the solver *used in the last completed step*, not the flows the valves will deliver next. | Integrating snapshot flows then closes the component balance to round-off (a tester found 5e-6 closure error otherwise). |
@@ -29,7 +29,7 @@ See the section appended by the app work (fonts, layout choices) below.
 ## Later engine notes
 - E16: Closed valve flows are clamped to exactly 0 below 1e-12 mol/s.
 - E17: `runToSteadyState` hitting its cap (default 48 h) is not a failure when the column is just slow: `SteadyStateResult.slowModeTau` (estimated from the residual decay) and `stillConverging` are set, and the app reports "still converging (slow mode tau about X h)" and offers to continue. Callers may pass a larger `maxSimSeconds`.
-- E18: The 1 s flow-controller lag (E2) is kept; VC-7.2 depends on it.
+- E18 (superseded in M3, see E26): The 1 s flow-controller lag (E2) is kept; VC-7.2 depends on it.
 
 ## App (M1)
 
@@ -44,7 +44,7 @@ See the section appended by the app work (fonts, layout choices) below.
 
 ## M2 engine
 - E19: `Presets.byId('bt')` stays ideal hydraulics (the M1 validation suite and VC-4 use it). The full-hydraulics default of SCOPE.md 4.2 is applied by the app (sandbox loads `copyWith(hydraulics: full)`) and by `setLever('hydraulics', 1)` / `setHydraulicsMode`.
-- E20: A broken tray holds no liquid head: the hydrostatic term of (5.5) is multiplied by (1 - s_broken). Without it a fully broken tray still showed 18.7 % of its normal pressure drop (VC-12.4 expects about 6 %, prototype 664 to 38 Pa).
+- E20 (adopted into PHYSICS.md 5.4 by 1cc65e2): A broken tray holds no liquid head: the hydrostatic term of (5.5) is multiplied by (1 - s_broken). Without it a fully broken tray still showed 18.7 % of its normal pressure drop (VC-12.4 expects about 6 %, prototype 664 to 38 Pa).
 - E21: `Trace` parameters of ENGINE_API.md 8.2 are not used. `HydraulicSolver` writes every intermediate quantity into arrays that the stepper, the snapshot and `explain()` all read; the overlay builds its numbers from those arrays, so values agree to round-off by construction.
 - E22: Model alarms (flooding > 90 %, weeping > 30 %, downcomer limit, drum/sump level) are reported in `SimSnapshot.alarms` without latching/acknowledge (M3).
 - E23: Extra lever ids: `hydraulics` (0 ideal, 1 full), `trayType.0` (0 sieve, 1 valve), `antifoam` (0/1). `SimOptions` gains `entrainment`, `weeping`, `downcomerLimit` switches (all true by default). `Kpis.maxWeepFraction`, `StageArrays.dpDry` and per-tray flag bits (1 dc-limited, 2 dumping, 4 overflowing, 8 dry, 16 flooding) are exposed.
@@ -61,3 +61,20 @@ See the section appended by the app work (fonts, layout choices) below.
 - A11 UI fps with full hydraulics (Windows profile build, 100x, 40 s): 60.0 fps, frame total p50 21.5 ms / p95 26.5 ms / p99 30.2 ms, 0.21 % of frames over 32 ms, achieved 99x. Froth dots and spray are drawn as batched point lists (the first version, with one circle per dot, had 15 % of frames over 32 ms).
 - A12: Phone portrait: the tray inspector floats (scrolling) over the free space under the chart instead of shrinking it. The scenario HUD starts collapsed on windows shorter than 500 dp. Injecting or clearing a fault clears the steady flag at once. The math overlay fades long equations at the right edge and scrolls them sideways (touch or mouse drag).
 - Emulator (lowsys_pixel, release APK) checks for M2 are in `docs/screenshots/m2/android_*`: faults and foam, inspector, math overlay, US units, scenario G11 in portrait and landscape.
+
+## M3 pass: spec changes folded in (1cc65e2)
+
+- E24: Default `traySpacing` is 0.90 m in `TrayGeometry` (bt and bt_custom_alpha), 62.9 % jet flood at design. G11 briefing says "about 63 % of flood".
+- E25: F07 `dz` is sum-zero: listed components get `sign * s * dz`, unlisted ones absorb the negative sum in proportion to their z; the list form `[0.15, -0.15]` and the map form `{"benzene": 0.08}` are both accepted; default is +0.15 on the light component (B-T z 0.50 to 0.65). Renormalised only if a fraction was clamped at zero.
+
+## M3 engine (control, instruments, alarms, cross-checks)
+
+- E26: The ideal 1 s flow lag is gone. FC-101/102/103 are PI loops (Kc 0.6, Ti 2 s) on the measured flow in a 0.1 s fast layer; the solver uses the mean valve flows F-bar. This supersedes E2 and E18. `tauFlow` is removed from the stepper. VC-7.2 is measured from the moment the delivered reflux reaches 63 % (amended definition; my `test/dynamics_test.dart` follows it).
+- E27: Level loops retuned within the +-50 % allowance of PHYSICS 10.7: Ti 1800 s becomes 1200 s (Kc stays 2.0). With 1800 s the drum needed about 3700 s to climb from 50 % to the HI alarm after a set point of 88 % (VC-25.2 allows 3600 s). VC-7.3 (deviation 2-6 points) still passes.
+- E28: Noise-on steady monitor thresholds ([impl-tunable], PHYSICS 13.3): the 300-s means of x, relative holdup and OP move by up to 1.1e-2, 5.3e-3 and 1.1 % from noise alone, so the tolerances are 1.8e-2, 8e-3 and 2.0 % instead of 2e-5, 2e-3 and 1.0 %. A +10 % reflux step is caught through the FC-102 OP (3.3 %). The monitor also watches all five loop OPs, not only the level loops.
+- E29: PDT-101 raises no OOR alarm with ideal hydraulics (the true value is 0, the bottom of its span, so noise would make it chatter).
+- E30: Orifice-drainage dumping (afd678b, PHYSICS 5.15 and 12.2) is implemented: kappa_j = ((0.2 - Phi)/0.2) C_dump A_drain sqrt(2 g v_L / A_a,eff)/v_L with start-of-step values, solved for u = sqrt(M) by Newton (at most 60 iterations). `HydraulicSolver.kd` now holds kappa. Sieve trays hold 0.7-1.4 mol (0.09-0.17 mm) after 10 min without boilup.
+- E31: Valve flows and positions below 1e-12 snap to exactly zero (a closed valve reads exactly 0).
+- E32: `Instrument` takes `seed`, `noise` and `initialValue` in its constructor and exposes `reading`; `ControlLoop.execute(pv, h)` returns the OP and `ControlLoop.setMode` is bumpless (the tester's bare-loop API). The Simulator keeps `fastLayerTrace`, `holdDrumLevelForTest` and `safetyLevelViolationSeconds` as @visibleForTesting-style hooks.
+- E33: If a retry halves a step after a solver failure, the control fast layer has already advanced once; the retry re-runs it on the smaller step (the failure path is exceptional and not bit-reproducible).
+- E34: Cross-checks C1, C3, C5 divide the level change by the window W as in PHYSICS 14.6 although the two 60-s means are W-60 s apart (this keeps the tester's reference formulas); C2 is implemented in Tier 1 as well (steady only, window of 1800 s or more).

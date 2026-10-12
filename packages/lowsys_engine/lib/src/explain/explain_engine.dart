@@ -78,7 +78,123 @@ class ExplainEngine {
         return _loop(t.tag);
       case ExplainMcCabe():
         return _mccabe(t.element);
+      case ExplainInstrument():
+        return _instrument(t.tag);
+      case ExplainValve():
+        return _valve(t.valveId);
+      case ExplainCheck():
+        return _check(t.checkId);
     }
+  }
+
+  ExplainResult _instrument(String tag) {
+    final r = snapshot.instruments.firstWhere((x) => x.tag == tag,
+        orElse: () => throw ArgumentError('No instrument $tag'));
+    final lines = <EquationLine>[
+      EquationLine(
+        id: 'eq.instrument',
+        physicsRef: 'PHYSICS.md (10.5)',
+        texSymbolic: r'v_{meas} = lo + \frac{I_q - 4}{16}\,(hi - lo)',
+        texSubstituted: r.milliamps.isNaN
+            ? 'v_{meas} = ${texNum(r.value)}'
+            : 'v_{meas} = ${texNum(r.lo)} + '
+                r'\frac{'
+                '${texNum(r.milliamps)}'
+                r' - 4}{16}\,('
+                '${texNum(r.hi)} - ${texNum(r.lo)}) = ${texNum(r.value)}',
+        value: r.value,
+        quantity: r.quantity,
+        note: r.qualityText == null
+            ? 'Quality ${r.quality.name}.'
+            : 'Quality ${r.quality.name} (${r.qualityText}).',
+      ),
+      if (r.resultAge != null)
+        EquationLine(
+          id: 'eq.analyser',
+          physicsRef: 'PHYSICS.md (10.5)',
+          texSymbolic: r'\text{age} = t - t_{sample}',
+          texSubstituted:
+              r'\text{age} = ' '${texNum(r.resultAge!)}' r'\ \mathrm{s}',
+          value: r.resultAge!,
+          quantity: Quantity.time,
+          note: 'A displayed analysis is 300-600 s old.',
+        ),
+    ];
+    return ExplainResult(
+        title: 'Instrument $tag',
+        groups: [EquationGroup('Signal chain', lines)],
+        notes: const [
+          'Noise, damping, impulse line and calibration are modelled per PHYSICS.md 10.5.'
+        ],
+        time: snapshot.time);
+  }
+
+  ExplainResult _valve(String id) {
+    final v = snapshot.valves.firstWhere((x) => x.id == id,
+        orElse: () => throw ArgumentError('No valve $id'));
+    return ExplainResult(
+      title: 'Valve $id',
+      groups: [
+        EquationGroup('Valve', [
+          EquationLine(
+            id: 'eq.valve',
+            physicsRef: 'PHYSICS.md (10.2)',
+            texSymbolic: r'F = F_{max}\,g(OP)\,(1+d)',
+            texSubstituted: 'F_{expected} = ${texNum(v.fMax)}'
+                r'\times'
+                '${texNum(v.op / 100)} = ${texNum(v.expectedFlow)}'
+                r'\ \mathrm{mol/s}',
+            value: v.expectedFlow,
+            quantity: Quantity.molarFlow,
+            note:
+                'The control system sees OP only; there is no position feedback.',
+          ),
+        ]),
+      ],
+      notes: const [],
+      time: snapshot.time,
+    );
+  }
+
+  ExplainResult _check(String id) {
+    final c = snapshot.crossChecks.firstWhere((x) => x.id == id,
+        orElse: () => throw ArgumentError('No check $id'));
+    final eqId = switch (c.id.split(':').first) {
+      'C1' => 'eq.check.material',
+      'C2' => 'eq.check.component',
+      'C3' => 'eq.check.topVapour',
+      'C4' => 'eq.check.valve',
+      'C5' => 'eq.check.level',
+      _ => 'eq.check.material',
+    };
+    final terms = c.terms.entries
+        .map((e) => '\\text{${e.key}} = ${texNum(e.value)}')
+        .join(',\\ ');
+    return ExplainResult(
+      title: 'Check ${c.id}',
+      groups: [
+        EquationGroup('Residual', [
+          EquationLine(
+            id: eqId,
+            physicsRef: 'PHYSICS.md 14.6',
+            texSymbolic: r'r = \text{measured} - \text{predicted}',
+            texSubstituted: c.status == CheckStatus.notAvailable
+                ? r'\text{not available}'
+                : '$terms;'
+                    r'\ r = '
+                    '${texNum(c.residual)},'
+                    r'\ \text{band} = '
+                    '${texNum(c.band)}',
+            value: c.residual,
+            note: c.reason,
+          ),
+        ]),
+      ],
+      notes: const [
+        'Computed from instrument readings only, so it works in plant view.'
+      ],
+      time: snapshot.time,
+    );
   }
 
   // ------------------------------------------------------------------ stage
@@ -421,7 +537,8 @@ class ExplainEngine {
 
   ExplainResult _loop(String tag) {
     final l = control.loop(tag);
-    final e = l.params.action == Action.direct ? l.pv - l.sp : l.sp - l.pv;
+    final pv = snapshot.loops.firstWhere((x) => x.tag == tag).pv;
+    final e = l.params.action == Action.direct ? pv - l.sp : l.sp - pv;
     return ExplainResult(
       title: 'Controller $tag',
       groups: [

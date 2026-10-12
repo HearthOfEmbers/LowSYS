@@ -81,19 +81,25 @@ void main() {
     final l0 = sim.snapshot().stages.liquidDown;
     final base1 = l0[1], base20 = l0[20];
     sim.setLever('refluxFlow', kmolh(110));
-    // the FC lag (3 s) is part of the response; measure from the lever change
-    double? t1, t20;
+    // VC-7.2 (amended): trays are timed from the moment the DELIVERED reflux reaches 63 %
+    final dl0 = sim.snapshot().streams[StreamId.reflux]!.flow;
+    double? t0, t1, t20;
     for (var i = 1; i <= 200; i++) {
       sim.step();
-      final st = sim.snapshot().stages.liquidDown;
+      final snap = sim.snapshot();
+      final st = snap.stages.liquidDown;
       final step = kmolh(10);
-      if (t1 == null && st[1] - base1 >= 0.632 * step) t1 = i * 0.5;
-      if (t20 == null && st[20] - base20 >= 0.632 * step) t20 = i * 0.5;
+      final t = i * 0.5;
+      if (t0 == null &&
+          snap.streams[StreamId.reflux]!.flow - dl0 >= 0.632 * step) t0 = t;
+      if (t1 == null && st[1] - base1 >= 0.632 * step) t1 = t;
+      if (t20 == null && st[20] - base20 >= 0.632 * step) t20 = t;
     }
+    expect(t0, isNotNull);
     expect(t1, isNotNull);
     expect(t20, isNotNull);
-    expect(t1!, inInclusiveRange(1, 4));
-    expect(t20!, inInclusiveRange(20, 45));
+    expect(t1! - t0!, inInclusiveRange(1, 4));
+    expect(t20! - t0, inInclusiveRange(20, 45));
   });
 
   test(

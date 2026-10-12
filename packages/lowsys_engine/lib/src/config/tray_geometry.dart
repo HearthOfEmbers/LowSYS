@@ -18,7 +18,7 @@ class TrayGeometry {
 
   const TrayGeometry({
     this.diameter = 1.2,
-    this.traySpacing = 0.6,
+    this.traySpacing = 0.9,
     this.downcomerFraction = 0.12,
     this.weirHeight = 0.05,
     this.apronClearance = 0.038,

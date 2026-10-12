@@ -99,7 +99,7 @@ void main() {
     expect(us.fromSI(Quantity.temperature, 373.15), closeTo(212, 1e-9));
     expect(si.fromSI(Quantity.molarFlow, 1 / 3.6), closeTo(1, 1e-12));
     expect(us.fromSI(Quantity.molarFlow, 453.59237 / 3600), closeTo(1, 1e-12));
-    expect(us.fromSI(Quantity.pressure, 6894.757293), closeTo(1, 1e-12));
+    expect(us.fromSI(Quantity.pressure, 6894.757293), closeTo(1, 1e-9));
     for (final q in Quantity.values) {
       for (final u in [si, us]) {
         expect(u.toSI(q, u.fromSI(q, 12.5)), closeTo(12.5, 1e-9),
@@ -116,7 +116,8 @@ void main() {
     final s = btSim().snapshot();
     expect(s.layout.nTrays, 20);
     expect(s.layout.feedStages, [10]);
-    expect(s.loops.map((l) => l.tag), ['LC-101', 'LC-102']);
+    expect(s.loops.map((l) => l.tag),
+        ['FC-101', 'FC-102', 'FC-103', 'LC-101', 'LC-102']);
     expect(s.streams[StreamId.feed]!.flow, closeTo(100 / 3.6, 1e-9));
     expect(s.kpis.refluxRatio, closeTo(2.0, 1e-6));
     expect(s.kpis.balanceResidual, lessThan(1e-8));

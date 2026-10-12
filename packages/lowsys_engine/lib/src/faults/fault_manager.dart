@@ -21,6 +21,9 @@ class FaultManager {
   bool _antifoam = false;
   double _antifoamSince = 0;
 
+  /// Component ids in column order, for `dz` maps (set by the simulator).
+  List<String> componentIds = const [];
+
   final double systemFactor;
   final double phiDcBase;
   FaultManager({this.systemFactor = 1.0, this.phiDcBase = 0.5});
@@ -28,7 +31,27 @@ class FaultManager {
   /// Called when faults are injected, cleared or the antifoam changes (the simulator clears its steady flag).
   void Function()? onChange;
 
+  /// Validation hook for control faults (installed by the simulator).
+  void Function(FaultSpec spec)? validator;
+
   FaultId inject(FaultSpec spec) {
+    final t0 = spec.type;
+    if (t0 == FaultType.instrument ||
+        t0 == FaultType.transmitter ||
+        t0 == FaultType.valve) {
+      validator?.call(spec);
+      if (t0 != FaultType.valve) {
+        // at most one F19/F28 fault per tag: the new one replaces the old
+        for (final f in _faults) {
+          if (!f.cleared &&
+              f.spec.location.tagName == spec.location.tagName &&
+              (f.spec.type == FaultType.instrument ||
+                  f.spec.type == FaultType.transmitter)) {
+            f.cleared = true;
+          }
+        }
+      }
+    }
     final id = 'F${++_counter}';
     _faults.add(_Fault(id, spec));
     onChange?.call();
@@ -88,6 +111,31 @@ class FaultManager {
   /// Active (not cleared, not hidden) faults with their final severities.
   List<FaultInfo> get active => activeAt(double.infinity);
 
+  /// Active instrument, transmitter and valve faults (F19, F28, F20).
+  Iterable<FaultSpec> get controlSpecs sync* {
+    for (final f in _faults) {
+      if (f.cleared) continue;
+      final t = f.spec.type;
+      if (t == FaultType.instrument ||
+          t == FaultType.transmitter ||
+          t == FaultType.valve) {
+        yield f.spec;
+      }
+    }
+  }
+
+  /// Clears every instrument/transmitter fault on [tag] (end of maintenance).
+  void clearTag(String tag) {
+    for (final f in _faults) {
+      if (f.spec.location.tagName == tag &&
+          (f.spec.type == FaultType.instrument ||
+              f.spec.type == FaultType.transmitter)) {
+        f.cleared = true;
+      }
+    }
+    onChange?.call();
+  }
+
   bool get hasActive => _faults.any((f) => !f.cleared);
 
   /// Builds the effective parameters for time [t] (called at the start of every step).
@@ -126,23 +174,62 @@ class FaultManager {
           }
         case FaultType.feedComposition:
           final dz = f.spec.params['dz'];
-          for (var i = 0; i < ep.nc; i++) {
-            double d = 0;
-            if (dz is List) {
-              d = i < dz.length ? (dz[i]! as num).toDouble() : 0;
-            } else if (i == 0) {
-              d = 0.15;
+          final sg = f.spec.params['sign'];
+          final sign = sg is num ? sg.toDouble() : 1.0;
+          final nc = ep.nc;
+          final listed = List<bool>.filled(nc, false);
+          final d = List<double>.filled(nc, 0);
+          if (dz is List) {
+            for (var i = 0; i < nc && i < dz.length; i++) {
+              d[i] = (dz[i]! as num).toDouble();
+              listed[i] = true;
             }
-            ep.zEff[i] += s * d;
+          } else if (dz is Map) {
+            for (final e in dz.entries) {
+              final k = componentIds.indexOf(e.key as String);
+              if (k >= 0 && k < nc) {
+                d[k] = (e.value! as num).toDouble();
+                listed[k] = true;
+              }
+            }
+          } else {
+            d[0] = 0.15;
+            listed[0] = true;
           }
-          var sum = 0.0;
-          for (var i = 0; i < ep.nc; i++) {
-            ep.zEff[i] = math.max(ep.zEff[i], 0);
-            sum += ep.zEff[i];
+          // sum-zero convention (PHYSICS.md 11): unlisted components absorb -sum(listed) in proportion to z
+          var sumListed = 0.0, zRest = 0.0;
+          for (var i = 0; i < nc; i++) {
+            if (listed[i]) {
+              sumListed += d[i];
+            } else {
+              zRest += ep.zEff[i];
+            }
           }
-          if (sum > 0) {
-            for (var i = 0; i < ep.nc; i++) {
-              ep.zEff[i] /= sum;
+          for (var i = 0; i < nc; i++) {
+            if (!listed[i]) {
+              d[i] = zRest > 0
+                  ? -sumListed * ep.zEff[i] / zRest
+                  : -sumListed /
+                      (nc - listed.where((e) => !e).length.clamp(1, nc));
+            }
+          }
+          var clamped = false;
+          for (var i = 0; i < nc; i++) {
+            ep.zEff[i] += sign * s * d[i];
+            if (ep.zEff[i] < 0) {
+              ep.zEff[i] = 0;
+              clamped = true;
+            }
+          }
+          if (clamped) {
+            var sum = 0.0;
+            for (var i = 0; i < nc; i++) {
+              sum += ep.zEff[i];
+            }
+            if (sum > 0) {
+              for (var i = 0; i < nc; i++) {
+                ep.zEff[i] /= sum;
+              }
             }
           }
         default:

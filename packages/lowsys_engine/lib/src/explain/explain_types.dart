@@ -39,6 +39,24 @@ class ExplainLoop extends ExplainTarget {
   const ExplainLoop(this.tag);
 }
 
+/// A transmitter or analyser (PHYSICS.md 10.5): the pipeline with the current values.
+class ExplainInstrument extends ExplainTarget {
+  final String tag;
+  const ExplainInstrument(this.tag);
+}
+
+/// A control valve (PHYSICS.md 10.3).
+class ExplainValve extends ExplainTarget {
+  final String valveId;
+  const ExplainValve(this.valveId);
+}
+
+/// A cross-check (PHYSICS.md 14.6), e.g. `C1`, `C4:FV-102`.
+class ExplainCheck extends ExplainTarget {
+  final String checkId;
+  const ExplainCheck(this.checkId);
+}
+
 enum McCabeElement { opLine, qLine, rmin, equilibrium }
 
 class ExplainMcCabe extends ExplainTarget {

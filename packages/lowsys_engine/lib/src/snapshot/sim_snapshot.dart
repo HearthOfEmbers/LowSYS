@@ -3,13 +3,23 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../core/ids.dart';
+import '../control/instrument.dart';
 import '../faults/fault_spec.dart';
+
+export '../control/instrument.dart'
+    show Quality, InstrumentType, InstrumentReading;
 
 enum StageKind { drum, tray, sump }
 
 enum StreamId { feed, reflux, distillate, bottoms, vaporProduct, boilup }
 
 enum AlarmPriority { low, medium, high }
+
+enum AlarmState { unack, acked, rtnUnack }
+
+enum SimView { model, plant }
+
+enum CheckStatus { ok, check, fail, notAvailable, transient }
 
 /// Where things are on the column (ENGINE_API.md 7.1).
 @immutable
@@ -125,9 +135,59 @@ class LoopSnapshot {
   final LoopTag tag;
   final LoopMode mode;
 
-  /// PV and SP in loop units (% for levels), OP in %.
+  /// PV (the reading, SI; % for levels), SP (SI), OP (%).
   final double pv, sp, op;
-  const LoopSnapshot(this.tag, this.mode, this.pv, this.sp, this.op);
+
+  /// In MAN because of a BAD PV.
+  final bool shed;
+  final Quality pvQuality;
+  final double spLo, spHi, opLo, opHi;
+  final double kc, ti, td;
+  final Action action;
+
+  /// SP was set by MAN to AUTO tracking.
+  final bool spTracked;
+  final double lastError, lastDeltaOp;
+  const LoopSnapshot(
+    this.tag,
+    this.mode,
+    this.pv,
+    this.sp,
+    this.op, {
+    this.shed = false,
+    this.pvQuality = Quality.good,
+    this.spLo = 0,
+    this.spHi = 100,
+    this.opLo = 0,
+    this.opHi = 100,
+    this.kc = 1,
+    this.ti = double.infinity,
+    this.td = 0,
+    this.action = Action.reverse,
+    this.spTracked = false,
+    this.lastError = 0,
+    this.lastDeltaOp = 0,
+  });
+}
+
+@immutable
+class ValveSnapshot {
+  final String id;
+
+  /// Command from its loop (%).
+  final double op;
+
+  /// Actual position (%); NaN in plant view.
+  final double position;
+  final double fMax;
+
+  /// F_max g(OP), the C4 reference curve.
+  final double expectedFlow;
+
+  /// -1 closed or 0..100.
+  final double bypass;
+  const ValveSnapshot(this.id, this.op, this.position, this.fMax,
+      this.expectedFlow, this.bypass);
 }
 
 @immutable
@@ -136,8 +196,85 @@ class Alarm {
   final AlarmPriority priority;
   final bool acknowledged;
   final double raisedAt;
+  final AlarmState state;
+  final double changedAt;
   const Alarm(
-      this.id, this.message, this.priority, this.acknowledged, this.raisedAt);
+      this.id, this.message, this.priority, this.acknowledged, this.raisedAt,
+      {this.state = AlarmState.unack, this.changedAt = 0});
+}
+
+@immutable
+class CrossCheckResult {
+  /// 'C1' .. 'C7', 'C4:FV-102', 'C5:drum', 'C6:TI-114'.
+  final String id;
+  final String titleKey;
+  final double residual, band;
+  final CheckStatus status;
+  final List<String> inputs;
+  final String? reason;
+  final Map<String, double> terms;
+  const CrossCheckResult(this.id, this.titleKey, this.residual, this.band,
+      this.status, this.inputs, this.reason, this.terms);
+}
+
+@immutable
+class FieldCheck {
+  final String gaugeTag;
+  final double requestedAt, readyAt;
+  final double? value;
+  const FieldCheck(this.gaugeTag, this.requestedAt, this.readyAt, this.value);
+}
+
+enum ScenarioKind { guided, drill }
+
+@immutable
+class ObjectiveState {
+  final String id, text;
+  final bool met;
+  final double? metAt;
+  final double holdProgress;
+  final double holdFor;
+  const ObjectiveState(this.id, this.text, this.met, this.metAt,
+      this.holdProgress, this.holdFor);
+}
+
+@immutable
+class HintState {
+  final int index;
+  final bool unlocked, taken;
+  final double cost;
+  final String? text;
+  const HintState(this.index, this.unlocked, this.taken, this.cost, this.text);
+}
+
+@immutable
+class ScenarioMessage {
+  final double time;
+  final String text;
+  const ScenarioMessage(this.time, this.text);
+}
+
+@immutable
+class ScenarioSnapshot {
+  final String id;
+  final ScenarioKind kind;
+  final double elapsed, timeLimit;
+  final List<ObjectiveState> objectives;
+  final List<HintState> hints;
+  final List<ScenarioMessage> messages;
+  final int diagnosisAttemptsLeft;
+  final bool finished;
+  const ScenarioSnapshot({
+    required this.id,
+    required this.kind,
+    required this.elapsed,
+    required this.timeLimit,
+    required this.objectives,
+    required this.hints,
+    required this.messages,
+    this.diagnosisAttemptsLeft = 0,
+    this.finished = false,
+  });
 }
 
 @immutable
@@ -234,6 +371,14 @@ class SimSnapshot {
   /// Feed thermal condition q (Tier 1) and Murphree efficiency used by the diagrams.
   final double feedQ, murphree;
 
+  /// M3: plant or model view, instrument readings, valves, cross-checks, field checks, scenario state.
+  final SimView view;
+  final List<InstrumentReading> instruments;
+  final List<ValveSnapshot> valves;
+  final List<CrossCheckResult> crossChecks;
+  final List<FieldCheck> fieldChecks;
+  final ScenarioSnapshot? scenario;
+
   const SimSnapshot({
     required this.serial,
     required this.time,
@@ -255,6 +400,12 @@ class SimSnapshot {
     required this.levers,
     required this.feedQ,
     required this.murphree,
+    this.view = SimView.model,
+    this.instruments = const [],
+    this.valves = const [],
+    this.crossChecks = const [],
+    this.fieldChecks = const [],
+    this.scenario,
   });
 
   /// Copy with the runner-supplied achieved speed.
@@ -279,5 +430,11 @@ class SimSnapshot {
         levers: levers,
         feedQ: feedQ,
         murphree: murphree,
+        view: view,
+        instruments: instruments,
+        valves: valves,
+        crossChecks: crossChecks,
+        fieldChecks: fieldChecks,
+        scenario: scenario,
       );
 }

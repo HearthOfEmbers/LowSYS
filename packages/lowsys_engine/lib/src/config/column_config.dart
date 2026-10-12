@@ -185,7 +185,7 @@ class ControlConfig {
   final double? distillateMax, bottomsMax;
   const ControlConfig({
     this.levelKc = 2.0,
-    this.levelTi = 1800,
+    this.levelTi = 1200,
     this.drumLevelSp = 50,
     this.sumpLevelSp = 50,
     this.distillateMax,
