@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../painters/effects/blueprint_grid.dart';
 import '../theme/lowsys_theme.dart';
+import '../widgets/alarm_bar.dart';
 import '../widgets/column_view.dart';
 import '../widgets/diagram_panel.dart';
 import '../widgets/fault_panel.dart';
@@ -16,19 +17,21 @@ class SimLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final size = Size(c.maxWidth, c.maxHeight);
-      switch (layoutClassFor(size)) {
-        case LayoutClass.compactPortrait:
-          return _CompactPortrait(size: size);
-        case LayoutClass.compactLandscape:
-          return const _CompactLandscape();
-        case LayoutClass.medium:
-          return const _Medium();
-        case LayoutClass.expanded:
-          return const _Expanded();
-      }
-    });
+    return LayoutBuilder(
+      builder: (context, c) {
+        final size = Size(c.maxWidth, c.maxHeight);
+        switch (layoutClassFor(size)) {
+          case LayoutClass.compactPortrait:
+            return _CompactPortrait(size: size);
+          case LayoutClass.compactLandscape:
+            return const _CompactLandscape();
+          case LayoutClass.medium:
+            return const _Medium();
+          case LayoutClass.expanded:
+            return const _Expanded();
+        }
+      },
+    );
   }
 }
 
@@ -38,7 +41,13 @@ class SheetPanel extends StatelessWidget {
   final String? title;
   final Widget? trailing;
   final EdgeInsets padding;
-  const SheetPanel({super.key, required this.child, this.title, this.trailing, this.padding = EdgeInsets.zero});
+  const SheetPanel({
+    super.key,
+    required this.child,
+    this.title,
+    this.trailing,
+    this.padding = EdgeInsets.zero,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -56,12 +65,25 @@ class SheetPanel extends StatelessWidget {
               if (title != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
-                  child: Row(children: [
-                    Expanded(child: Text(title!, style: t.type.display.style(14, p.accent, weight: FontWeight.w700))),
-                    if (trailing != null) trailing!,
-                  ]),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title!,
+                          style: t.type.display.style(
+                            14,
+                            p.accent,
+                            weight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (trailing != null) trailing!,
+                    ],
+                  ),
                 ),
-              Expanded(child: Padding(padding: padding, child: child)),
+              Expanded(
+                child: Padding(padding: padding, child: child),
+              ),
             ],
           ),
         ),
@@ -80,7 +102,11 @@ class _DiagramPanel extends StatelessWidget {
   final Widget? header;
   final bool compact;
   final bool inspector;
-  const _DiagramPanel({this.header, this.compact = false, this.inspector = true});
+  const _DiagramPanel({
+    this.header,
+    this.compact = false,
+    this.inspector = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -88,22 +114,29 @@ class _DiagramPanel extends StatelessWidget {
     // selecting a tray never squeezes the chart.
     if (compact && inspector && header == null) {
       return SheetPanel(
-        child: LayoutBuilder(builder: (context, c) {
-          final plotSide = (c.maxWidth - 52).clamp(40.0, c.maxHeight - 120);
-          final free = (c.maxHeight - plotSide - 88).clamp(96.0, c.maxHeight * 0.6);
-          return Stack(children: [
-            Positioned.fill(child: DiagramBody(compact: compact)),
-            Positioned(
-              left: 4,
-              right: 4,
-              bottom: 4,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: free),
-                child: const SingleChildScrollView(child: TrayInspector()),
-              ),
-            ),
-          ]);
-        }),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final plotSide = (c.maxWidth - 52).clamp(40.0, c.maxHeight - 120);
+            final free = (c.maxHeight - plotSide - 88).clamp(
+              96.0,
+              c.maxHeight * 0.6,
+            );
+            return Stack(
+              children: [
+                Positioned.fill(child: DiagramBody(compact: compact)),
+                Positioned(
+                  left: 4,
+                  right: 4,
+                  bottom: 4,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: free),
+                    child: const SingleChildScrollView(child: TrayInspector()),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       );
     }
     return SheetPanel(
@@ -137,11 +170,14 @@ class _CompactPortrait extends StatelessWidget {
         Column(
           children: [
             const TimeBar(dense: true),
+            const AlarmBar(),
             const Expanded(
-              child: Row(children: [
-                Expanded(flex: 40, child: _ColumnPanel()),
-                Expanded(flex: 60, child: _DiagramPanel(compact: true)),
-              ]),
+              child: Row(
+                children: [
+                  Expanded(flex: 40, child: _ColumnPanel()),
+                  Expanded(flex: 60, child: _DiagramPanel(compact: true)),
+                ],
+              ),
             ),
             const KpiStrip(),
             SizedBox(height: size.height * peek),
@@ -157,14 +193,23 @@ class _CompactPortrait extends StatelessWidget {
             decoration: BoxDecoration(
               color: p.bgAlt,
               border: Border(top: BorderSide(color: p.accent, width: 1.5)),
-              boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 10)],
+              boxShadow: const [
+                BoxShadow(color: Color(0x66000000), blurRadius: 10),
+              ],
             ),
             child: ControlTabs(
               controller: ctl,
               scrollTabs: true,
               handle: Padding(
                 padding: const EdgeInsets.only(top: 8, bottom: 4),
-                child: Container(width: 44, height: 4, decoration: BoxDecoration(color: p.inkMuted, borderRadius: BorderRadius.circular(2))),
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: p.inkMuted,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
             ),
           ),
@@ -183,18 +228,31 @@ class _CompactLandscape extends StatelessWidget {
         const Expanded(flex: 22, child: _ColumnPanel()),
         Expanded(
           flex: 48,
-          child: Column(children: const [
-            Expanded(child: _DiagramPanel(header: TimeBar(dense: true), compact: true, inspector: false)),
-            KpiStrip(),
-          ]),
+          child: Column(
+            children: const [
+              Expanded(
+                child: _DiagramPanel(
+                  header: Column(children: [TimeBar(dense: true), AlarmBar()]),
+                  compact: true,
+                  inspector: false,
+                ),
+              ),
+              KpiStrip(),
+            ],
+          ),
         ),
         Expanded(
           flex: 30,
           child: SheetPanel(
-            child: Column(children: const [
-              Padding(padding: EdgeInsets.fromLTRB(4, 4, 4, 0), child: TrayInspector(hideWhenEmpty: true)),
-              Expanded(child: ControlTabs()),
-            ]),
+            child: Column(
+              children: const [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
+                  child: TrayInspector(hideWhenEmpty: true),
+                ),
+                Expanded(child: ControlTabs()),
+              ],
+            ),
           ),
         ),
       ],
@@ -214,34 +272,58 @@ class _MediumState extends State<_Medium> {
   Widget build(BuildContext context) {
     final t = LowsysThemeScope.of(context);
     final p = t.palette;
-    return LayoutBuilder(builder: (context, c) {
-      return Column(
-        children: [
-          const TimeBar(),
-          const Expanded(
-            child: Row(children: [
-              Expanded(flex: 30, child: _ColumnPanel()),
-              Expanded(flex: 70, child: _DiagramPanel()),
-            ]),
-          ),
-          const KpiStrip(),
-          InkWell(
-            onTap: () => setState(() => open = !open),
-            child: Container(
-              height: 36,
-              color: p.bgAlt,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(children: [
-                Text('CONTROLS', style: t.type.display.style(14, p.accent, weight: FontWeight.w700)),
-                const Spacer(),
-                Icon(open ? Icons.expand_more : Icons.expand_less, color: p.inkMuted),
-              ]),
+    return LayoutBuilder(
+      builder: (context, c) {
+        return Column(
+          children: [
+            const TimeBar(),
+            const AlarmBar(),
+            const Expanded(
+              child: Row(
+                children: [
+                  Expanded(flex: 30, child: _ColumnPanel()),
+                  Expanded(flex: 70, child: _DiagramPanel()),
+                ],
+              ),
             ),
-          ),
-          if (open) SizedBox(height: c.maxHeight * 0.40, child: const ColoredBox(color: Color(0x33000000), child: ControlTabs())),
-        ],
-      );
-    });
+            const KpiStrip(),
+            InkWell(
+              onTap: () => setState(() => open = !open),
+              child: Container(
+                height: 36,
+                color: p.bgAlt,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Text(
+                      'CONTROLS',
+                      style: t.type.display.style(
+                        14,
+                        p.accent,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      open ? Icons.expand_more : Icons.expand_less,
+                      color: p.inkMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (open)
+              SizedBox(
+                height: c.maxHeight * 0.40,
+                child: const ColoredBox(
+                  color: Color(0x33000000),
+                  child: ControlTabs(),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -252,12 +334,15 @@ class _Expanded extends StatelessWidget {
     return Column(
       children: const [
         TimeBar(),
+        AlarmBar(),
         Expanded(
-          child: Row(children: [
-            Expanded(flex: 25, child: _ColumnPanel()),
-            Expanded(flex: 50, child: _DiagramPanel()),
-            Expanded(flex: 25, child: SheetPanel(child: ControlTabs())),
-          ]),
+          child: Row(
+            children: [
+              Expanded(flex: 25, child: _ColumnPanel()),
+              Expanded(flex: 50, child: _DiagramPanel()),
+              Expanded(flex: 25, child: SheetPanel(child: ControlTabs())),
+            ],
+          ),
         ),
         KpiStrip(scroll: false),
       ],

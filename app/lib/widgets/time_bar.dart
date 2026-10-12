@@ -40,26 +40,52 @@ class TimeBar extends StatelessWidget {
             children: [
               IconButton(
                 tooltip: paused ? 'Resume (Space)' : 'Pause (Space)',
-                style: dense ? IconButton.styleFrom(minimumSize: const Size(44, 48), padding: EdgeInsets.zero) : null,
-                icon: Icon(paused ? Icons.play_arrow_rounded : Icons.pause_rounded, color: p.accent, size: 28),
+                style: dense
+                    ? IconButton.styleFrom(
+                        minimumSize: const Size(44, 48),
+                        padding: EdgeInsets.zero,
+                      )
+                    : null,
+                icon: Icon(
+                  paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                  color: p.accent,
+                  size: 28,
+                ),
                 onPressed: sim.togglePause,
               ),
               Flexible(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: ValueListenableBuilder<SimSnapshot?>(
-                valueListenable: sim.snapshot,
-                builder: (_, s, __) => Text(formatClock(s?.time ?? 0), style: t.type.number.style(dense ? 14 : 15, p.ink, weight: FontWeight.w600)),
-              ),
+                    valueListenable: sim.snapshot,
+                    builder: (_, s, __) => Text(
+                      formatClock(s?.time ?? 0),
+                      style: t.type.number.style(
+                        dense ? 14 : 15,
+                        p.ink,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 4),
               _SpeedMenu(sim: sim),
               const Spacer(),
-              Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: _SteadyChip(sim: sim, dense: dense))),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: _SteadyChip(sim: sim, dense: dense),
+                ),
+              ),
               IconButton(
                 tooltip: 'Run to steady state (S)',
-                style: dense ? IconButton.styleFrom(minimumSize: const Size(44, 48), padding: EdgeInsets.zero) : null,
+                style: dense
+                    ? IconButton.styleFrom(
+                        minimumSize: const Size(44, 48),
+                        padding: EdgeInsets.zero,
+                      )
+                    : null,
                 icon: Icon(Icons.fast_forward_rounded, color: p.ink),
                 onPressed: sim.runToSteady,
               ),
@@ -86,7 +112,11 @@ class _SpeedMenu extends StatelessWidget {
       onSelected: sim.setSpeed,
       itemBuilder: (_) => [
         for (final v in kSpeeds)
-          PopupMenuItem<double>(value: v, height: 44, child: Text(speedLabel(v), style: t.type.number.style(15, p.ink))),
+          PopupMenuItem<double>(
+            value: v,
+            height: 44,
+            child: Text(speedLabel(v), style: t.type.number.style(15, p.ink)),
+          ),
       ],
       child: Container(
         constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
@@ -100,8 +130,14 @@ class _SpeedMenu extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  limited ? '≈${ach.toStringAsFixed(0)}×' : speedLabel(sim.speed),
-                  style: t.type.number.style(15, limited ? p.warn : p.accent, weight: FontWeight.w700),
+                  limited
+                      ? '≈${ach.toStringAsFixed(0)}×'
+                      : speedLabel(sim.speed),
+                  style: t.type.number.style(
+                    15,
+                    limited ? p.warn : p.accent,
+                    weight: FontWeight.w700,
+                  ),
                 ),
                 Icon(Icons.arrow_drop_down, color: p.inkMuted, size: 18),
               ],
@@ -128,17 +164,26 @@ class _SteadyChip extends StatelessWidget {
         final steady = s?.steady.isSteady ?? false;
         final c = steady ? p.ok : p.warn;
         return Tooltip(
-          message: steady ? 'Steady state (residual below tolerance)' : 'Transient: the column is still moving',
+          message: steady
+              ? 'Steady state (residual below tolerance)'
+              : 'Transient: the column is still moving',
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 10,
                 height: 10,
-                decoration: BoxDecoration(color: steady ? c : Colors.transparent, border: Border.all(color: c, width: 1.6), shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: steady ? c : Colors.transparent,
+                  border: Border.all(color: c, width: 1.6),
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 5),
-              Text(steady ? 'Steady' : 'Transient', style: t.type.label.style(12.5, c)),
+              Text(
+                steady ? 'Steady' : 'Transient',
+                style: t.type.label.style(12.5, c),
+              ),
             ],
           ),
         );
@@ -159,7 +204,12 @@ class _PresetMenu extends StatelessWidget {
     return PopupMenuButton<String>(
       tooltip: 'Presets and options',
       icon: Icon(Icons.more_vert, color: p.ink),
-      style: dense ? IconButton.styleFrom(minimumSize: const Size(44, 48), padding: EdgeInsets.zero) : null,
+      style: dense
+          ? IconButton.styleFrom(
+              minimumSize: const Size(44, 48),
+              padding: EdgeInsets.zero,
+            )
+          : null,
       onSelected: (v) {
         if (v == 'reset') {
           sim.reset();
@@ -169,6 +219,10 @@ class _PresetMenu extends StatelessWidget {
           sim.toggleUnits();
         } else if (v == 'scenarios') {
           showScenarioList(context, sim);
+        } else if (v.startsWith('save')) {
+          sim.saveSandbox(int.parse(v.substring(4)));
+        } else if (v.startsWith('load')) {
+          sim.loadSandbox(int.parse(v.substring(4)));
         } else if (v == 'leave') {
           sim.leaveScenario();
           sim.reset();
@@ -178,13 +232,68 @@ class _PresetMenu extends StatelessWidget {
       },
       itemBuilder: (_) => [
         for (final e in kPresetNames.entries)
-          CheckedPopupMenuItem<String>(value: e.key, checked: sim.presetId == e.key, child: Text(e.value, style: t.type.label.style(14, p.ink))),
+          CheckedPopupMenuItem<String>(
+            value: e.key,
+            checked: sim.presetId == e.key,
+            child: Text(e.value, style: t.type.label.style(14, p.ink)),
+          ),
         const PopupMenuDivider(),
-        PopupMenuItem<String>(value: 'scenarios', child: Text('Guided scenarios…', style: t.type.label.style(14, p.ink))),
-        if (sim.scenario != null) PopupMenuItem<String>(value: 'leave', child: Text('Leave scenario (sandbox)', style: t.type.label.style(14, p.ink))),
-        PopupMenuItem<String>(value: 'units', child: Text('Units: ${sim.units.value == UnitSystem.si ? 'SI → US field' : 'US field → SI'} (U)', style: t.type.label.style(14, p.ink))),
-        PopupMenuItem<String>(value: 'rmin', child: Text(sim.showRmin ? 'Hide R_min construction' : 'Show R_min construction', style: t.type.label.style(14, p.ink))),
-        PopupMenuItem<String>(value: 'reset', child: Text('Reset to steady state', style: t.type.label.style(14, p.ink))),
+        PopupMenuItem<String>(
+          value: 'scenarios',
+          child: Text(
+            'Guided scenarios…',
+            style: t.type.label.style(14, p.ink),
+          ),
+        ),
+        if (sim.scenarioDef != null)
+          PopupMenuItem<String>(
+            value: 'leave',
+            child: Text(
+              'Leave scenario (sandbox)',
+              style: t.type.label.style(14, p.ink),
+            ),
+          ),
+        PopupMenuItem<String>(
+          value: 'units',
+          child: Text(
+            'Units: ${sim.units.value == UnitSystem.si ? 'SI → US field' : 'US field → SI'} (U)',
+            style: t.type.label.style(14, p.ink),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'rmin',
+          child: Text(
+            sim.showRmin
+                ? 'Hide R_min construction'
+                : 'Show R_min construction',
+            style: t.type.label.style(14, p.ink),
+          ),
+        ),
+        if (sim.saveStore != null && sim.scenarioDef == null) ...[
+          for (final n in [1, 2, 3])
+            PopupMenuItem<String>(
+              value: 'save$n',
+              child: Text(
+                'Save sandbox to slot $n',
+                style: t.type.label.style(14, p.ink),
+              ),
+            ),
+          for (final n in [1, 2, 3])
+            PopupMenuItem<String>(
+              value: 'load$n',
+              child: Text(
+                'Load sandbox slot $n',
+                style: t.type.label.style(14, p.ink),
+              ),
+            ),
+        ],
+        PopupMenuItem<String>(
+          value: 'reset',
+          child: Text(
+            'Reset to steady state',
+            style: t.type.label.style(14, p.ink),
+          ),
+        ),
       ],
     );
   }

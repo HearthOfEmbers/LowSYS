@@ -40,7 +40,12 @@ class LeverPanel extends StatelessWidget {
   final ScrollController? controller;
   final EdgeInsets padding;
   final Widget? header;
-  const LeverPanel({super.key, this.controller, this.header, this.padding = const EdgeInsets.fromLTRB(12, 4, 12, 24)});
+  const LeverPanel({
+    super.key,
+    this.controller,
+    this.header,
+    this.padding = const EdgeInsets.fromLTRB(12, 4, 12, 24),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -73,14 +78,19 @@ class LeverPanel extends StatelessWidget {
             }
 
             Widget tile(String id) => LeverTile(
-                  spec: byId(id)!,
-                  value: values[id] ?? byId(id)!.defaultValue,
-                  sim: sim,
-                  units: u,
-                  locked: locked.contains(id),
-                );
+              spec: byId(id)!,
+              value: values[id] ?? byId(id)!.defaultValue,
+              sim: sim,
+              units: u,
+              locked: locked.contains(id),
+            );
             final feedZ = levers.firstWhere((l) => l.id.startsWith('feedZ.'));
-            group('FEED', [tile('feedFlow'), tile(feedZ.id), tile('feedQ'), tile('feedStage')]);
+            group('FEED', [
+              tile('feedFlow'),
+              tile(feedZ.id),
+              tile('feedQ'),
+              tile('feedStage'),
+            ]);
             group('TOP', [
               _Segments(
                 options: const ['Reflux flow', 'Reflux ratio'],
@@ -104,7 +114,9 @@ class LeverPanel extends StatelessWidget {
                 child: _Segments(
                   options: const ['Ideal', 'Full'],
                   selected: full ? 1 : 0,
-                  onSelect: locked.contains('hydraulics') ? null : (i) => sim.setLever('hydraulics', i.toDouble()),
+                  onSelect: locked.contains('hydraulics')
+                      ? null
+                      : (i) => sim.setLever('hydraulics', i.toDouble()),
                   t: t,
                 ),
               ),
@@ -115,7 +127,9 @@ class LeverPanel extends StatelessWidget {
                   child: _Segments(
                     options: const ['Sieve', 'Valve'],
                     selected: (values['trayType.0'] ?? 0) >= 0.5 ? 1 : 0,
-                    onSelect: locked.contains('trayType.0') ? null : (i) => sim.setLever('trayType.0', i.toDouble()),
+                    onSelect: locked.contains('trayType.0')
+                        ? null
+                        : (i) => sim.setLever('trayType.0', i.toDouble()),
                     t: t,
                   ),
                 ),
@@ -131,7 +145,52 @@ class LeverPanel extends StatelessWidget {
                   ),
                 ),
             ]);
-            return ListView(controller: controller, padding: padding, children: children);
+            group('INSTRUMENTS', [
+              _Labeled(
+                label: 'Measurement noise',
+                t: t,
+                child: _Segments(
+                  options: const ['Off', 'On'],
+                  selected: (values['noise'] ?? 0) >= 0.5 ? 1 : 0,
+                  onSelect: locked.contains('noise')
+                      ? null
+                      : (i) => sim.setLever('noise', i.toDouble()),
+                  t: t,
+                ),
+              ),
+              _Labeled(
+                label: 'View',
+                t: t,
+                child: _Segments(
+                  options: const [
+                    'Model (true values)',
+                    'Plant (readings only)',
+                  ],
+                  selected: (values['view'] ?? 0) >= 0.5 ? 1 : 0,
+                  onSelect: locked.contains('view')
+                      ? null
+                      : (i) => sim.setLever('view', i.toDouble()),
+                  t: t,
+                ),
+              ),
+              _Labeled(
+                label: 'Loop on a bad signal',
+                t: t,
+                child: _Segments(
+                  options: const ['Keeps running', 'Drops to MAN'],
+                  selected: (values['badPvShed'] ?? 1) >= 0.5 ? 1 : 0,
+                  onSelect: locked.contains('badPvShed')
+                      ? null
+                      : (i) => sim.setLever('badPvShed', i.toDouble()),
+                  t: t,
+                ),
+              ),
+            ]);
+            return ListView(
+              controller: controller,
+              padding: padding,
+              children: children,
+            );
           },
         );
       },
@@ -148,11 +207,16 @@ class _GroupHeader extends StatelessWidget {
     final p = t.palette;
     return Padding(
       padding: const EdgeInsets.only(top: 14, bottom: 2),
-      child: Row(children: [
-        Text(title, style: t.type.display.style(14, p.accent, weight: FontWeight.w700)),
-        const SizedBox(width: 8),
-        Expanded(child: Container(height: 1, color: p.gridMajor)),
-      ]),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: t.type.display.style(14, p.accent, weight: FontWeight.w700),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Container(height: 1, color: p.gridMajor)),
+        ],
+      ),
     );
   }
 }
@@ -164,13 +228,16 @@ class _Labeled extends StatelessWidget {
   const _Labeled({required this.label, required this.child, required this.t});
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: t.type.label.style(13.5, t.palette.ink)),
-          const SizedBox(height: 3),
-          child,
-        ]),
-      );
+    padding: const EdgeInsets.only(top: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: t.type.label.style(13.5, t.palette.ink)),
+        const SizedBox(height: 3),
+        child,
+      ],
+    ),
+  );
 }
 
 class _Segments extends StatelessWidget {
@@ -178,27 +245,46 @@ class _Segments extends StatelessWidget {
   final int selected;
   final void Function(int)? onSelect;
   final LowsysTheme t;
-  const _Segments({required this.options, required this.selected, required this.onSelect, required this.t});
+  const _Segments({
+    required this.options,
+    required this.selected,
+    required this.onSelect,
+    required this.t,
+  });
   @override
   Widget build(BuildContext context) {
     final p = t.palette;
-    return Row(children: [
-      for (var i = 0; i < options.length; i++)
-        Expanded(
-          child: InkWell(
-            onTap: onSelect == null ? null : () => onSelect!(i),
-            child: Container(
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: i == selected ? p.accent.withValues(alpha: 0.18) : Colors.transparent,
-                border: Border.all(color: i == selected ? p.accent : p.gridMajor),
+    return Row(
+      children: [
+        for (var i = 0; i < options.length; i++)
+          Expanded(
+            child: InkWell(
+              onTap: onSelect == null ? null : () => onSelect!(i),
+              child: Container(
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: i == selected
+                      ? p.accent.withValues(alpha: 0.18)
+                      : Colors.transparent,
+                  border: Border.all(
+                    color: i == selected ? p.accent : p.gridMajor,
+                  ),
+                ),
+                child: Text(
+                  options[i],
+                  style: t.type.label.style(
+                    13,
+                    i == selected
+                        ? p.accent
+                        : (onSelect == null ? p.inkFaint : p.inkMuted),
+                  ),
+                ),
               ),
-              child: Text(options[i], style: t.type.label.style(13, i == selected ? p.accent : (onSelect == null ? p.inkFaint : p.inkMuted))),
             ),
           ),
-        ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -209,11 +295,21 @@ class LeverTile extends StatelessWidget {
   final SimController sim;
   final UnitSystem units;
   final bool locked;
-  const LeverTile({super.key, required this.spec, required this.value, required this.sim, required this.units, this.locked = false});
+  const LeverTile({
+    super.key,
+    required this.spec,
+    required this.value,
+    required this.sim,
+    required this.units,
+    this.locked = false,
+  });
 
-  double get _dMin => spec.integer ? spec.min : units.fromSI(spec.quantity, spec.min);
-  double get _dMax => spec.integer ? spec.max : units.fromSI(spec.quantity, spec.max);
-  double _toDisplay(double si) => spec.integer ? si : units.fromSI(spec.quantity, si);
+  double get _dMin =>
+      spec.integer ? spec.min : units.fromSI(spec.quantity, spec.min);
+  double get _dMax =>
+      spec.integer ? spec.max : units.fromSI(spec.quantity, spec.max);
+  double _toDisplay(double si) =>
+      spec.integer ? si : units.fromSI(spec.quantity, si);
   double _toSI(double d) => spec.integer ? d : units.toSI(spec.quantity, d);
 
   void _set(double display) {
@@ -234,17 +330,27 @@ class LeverTile extends StatelessWidget {
         content: TextField(
           controller: ctl,
           autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+          keyboardType: const TextInputType.numberWithOptions(
+            decimal: true,
+            signed: true,
+          ),
           style: t.type.number.style(18, t.palette.accent),
           decoration: InputDecoration(
             suffixText: unit,
-            helperText: 'Range ${_dMin.toStringAsFixed(spec.integer ? 0 : 2)} to ${_dMax.toStringAsFixed(spec.integer ? 0 : 2)}',
+            helperText:
+                'Range ${_dMin.toStringAsFixed(spec.integer ? 0 : 2)} to ${_dMax.toStringAsFixed(spec.integer ? 0 : 2)}',
           ),
           onSubmitted: (s) => Navigator.pop(ctx, double.tryParse(s)),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, double.tryParse(ctl.text)), child: const Text('Set')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, double.tryParse(ctl.text)),
+            child: const Text('Set'),
+          ),
         ],
       ),
     );
@@ -269,13 +375,30 @@ class LeverTile extends StatelessWidget {
           children: [
             Row(
               children: [
-                if (locked) Padding(padding: const EdgeInsets.only(right: 4), child: Icon(Icons.lock_outline, size: 14, color: p.inkMuted)),
+                if (locked)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(
+                      Icons.lock_outline,
+                      size: 14,
+                      color: p.inkMuted,
+                    ),
+                  ),
                 Expanded(
                   child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: spec.label, style: t.type.label.style(13.5, p.ink)),
-                      if (unit.isNotEmpty) TextSpan(text: '  $unit', style: t.type.label.style(12, p.inkMuted)),
-                    ]),
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: spec.label,
+                          style: t.type.label.style(13.5, p.ink),
+                        ),
+                        if (unit.isNotEmpty)
+                          TextSpan(
+                            text: '  $unit',
+                            style: t.type.label.style(12, p.inkMuted),
+                          ),
+                      ],
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -283,22 +406,44 @@ class LeverTile extends StatelessWidget {
                 if (isLoop)
                   Container(
                     margin: const EdgeInsets.only(right: 4, left: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(border: Border.all(color: p.inkFaint)),
-                    child: Text('SP', style: t.type.number.style(12, p.inkMuted)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: p.inkFaint),
+                    ),
+                    child: Text(
+                      'SP',
+                      style: t.type.number.style(12, p.inkMuted),
+                    ),
                   ),
                 InkWell(
                   onTap: () => _edit(context),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                    child: Text(_fmtValue(spec, value, units), style: t.type.number.style(16, p.accent, weight: FontWeight.w700)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 6,
+                    ),
+                    child: Text(
+                      _fmtValue(spec, value, units),
+                      style: t.type.number.style(
+                        16,
+                        p.accent,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
             Row(
               children: [
-                _FineButton(icon: Icons.remove, onTap: locked ? null : () => _set(d - step), t: t),
+                _FineButton(
+                  icon: Icons.remove,
+                  onTap: locked ? null : () => _set(d - step),
+                  t: t,
+                ),
                 Expanded(
                   child: Slider(
                     value: d.clamp(_dMin, _dMax).toDouble(),
@@ -308,7 +453,11 @@ class LeverTile extends StatelessWidget {
                     onChanged: locked ? null : _set,
                   ),
                 ),
-                _FineButton(icon: Icons.add, onTap: locked ? null : () => _set(d + step), t: t),
+                _FineButton(
+                  icon: Icons.add,
+                  onTap: locked ? null : () => _set(d + step),
+                  t: t,
+                ),
               ],
             ),
           ],
