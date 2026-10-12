@@ -591,6 +591,7 @@ class StageArrays {
 class Kpis {
   final double xD, xB;              // light component (binary) or LK in D / HK in B (multicomponent)
   final double d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct;
+  final double maxWeepFrac;         // max over trays of the weeping fraction w_j (0 in ideal hydraulics); M2/M3
   final double drumLevelPct, sumpLevelPct, pTop;
   final double? recoveryLK, recoveryHK;                 // multicomponent
   final CrudeProductKpis? crude;                        // crude
@@ -721,6 +722,8 @@ enum FaultType { trayDamage, trayFouling, foaming, feedComposition, feedThermal,
 // "sign" is required for bias/drift (1 = reads high). A kind that does not apply to the tag's type
 // (e.g. coated on an FT) is a ConfigException. At most one F19/F28 fault per tag at a time
 // (injecting a second replaces the first).
+//   F07: {"type": "feedComposition", "params": {"dz": {"benzene": 0.08}, "sign": 1|-1|"random"}}
+//        z ← normalise(z + sign · s · dz) (PHYSICS.md §11); "random" only inside drill candidates.
 
 @immutable
 class FaultSpec {
@@ -747,37 +750,79 @@ class FaultManager {
 
 ## 10. Control system
 
-```dart
-enum LoopMode { man, auto, cas }
-enum Action { direct, reverse }
+Behaviour: PHYSICS.md §10 (M3 contract). The classes below are the binding shape.
 
-class PidParams { final double kc, ti, td; final Action action; final double pvLo, pvHi; }
+```dart
+enum LoopMode { man, auto, cas, iman }      // iman: master tracking a slave that is not in CAS
+enum Action { direct, reverse }
+enum ValveCharacteristic { linear, equalPercentage }
+
+class PidParams {
+  final double kc, ti, td;                  // ti = double.infinity disables integral
+  final Action action;
+  final bool spKick;                        // true for FC loops, false for LC/PC/TC (PHYSICS.md §10.2)
+  final double opLo, opHi;                  // default 0, 100
+}
+
+class InstrumentSpec {                      // one row of the PHYSICS.md §10.5 table, per tag, from control_config
+  final String tag;  final InstrumentType type;  final String measures;   // metric path, e.g. 'stream.reflux.flow'
+  final double lo, hi;                      // span, SI
+  final double tauM, sigmaS, tauS, sigmaE;  // σ in % of span
+  final double? analyserPhase;              // AT only
+}
+
+class Instrument {                          // state of one transmitter; update(h, trueValue, t) = §10.5 pipeline
+  final InstrumentSpec spec;
+  // state: ns, vp, vm, frozen outputs, spike schedule, OOS timer, streams (PHYSICS.md §12.9)
+  InstrumentReading get reading;
+}
+
+class Valve {
+  final String id; final double fMax; final double tau;   // tau = 2.0 s
+  final ValveCharacteristic characteristic;
+  double position, command, bypass;  ValveFault fault;    // none | stuck | failOpen | failClosed
+  double d;                                               // supply disturbance state
+}
 
 class ControlLoop {
   final LoopTag tag;
-  final String pvRef;          // metric path, e.g. 'drum.levelPct', 'stage[14].t'
-  final String mvRef;          // valve id or 'FC-103.sp' for cascade
-  LoopMode mode;
-  double sp, op;               // SP in PV units (SI); OP in %
+  final String pvTag;                       // instrument tag, e.g. 'FT-102'
+  final String mvRef;                       // valve id, or 'FC-103.sp' for the TC-101 cascade
+  final String? masterTag;                  // set on slaves (FC-103 ← TC-101)
   final PidParams params;
-  final bool idealFlow;        // PHYSICS.md §10.2
+  final bool fastLayer;                     // FC loops: executed every δ_c sub-step
+  LoopMode mode;  bool shed;  double sp, op;
 }
 
 class ControlSystem {
-  List<ControlLoop> get loops;
+  List<ControlLoop> get loops;  List<Instrument> get instruments;  List<Valve> get valves;
   ControlLoop loop(LoopTag tag);
-  void setMode(LoopTag tag, LoopMode mode);   // bumpless
-  void setSp(LoopTag tag, double sp);
-  void setOp(LoopTag tag, double op);
-  void execute(double dt, MeasurementBus pvs); // PHYSICS.md §10.1, called by the stepper (step 12)
+  void setMode(LoopTag tag, LoopMode mode); // bumpless per PHYSICS.md §10.2; throws StateError for AUTO/CAS on a BAD PV
+                                            // and for iman (engine-internal only)
+  void setSp(LoopTag tag, double sp);       // clamped to the SP limits; re-bases if !spKick
+  void setOp(LoopTag tag, double op);       // MAN only; clamped to opLo..opHi
+  /// PHYSICS.md §10.1 fast layer: n_c sub-steps; returns mean flows (F̄) per valve in [out].
+  void runFastLayer(double dt, FastLayerInputs frozen, Float64List out);
+  /// PHYSICS.md §10.1 main layer at step 12.
+  void runMainLayer(double dt, MeasurementBus truth, double t);
 }
 
-class Instrument { final String tag; final double lag, deadTime, span; double bias, drift; bool stuck; }
-class Valve { final String id; final double maxFlow; final double lag; ValveFault fault; double position; }
-class Alarm { final String id, message; final AlarmPriority priority; final bool acknowledged; final double raisedAt; }
+class AlarmManager {                        // PHYSICS.md §10.8
+  List<Alarm> get active;                   // every alarm not NORMAL
+  void acknowledge(String id);  void acknowledgeAll();
+  List<JournalEntry> get journal;           // raise / clear / ack / mode change / operator action, with sim time
+}
+
+class CrossCheckEngine {                    // PHYSICS.md §14.6; reads TrendBuffer bins only
+  double window;                            // 300 | 600 | 1800 | 3600
+  void setTemperatureReference(double t);
+  List<CrossCheckResult> evaluate(TrendBuffer bins, LeverView levers, bool steady);
+}
 ```
 
-Loop sets per preset come from `control_config.dart` (PHYSICS.md §10.4). Loops that do not exist in a tier are hidden (e.g. PC-101 in Tier 1).
+- Loop sets, instrument specs and valves per preset come from `control_config.dart`: PHYSICS.md §10.5 and §10.7 for B-T, a `temperatureTrays` list and the design molar volumes N_0,1%/N_S,1% for C5. Loops and instruments that do not exist in a tier are hidden (PC-101, TC-101, PT/TI/CW instruments in Tier 1).
+- `MeasurementBus` maps metric paths to true values at the end of the step. Path names: `stream.<id>.flow`, `drum.levelPct`, `sump.levelPct`, `pTop`, `columnDp`, `stage[<j>].t`, `stream.distillate.x[<i>]`, `cw.flow`, `cw.tIn`, `cw.tOut`, `steam.headerP`, `reboiler.duty`.
+- `saveState()` contains every field above, including PRNG stream states and the alarm journal, so save → restore → continue is bit-identical (VC-20.4).
 
 ---
 
@@ -796,41 +841,115 @@ Loop sets per preset come from `control_config.dart` (PHYSICS.md §10.4). Loops 
   "overrides": {"tier": "t1", "hydraulics": "ideal", "murphree": 1.0,
                 "sections[0].trays": 60, "feeds[0].stage": 30},
   "start": "steady",
+  "noise": false,
   "levers": {
-    "set": {"refluxMode": 1, "refluxRatio": 2.0},
+    "set": {"refluxMode": 1, "refluxRatio": 1.3, "boilup": 31.9444},
     "lock": ["feedStage", "nTrays", "murphree"],
     "show": ["refluxRatio", "boilup", "feedZ.benzene"]
   },
   "loops": {"LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}},
-  "timeLimit": 43200,
+  "timeLimit": 86400,
+  "parTime": 43200,
   "briefing": "Markdown text …",
   "objectives": [
-    {"id": "o1", "text": "Hold xD ≥ 0.95 and xB ≤ 0.05 with the smallest reflux ratio you can.",
+    {"id": "o1", "text": "Hold xD ≥ 0.95 and xB ≤ 0.05 at steady state with R ≤ 1.20.",
      "when": {"all": [{"metric": "kpi.xD", "op": ">=", "value": 0.95},
                       {"metric": "kpi.xB", "op": "<=", "value": 0.05},
+                      {"metric": "kpi.refluxRatio", "op": "<=", "value": 1.20},
                       {"metric": "steady", "op": "==", "value": true}]},
      "holdFor": 600},
-    {"id": "o2", "text": "Report R_min.", "answer": {"type": "number", "metricRef": "answer.rmin",
-     "correct": 1.10, "tolerance": 0.055}}
+    {"id": "o2", "text": "Report R_min.", "answer": {"type": "number", "correct": 1.10, "tolerance": 0.055}}
   ],
   "hints": [
-    {"after": 1800, "text": "Watch the staircase near the q-line …"},
+    {"after": 0, "text": "Each time you change R, set boilup = 50 × (R + 1) kmol/h so that D stays at 50."},
+    {"after": 14400, "text": "Watch the staircase near the q-line …"},
     {"when": {"metric": "kpi.refluxRatio", "op": "<", "value": 1.12}, "text": "You are close to the pinch …"}
   ],
-  "events": [
-    {"at": 0, "action": "setLever", "lever": "feedZ.benzene", "value": 0.5}
-  ],
-  "scoring": {"objectives": 0.6, "time": 0.2, "safety": 0.1, "quality": 0.1,
+  "events": [],
+  "scoring": {"objectives": 60, "time": 20, "safety": 10, "quality": 10,
               "qualitySpec": {"metric": "kpi.xD", "op": ">=", "value": 0.95}},
-  "debrief": "Markdown with live values: {kpi.refluxRatio:0.00}, {answer.rmin:0.00} …"
+  "debrief": "Markdown with live values: {kpi.refluxRatio:0.00}, {answer.o2:0.00} …"
 }
 ```
 
-Predicates are structured (no expression language): `{"all": [...]}`, `{"any": [...]}`, `{"not": {...}}`, and leaves `{"metric": path, "op": "<"|"<="|"=="|">="|">"|"!=", "value": number|bool}` or `{"metric": path, "op": "between", "lo": a, "hi": b}`. Metric paths: `time`, `steady`, `kpi.<field>`, `stage[<j>].<field>`, `loop[<tag>].<pv|sp|op|mode>`, `condenser.<field>`, `reboiler.<field>`, `alarm.count`, `safety.<reliefLifted|levelViolationSeconds>`, `answer.<id>`, `lever.<id>`. Unknown paths are a schema-test failure.
+(G2 used to start at R = 2.0. With 60 equilibrium stages the products are then 0.9999999 pure and the steady-state monitor does not pass for days of sim time. From R = 1.3, the column is steady 10 h after a cold start and 2.8–4.4 h after each step down; numbers in §11.8.)
 
-`overrides` keys use a dotted/indexed path into `ColumnConfig` JSON. Event actions: `setLever`, `setLoopMode`, `setSp`, `injectFault` (with a `FaultSpec`), `clearFault`, `message`.
+**Top-level fields**
 
-### 11.2 Drill JSON (extends the scenario schema)
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `id`, `kind`, `title`, `topic`, `milestone` | string / `"guided"`\|`"drill"` / string / string / int | required | |
+| `preset`, `overrides` | PresetId, map | required, {} | `overrides` uses dotted/indexed paths into `ColumnConfig` JSON (`ColumnConfig.applyOverrides`) |
+| `start` | `"steady"` \| `"cold"` | required | `steady`: run to steady state from cold with `levers.set` applied, noise off, memoised per (preset, overrides, levers.set); then t := 0 |
+| `noise` | bool | false | value of the `noise` lever from t = 0 |
+| `view` | `"model"` \| `"plant"` | `"model"` | `view` lever (PHYSICS.md §10.9) |
+| `badPvShed` | bool | true | `badPvShed` lever (PHYSICS.md §10.2) |
+| `levers.set` | map LeverId → SI value | {} | applied **before** the steady start |
+| `levers.lock` | list | [] | shown read-only |
+| `levers.show` | list | all | only these levers (plus the OP levers bound to them) appear in the Levers tab |
+| `loops` | map tag → `{mode, sp?, op?}` | {} | applied after the steady start, in tag order |
+| `timeLimit` | s | required | the scenario ends automatically |
+| `parTime` | s | 0.25 × timeLimit | time-score reference (§11.4) |
+| `briefing`, `debrief` | Markdown (debrief: template, §11.4) | required | |
+| `objectives` | list | required for guided; absent for drills | |
+| `hints`, `events` | list | [] | |
+| `scoring` | object | required | §11.4 |
+
+Start order: config with overrides → levers.set → steady start (or cold) → loops → `noise`, `view`, `badPvShed` → t = 0 → events at 0 → draws (drills, §11.2).
+
+**Objectives**
+
+| Field | Meaning |
+|---|---|
+| `id`, `text` | |
+| `when` | Predicate. The objective is met once it has held continuously for `holdFor` s (default 0); the hold clock resets whenever it is false |
+| `after` | Id of another objective. This one is not evaluated before that one is met (sequencing, e.g. G4) |
+| `weight` | Default 1 |
+| `answer` | Instead of `when`: met when a correct answer is submitted |
+
+Objectives latch: once met they stay met.
+
+**Answers**
+- `{"type": "number", "correct": x, "tolerance": t, "toleranceKind": "abs"|"rel", "quantity": "<Quantity>"}`. The learner types in display units; the value is converted to SI before comparison. The default quantity is dimensionless.
+- `{"type": "choice", "options": ["…", "…"], "correct": i}`.
+- `{"type": "stage", "correct": [j, …]}`: the learner taps a stage on the column or a staircase corner, numbered as in PHYSICS.md §0.2.
+- `attempts` defaults to 3. Wrong answers cost nothing, but after the last wrong attempt the objective can no longer be met. The submitted value of objective `o2` is readable as metric `answer.o2`.
+
+**Predicates** (no expression language):
+- Composites: `{"all": [...]}`, `{"any": [...]}`, `{"not": {...}}`.
+- Leaves: `{"metric": path, "op": "<"|"<="|"=="|">="|">"|"!=", "value": v}` and `{"metric": path, "op": "between", "lo": a, "hi": b}`. `v` is a number or a bool. For `mode` and `quality` metrics it is a string, and only `==` and `!=` are allowed.
+- Optional `"from": "start"` on a leaf compares (current value − value at t = 0) instead of the value itself.
+- Numbers are SI. Booleans compare `true`/`false`. A NaN metric makes every comparison false, except `!=`.
+
+**Metric paths**
+- `time`, `steady`
+- `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFrac (new in M2/M3: max over trays of w_j), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, balanceResidual.
+- `stage[<j>].<t|p|x|holdup|weepFrac|jetFlood>` (x = light component)
+- `loop[<tag>].<pv|sp|op|mode>` (pv is the reading)
+- `instrument[<tag>].<value|quality>`
+- `valve[<id>].<op|position>`
+- `check[<id>].<residual|status>`
+- `condenser.<drumLevelPct|qc>`, `reboiler.<qr|steamValveOp>`
+- `alarm.count`, `alarm[<id>].active`
+- `safety.reliefLifted`, `safety.levelViolationSeconds`
+- `answer.<objectiveId>`, `lever.<id>`
+
+An unknown path is a schema-test failure.
+
+**Hints**: `{"after": s}` (absolute scenario time) or `{"when": predicate}`, plus `"text"` and `"cost"` (points deducted when the learner opens the hint; default 0 for guided, 3 for drills). A hint becomes available when its condition is met, and is charged once.
+
+**Events**
+
+| Field | Meaning |
+|---|---|
+| `id` | Optional, for `clearFault` |
+| Timing | `{"at": s}`, `{"atRandom": [lo, hi]}` (stream `scenario:events`, drawn at t = 0 in event order), or `{"when": predicate}` (fires once) |
+| `action` | `setLever` (`lever`, `value` or `delta`), `setLoopMode` (`loop`, `mode`), `setSp` (`loop`, `value` or `delta`), `injectFault` (`fault`: FaultSpec JSON), `clearFault` (`faultRef`: event id), `message` |
+| `message` | Optional text shown with any action (the timeline and HUD show it) |
+
+`delta` is an SI increment applied to the current value. A `setSp` on a loop in MAN stores the SP (PHYSICS.md §10.2).
+
+### 11.2 Drill JSON (extends §11.1)
 
 ```json
 {
@@ -840,40 +959,363 @@ Predicates are structured (no expression language): `{"all": [...]}`, `{"any": [
   "start": "steady",
   "noise": true,
   "candidates": [
-    {"weight": 1, "fault": {"type": "coolingLoss", "params": {"mode": "temperature"}, "severityRange": [0.6, 1.0], "ramp": 1800},
-     "answer": {"category": "cooling", "location": "condenser"}},
-    {"weight": 1, "fault": {"type": "condenserFouling", "severityRange": [0.7, 1.0], "ramp": 7200},
-     "answer": {"category": "fouling", "location": "condenser"}},
-    {"weight": 1, "fault": {"type": "nonCondensables", "severityRange": [0.5, 1.0], "ramp": 0},
-     "answer": {"category": "inerts", "location": "condenser"}}
+    {"id": "cw_temp", "weight": 1,
+     "fault": {"type": "coolingLoss", "params": {"mode": "temperature"}, "severityRange": [0.6, 1.0], "ramp": 1800},
+     "answer": {"category": "cooling", "location": "condenser"}, "debrief": "…"},
+    {"id": "cond_foul", "weight": 1,
+     "fault": {"type": "condenserFouling", "severityRange": [0.7, 1.0], "ramp": 7200},
+     "answer": {"category": "fouling", "location": "condenser"}, "debrief": "…"},
+    {"id": "inerts", "weight": 1,
+     "fault": {"type": "nonCondensables", "severityRange": [0.5, 1.0], "ramp": 0},
+     "answer": {"category": "inerts", "location": "condenser"}, "debrief": "…"}
   ],
   "onsetWindow": [600, 2400],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
   "diagnosis": {
     "categories": ["cooling", "fouling", "inerts", "foaming", "trayDamage", "instrument", "valve",
                    "feedUpset", "steam", "thermosyphon", "maldistribution", "none"],
-    "locations": ["condenser", "reboiler", "rectifying", "stripping", "feed", "instrument:<tag>", "valve:<id>", "packedBed"],
+    "locations": ["condenser", "reboiler", "rectifying", "stripping", "feed", "instrument:*", "valve:*", "packedBed"],
+    "modes": [],
     "attempts": 2
   },
+  "scoring": {"category": 50, "location": 20, "time": 20, "safety": 10, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 10, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
   "timeLimit": 14400
 }
 ```
 
-The candidate and the onset are drawn with the drill seed (`SimOptions.seed` ⊕ a per-attempt counter) so a drill is reproducible for tests.
+**Candidate fields**
+
+| Field | Meaning |
+|---|---|
+| `id` | |
+| `weight` | > 0; 0 disables the candidate |
+| `fault` | A FaultSpec (§9) with `severityRange: [lo, hi]` instead of `severity`, no `onset` (it is drawn), and `params.sign` allowed as `"random"` |
+| `answer` | `{category, location, mode?}` |
+| `protect` | Optional list of `{"loop": tag, "modes": [...]}`. The MAN-before-off-spec bonus is earned when, at some time t with t₀ ≤ t < t_os, any listed loop is in one of its listed modes |
+| `debrief` | Markdown template shown when this candidate was drawn |
+
+**Diagnosis**
+- Locations `"instrument:*"` and `"valve:*"` expand to every instrument tag and valve id visible in the drill, in tag order.
+- `modes` lists the failure-mode choices offered when the category is `instrument`: `bias`, `drift`, `stuck`, `signalLoss`, `plugged`, `spiking`, `coated`. An empty list hides the mode question.
+- The `Diagnosis` object is `{category, location, mode?}`.
+
+**Draw procedure** (reproducible). The stream is `drill` (PHYSICS.md §12.9), seeded with the attempt seed, which is `SimOptions.seed`. The app makes a new seed per attempt and stores it with the attempt, so a drill can be replayed. Exactly four uniforms are drawn at t = 0, whatever the outcome:
+1. u0 selects the candidate: the first i with u0 · Σw < Σ_{k ≤ i} w_k, in listed order.
+2. u1 sets the severity s = lo + u1 (hi − lo).
+3. u2 sets the onset t₀ = dt · floor((a + u2 (b − a))/dt) for `onsetWindow` [a, b].
+4. u3 sets the sign = −1 if u3 < 0.5, else +1 (used when `sign` is `"random"`).
+
+The fault is injected with `hidden: true` at t₀. Snapshots carry no fault data, the `drill` stream is not exposed, and the debrief template is resolved only after the drill ends.
+
+**Off-spec time** t_os is the first time ≥ t₀ at which `offSpec.when` has held for `holdFor` s, or ∞ if that never happens. Predicates use true values.
+
+**Drill end**: a fully correct diagnosis, the last attempt used, the time limit, or "Give up". After a fully correct diagnosis the simulation pauses and the debrief opens.
 
 ### 11.3 Runner
 
 ```dart
 class ScenarioDef { factory ScenarioDef.fromJson(Map<String, Object?> j); List<String> validate(ComponentDb db); }
 class ScenarioRunner {
-  ScenarioRunner(ScenarioDef def, Simulator sim);
-  void update();                                  // called after each step by the simulator
+  ScenarioRunner(ScenarioDef def, Simulator sim);   // performs the start order of §11.1 and the drill draws
+  void update();                                    // after each step (PHYSICS.md §12.4 step 13): events, objectives,
+                                                    // hints, off-spec clock, protect clock, safety accumulators
   List<ObjectiveState> get objectives;
-  List<String> get unlockedHints;
-  void submitAnswer(String objectiveId, Object answer);
-  DrillResult submitDiagnosis(Diagnosis d);       // drills
-  ScoreCard finish();
+  List<HintState> get hints;
+  void takeHint(int index);
+  AnswerResult submitAnswer(String objectiveId, Object answer);
+  DrillResult submitDiagnosis(Diagnosis d);         // {fullyCorrect, categoryOk, locationOk, attemptsLeft}
+  ScoreCard finish();                               // §11.4; resolves the debrief template
 }
 ```
+
+`validate()` checks that every metric path, lever id, loop tag, instrument tag, valve id, fault type/kind combination, objective reference and template variable exists. It also checks that candidate weights sum to > 0 and that `onsetWindow[1] + 3600 ≤ timeLimit`. The schema test (VC-26.1) runs `validate()` on every shipped scenario.
+
+### 11.4 Scoring (exact)
+
+**Guided**, on a 0–100 scale; the weights come from `scoring`:
+
+```
+W   = Σ weight of all objectives ;  Wm = Σ weight of the met objectives
+O   = objectives · Wm / W
+T   = time · (Wm / W) · clamp( 1 − (t_end − parTime)/(timeLimit − parTime), 0, 1 )      (t_end = finish time)
+S   = safety · ( 1 − ½ [relief ever lifted] − ½ [true drum or sump level < 5 % or > 95 % for > 60 s in total] )
+Q   = quality · ( 1 − min(1, 2 f_os) ),  f_os = time with qualitySpec false / t_end   (Q = quality if no qualitySpec)
+H   = Σ cost of opened hints
+Score = round( clamp(O + T + S + Q − H, 0, 100) )
+```
+
+**Drills**:
+
+```
+Attempt a: C_a = category · [category ok],  L_a = location · [location ok]; "fully correct" = both ok
+f   = the first fully correct attempt, else the last attempt made
+P   = wrongPenalty × (number of attempts made that were not fully correct)
+C   = C_f ,  L = L_f   (0 and 0 if no attempt was made)
+T   = time · clamp( 1 − (max(0, t_f − t₀) − timeFull)/(timeZero − timeFull), 0, 1 )  if f is fully correct, else 0
+S   = as guided
+B   = bonus.protectBeforeOffSpec · [candidate has `protect` and it was met for some t, t₀ ≤ t < min(t_os, t_f)]
+    + bonus.mode · [f fully correct and Diagnosis.mode == answer.mode]
+H   = Σ cost of opened hints
+Score = round( clamp(C + L + T + S + B − P − H, 0, 100) )
+```
+
+The ScoreCard lists every term, t₀, t_os, the protect time and each attempt, so the debrief can show them. SCOPE.md §6.2 states the same weights in words.
+
+**Debrief templates.** `{path}` prints a metric (§11.1 paths, at finish time) with `Fmt.value` and units in the user's unit system. `{path:0.00}` prints fixed decimals without a unit. `{path:time}` prints h:mm:ss of sim time ("never" for ∞). Drills add:
+- `fault.tag`, `fault.valve`, `fault.mode`, `fault.severity`, `fault.sign` ("+" / "−")
+- `fault.magnitude`: the bias in display units with sign, the drift per hour, or the severity
+- `fault.onset`
+- `result.offSpecTime`, `result.protectTime`, `result.diagnosisTime`, `result.firstFlaggedCheck` (id and time of the first cross-check that went `fail` after t₀)
+
+### 11.5 Drill design rules (noise on, played on a phone)
+
+Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests them with noise **on**, at the minimum severity of each range.
+
+1. **Signal-to-noise.** Within 20 min of t₀ (for drifts: of t₀ plus 10 min), the key evidence reaches at least one of the following with the default 600-s window:
+   - a cross-check residual ≥ 2 × its band (status `fail`) held for ≥ 60 s;
+   - a signal-look ratio σ_5min/σ_disp ≤ 0.2 (frozen or too steady) or ≥ 5 (erratic);
+   - a BAD alarm.
+
+   The minimum magnitudes that follow from the PHYSICS.md §14.6 bands are:
+   - flow-meter bias ≥ 4 % of span;
+   - flow drift ≥ 6 % of span per hour;
+   - level bias ≥ 8 % (paired with a field gauge);
+   - PT bias ≥ 3 % of span (6 kPa on PT-101, so C7 moves by 2 K);
+   - TI bias ≥ 5 K;
+   - plugged s ≥ 0.85.
+2. **One screen.** The evidence must be readable on one compact-portrait screen: a Balance-tab row, a faceplate with its signal look and valve curve, one trend, or the C6 chart. Nothing may require the learner to overlay two trends.
+3. **Persistence.** Evidence that only exists for one window after onset (level bias) must have a second, permanent source (the field gauge, or the LC output move in the trend history).
+4. **Time.** `onsetWindow[1] + 3600 ≤ timeLimit`, so a learner gets at least an hour after the latest onset.
+5. **Hints** point at a check or a habit, never at a tag. Their costs make a guess cheaper than three hints only if the guess is right.
+6. **Decoys.** A drill whose title asks "process or instrument?" must contain at least one candidate whose answer is a process fault. Otherwise the category question answers itself.
+7. **Disturbance events.** Fixed-time events that reveal frozen or slow sensors must not, by themselves, make the product go off-spec. VALIDATION.md §H checks this with a healthy run.
+
+### 11.6 Drill H9 "Don't trust the gauge" (M6)
+
+```json
+{
+  "id": "H9_dont_trust_the_gauge",
+  "kind": "drill",
+  "title": "Don't trust the gauge",
+  "milestone": 6,
+  "topic": "instruments",
+  "preset": "bt",
+  "overrides": {"tier": "t2", "hydraulics": "full"},
+  "start": "steady",
+  "noise": true,
+  "view": "plant",
+  "badPvShed": false,
+  "levers": {
+    "set": {"tc101Enable": 1, "tc101Tray": 14},
+    "lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Tray"]
+  },
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "cas"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"},
+            "TC-101": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "You are taking over the board of the benzene–toluene column. Every loop is in AUTO and tray-14 temperature control (TC-101) sets the reboiler duty through FC-103. At some point during your shift either **one instrument starts lying** or **the process really changes**. Decide which, name the tag if it is an instrument, and keep the products on spec while you work it out.\n\nThis plant's old DCS does **not** put a loop in manual when its signal fails. Your tools: the **Balance** tab (every check uses meters only), each faceplate's **signal look** and **valve curve**, the trends, the temperature-profile chart with its reference, and **field checks** of the sight glasses LG-101 and LG-102 and the local gauge PG-101 (3 minutes each). You have two diagnosis attempts.",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "ft102_bias", "weight": 2,
+     "fault": {"type": "instrument", "location": {"tag": "FT-102"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.7], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:FT-102", "mode": "bias"},
+     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "debrief": "**FT-102 (reflux flow) read {fault.magnitude} wrong from {fault.onset:time}.** FC-102 kept the *reading* at its set point, so the real reflux moved the other way by the same amount. The tell-tales: C4 for FV-102 went red (the valve's OP no longer matched the flow it should give), and C3 (vapour to the top: reboiler vs reflux + distillate) disagreed by the same amount, while every other check stayed green. The trend itself looked normal — a bias has normal noise. Right response: FC-102 to MAN, then set the OP from the valve curve, for example {valve[FV-102].op:0.0} %."},
+    {"id": "ft102_plugged", "weight": 1,
+     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
+     "answer": {"category": "instrument", "location": "instrument:FT-102", "mode": "plugged"},
+     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** The reading stopped following the process: its 5-minute σ dropped from about 1.2 kmol/h to under 0.1 (\"too steady\"). FC-102 then kept integrating the small offset between its set point and the trapped value, and walked the real reflux far away while the reading sat on the set point. C4 (FV-102) and C3 both failed. A stuck *valve* would have looked similar on the OP trend, but its flow reading would still have had normal noise and the balances would have agreed."},
+    {"id": "ft101_drift", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "FT-101"}, "params": {"kind": "drift", "sign": "random"}, "severityRange": [0.6, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:FT-101", "mode": "drift"},
+     "protect": [{"loop": "FC-101", "modes": ["man"]}],
+     "debrief": "**FT-101 (feed flow) drifted by {fault.magnitude} per hour from {fault.onset:time}.** FC-101 held the reading, so the real feed walked away. C1 (feed in vs distillate + bottoms out) grew steadily, and so did C4 for FV-101. The sump level-vs-flows check (C5) failed in proportion to the window: drifts show best with a 30-min window."},
+    {"id": "ft103_bias", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "FT-103"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.6], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:FT-103", "mode": "bias"},
+     "debrief": "**FT-103 (steam / reboiler duty) read {fault.magnitude} wrong from {fault.onset:time}.** This one hides well: TC-101 sets FC-103's set point from the tray-14 temperature, so it trimmed the duty set point until the real duty was right again — the product barely moved. The evidence is the energy balance: C3b (reboiler duty vs condenser duty + products) failed, and FV-103's OP did not match the duty it should give (C4). With temperature control in the loop, the right response is to *keep* the cascade and get the meter fixed."},
+    {"id": "lt101_bias", "weight": 2,
+     "fault": {"type": "instrument", "location": {"tag": "LT-101"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.8, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:LT-101", "mode": "bias"},
+     "protect": [{"loop": "LC-101", "modes": ["man"]}],
+     "debrief": "**LT-101 (reflux drum level) read {fault.magnitude} wrong from {fault.onset:time}.** The reading jumped with no flow change to explain it. LC-101 then moved the distillate flow to bring the *reading* back to its set point, which shifted the real level by the same amount. C5 (drum level vs integrated flows) failed for one window after the jump, and the sight glass LG-101 disagreed with LT-101 at any time afterwards. That field check is the permanent proof."},
+    {"id": "lt102_loss", "weight": 1,
+     "fault": {"type": "transmitter", "location": {"tag": "LT-102"}, "params": {"kind": "signalLossLow"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:LT-102", "mode": "signalLoss"},
+     "protect": [{"loop": "LC-102", "modes": ["man"]}],
+     "debrief": "**LT-102 (sump level) lost its signal at {fault.onset:time}.** The DCS flagged BAD PV (IOP−) at once. This plant does not shed the loop, so LC-102 saw −2.5 % and closed the bottoms valve, and the real sump began to fill. Diagnosis was the easy part; the score was in the response. LC-102 to MAN at the old OP within minutes, then LG-102 field checks to steer the level by hand."},
+    {"id": "lt102_stuck", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "LT-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:LT-102", "mode": "stuck"},
+     "protect": [{"loop": "LC-102", "modes": ["man"]}],
+     "debrief": "**LT-102 froze at {fault.onset:time}.** The trend became a perfectly flat line — the same digits for minutes, σ = 0 against a typical 0.8 %. LC-102 stopped correcting, so when the feed went up at 45 min the real sump level started to climb while the reading stayed put. C5 for the sump failed from then on."},
+    {"id": "pt101_bias", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "PT-101"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.3, 0.5], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:PT-101", "mode": "bias"},
+     "protect": [{"loop": "PC-101", "modes": ["man"]}],
+     "debrief": "**PT-101 (top pressure) read {fault.magnitude} wrong from {fault.onset:time}.** PC-101 moved the real pressure the other way, so every temperature shifted together, smoothly — that looks like a process change. What gave it away was C7: the drum temperature and the bottom temperature no longer matched the bubble points of the analysed products *at the measured pressure*, both off with the same sign (about 0.33 K per kPa). The local gauge PG-101 confirmed it."},
+    {"id": "ti114_bias", "weight": 2,
+     "fault": {"type": "instrument", "location": {"tag": "TI-114"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.25, 0.4], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:TI-114", "mode": "bias"},
+     "protect": [{"loop": "TC-101", "modes": ["man"]}, {"loop": "FC-103", "modes": ["auto", "man"]}],
+     "debrief": "**TI-114 read {fault.magnitude} wrong from {fault.onset:time}.** It is TC-101's measurement, so TC-101 moved the reboiler duty until the *reading* was back at its set point. The real stripping section was then several kelvin off, and the bottoms followed. In C6, TI-114's change since the reference sat near zero while TI-112 and TI-117 moved together: a lone bar in a quiet neighbourhood. Right response: break the cascade (TC-101 to MAN, or FC-103 to AUTO) and hold the duty."},
+    {"id": "ti114_coated", "weight": 1,
+     "fault": {"type": "transmitter", "location": {"tag": "TI-114"}, "params": {"kind": "coated"}, "severityRange": [0.8, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:TI-114", "mode": "coated"},
+     "protect": [{"loop": "TC-101", "modes": ["man"]}, {"loop": "FC-103", "modes": ["auto", "man"]}],
+     "debrief": "**TI-114's thermowell coated over from {fault.onset:time}:** its time constant went from 10 s to 10 × (1 + 9 × {fault.severity:0.00}) s. At steady state it reads right, so the evidence only appears in transients. When the feed rose at 45 min, TI-114 lagged its neighbours in C6 and TC-101 started to swing the duty. The fuzz on TI-114 also halved (signal look ≈ 0.5 of typical)."},
+    {"id": "ti107_spiking", "weight": 1,
+     "fault": {"type": "transmitter", "location": {"tag": "TI-107"}, "params": {"kind": "spiking"}, "severityRange": [0.5, 0.8], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:TI-107", "mode": "spiking"},
+     "debrief": "**TI-107 went erratic at {fault.onset:time}:** spikes of tens of kelvin, several a minute, with BAD flickers. It controls nothing, so the process never noticed. The signal look (σ many times typical) and C6 flagged it at once."},
+    {"id": "ft104_stuck", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "FT-104"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:FT-104", "mode": "stuck"},
+     "debrief": "**FT-104 (distillate flow) froze at {fault.onset:time}.** It controls nothing in flow mode, so the column was fine. But the flat line (σ = 0) and the balances told the story: once LC-101 moved the real distillate after the feed change, C1 and C3 disagreed while C4 for LV-101 showed the valve moving with no change in the reading."},
+    {"id": "feed_real", "weight": 2,
+     "fault": {"type": "feedComposition", "params": {"dz": {"benzene": 0.08}, "sign": "random"}, "severityRange": [1.0, 1.0], "ramp": 900},
+     "answer": {"category": "feedUpset", "location": "feed"},
+     "debrief": "**Nothing was lying — the feed really changed** by {fault.sign}0.08 benzene from {fault.onset:time}, over 15 minutes. Every balance stayed green, the temperature profile moved as a smooth wave (C6, no lone bar), and the feed analyser AT-100 showed the change about 7–10 minutes later. When all the cross-checks agree, believe the instruments."}
+  ],
+  "events": [
+    {"id": "feed_up", "at": 2700, "action": "setSp", "loop": "FC-101", "delta": 1.38889,
+     "message": "Upstream raised the feed: FC-101 set point +5 kmol/h."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1200, "cost": 3, "text": "Open the **Balance** tab. Each row uses only meters. When a row turns red, ask which instruments feed it — the liar is one of them, unless a valve is involved."},
+    {"after": 2400, "cost": 3, "text": "Check every loop's **valve curve** (C4). A lying flow meter fails its own valve check *and* a balance; a real process change fails neither."},
+    {"after": 3300, "cost": 3, "text": "Look at the **signal look** on each faceplate: σ = 0 means frozen, far below typical means plugged, far above means erratic. For temperatures, compare each TI's change since the reference with its neighbours (C6)."},
+    {"after": 4200, "cost": 3, "text": "Levels and pressure have field gauges. A field check takes 3 minutes and settles any argument about LT-101, LT-102 or PT-101."}
+  ],
+  "diagnosis": {
+    "categories": ["instrument", "valve", "feedUpset", "fouling", "foaming", "trayDamage", "none"],
+    "locations": ["instrument:*", "valve:*", "feed", "rectifying", "stripping", "reboiler", "condenser"],
+    "modes": ["bias", "drift", "stuck", "signalLoss", "plugged", "spiking", "coated"],
+    "attempts": 2
+  },
+  "scoring": {"category": 50, "location": 20, "time": 20, "safety": 10, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 10, "bonus": {"protectBeforeOffSpec": 10, "mode": 5}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; affected loop protected: {result.protectTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+Notes:
+- **Tier 2, not "T1 or T2".** Tier 1 has no temperatures or pressure, so the TI and PT candidates and checks C3b, C6 and C7 need Tier 2. SCOPE.md §6.2 is changed accordingly.
+- **The decoy** (`feed_real`, weight 2 of 17, about 12 %) makes the "process or instrument?" choice real (rule 6 of §11.5).
+- **Bonus.** The protect bonus is available in 9 of the 13 draws: those where the lying tag is a loop PV and putting that loop in MAN is the right response. For `ft103_bias` the cascade protects the product by itself, so there is no bonus and no penalty.
+- **Feed event.** The +5 % feed step at 45 min exists so that frozen, plugged and coated sensors get a change they fail to follow. It is never later than 15 min after the latest onset. VALIDATION.md H9.0 checks that, with no fault, it does not trip the off-spec test.
+
+### 11.7 Drill H10 "Bad valve or bad meter?" (M6)
+
+```json
+{
+  "id": "H10_valve_or_meter",
+  "kind": "drill",
+  "title": "Bad valve or bad meter?",
+  "milestone": 6,
+  "topic": "instruments",
+  "preset": "bt",
+  "overrides": {"tier": "t2", "hydraulics": "full"},
+  "start": "steady",
+  "noise": true,
+  "view": "plant",
+  "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "The reflux and steam loops on this column have been acting up. The night shift wrote: *\"FC-102 and FC-103 — one of them doesn't do what it says.\"* Maybe a control valve is sticking, maybe a flow meter is lying, maybe the feed changed and nobody told you. At 45 minutes planning will raise the reflux and duty set points by 5 %. Find out which it is: valve, meter or process.",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "fv102_stuck", "weight": 2,
+     "fault": {"type": "valve", "location": {"valve": "FV-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "valve", "location": "valve:FV-102"},
+     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** FC-102's OP started to wander, and later ran off when planning raised the set point, while the flow reading stayed within its normal noise of its old value. The flow *reading* was honest: it still had normal noise, and C3 (top vapour) and C1 stayed green. Only C4 for FV-102 failed — an OP that no longer matches the flow. The fix is the bypass: open `bypass.FV-102` and set the reflux by hand."},
+    {"id": "fv103_stuck", "weight": 2,
+     "fault": {"type": "valve", "location": {"valve": "FV-103"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "valve", "location": "valve:FV-103"},
+     "protect": [{"loop": "FC-103", "modes": ["man"]}],
+     "debrief": "**The steam valve FV-103 stuck at {fault.onset:time}.** FC-103's OP wandered and then ran to its limit when the duty set point went up, but the duty reading did not follow. The duty meter was honest: normal noise, and the energy balance C3b green. Only C4 for FV-103 failed."},
+    {"id": "ft102_bias", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "FT-102"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.7], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:FT-102"},
+     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "debrief": "**FT-102 read {fault.magnitude} wrong from {fault.onset:time}.** The valve was fine and moved as told, but FC-102 controlled a lie, so the real reflux was off by that amount. Two checks failed together: C4 for FV-102 (OP vs flow) *and* C3/C3a (reflux + distillate vs condenser duty). A sticking valve fails only the first."},
+    {"id": "ft102_plugged", "weight": 1,
+     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
+     "answer": {"category": "instrument", "location": "instrument:FT-102"},
+     "protect": [{"loop": "FC-102", "modes": ["man"]}],
+     "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** On the OP trend this looks exactly like a stuck valve: OP moving, reading flat. The difference was the *noise*: the reading became far too smooth (σ under a tenth of typical) and the balances disagreed. With a stuck valve the meter keeps its normal noise and the balances agree."},
+    {"id": "ft103_drift", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "FT-103"}, "params": {"kind": "drift", "sign": "random"}, "severityRange": [0.6, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:FT-103"},
+     "protect": [{"loop": "FC-103", "modes": ["man"]}],
+     "debrief": "**FT-103 (duty) drifted by {fault.magnitude} per hour from {fault.onset:time}.** FC-103 held the reading, so the real duty crept away. The energy balance C3b and FV-103's valve curve (C4) both diverged steadily — a meter fault, not a valve fault."},
+    {"id": "ft103_plugged", "weight": 1,
+     "fault": {"type": "transmitter", "location": {"tag": "FT-103"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
+     "answer": {"category": "instrument", "location": "instrument:FT-103"},
+     "protect": [{"loop": "FC-103", "modes": ["man"]}],
+     "debrief": "**FT-103's impulse line plugged at {fault.onset:time}.** As with FT-102, the OP moved while the reading stayed flat, but the reading was too smooth, and C3b failed as the real duty wandered."},
+    {"id": "feed_real", "weight": 2,
+     "fault": {"type": "feedComposition", "params": {"dz": {"benzene": 0.10}, "sign": "random"}, "severityRange": [1.0, 1.0], "ramp": 600},
+     "answer": {"category": "feedUpset", "location": "feed"},
+     "debrief": "**Valves and meters were fine — the feed changed** by {fault.sign}0.10 benzene from {fault.onset:time}. All the C4 valve curves stayed on their lines, the balances closed, and AT-100 showed the new feed about 7–10 minutes later. The products moved because the column was separating a different feed."}
+  ],
+  "events": [
+    {"id": "planning", "at": 2700, "action": "setSp", "loop": "FC-102", "delta": 1.38889,
+     "message": "Planning: reflux +5 kmol/h and duty +65 kW to firm up the distillate."},
+    {"at": 2700, "action": "setSp", "loop": "FC-103", "delta": 65000}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1200, "cost": 3, "text": "For FC-102 and FC-103, open the faceplate's **valve curve** (C4). Is the operating point on the line?"},
+    {"after": 2400, "cost": 3, "text": "A point off the valve line means the valve *or* the meter. Now look at the balances (C3a, C3b): an honest meter keeps them green."},
+    {"after": 3600, "cost": 3, "text": "Compare the noise on the suspect flow with its typical value. Sticking valves leave the meter's noise alone; plugged meters go quiet."}
+  ],
+  "diagnosis": {
+    "categories": ["valve", "instrument", "feedUpset", "steam", "fouling", "none"],
+    "locations": ["valve:FV-102", "valve:FV-103", "instrument:FT-102", "instrument:FT-103", "instrument:FT-104",
+                  "instrument:AT-100", "feed", "reboiler", "condenser"],
+    "modes": [],
+    "attempts": 2
+  },
+  "scoring": {"category": 50, "location": 20, "time": 20, "safety": 10, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 10, "bonus": {"protectBeforeOffSpec": 10, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; loop protected: {result.protectTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+Notes:
+- The planning event (reflux and duty +5 %) moves both products *toward* purity, so it cannot trip the off-spec test by itself (VALIDATION.md H10.0). It forces both valves to move, which turns a quietly stuck valve into an obvious one.
+- A stuck valve and a plugged meter look the same on the OP trend. The candidates are paired on purpose, so that the noise and balance checks are what decide.
+
+### 11.8 Guided scenarios: objective definitions and reference numbers
+
+All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`, model view. Reference numbers marked [P] were computed with the committed M1 engine (2026-10-12) and are checked by VC-26.4.
+
+| Id | Start | Objectives (predicates in shorthand) | Hints (essentials) | Reference numbers |
+|---|---|---|---|---|
+| G1 Meet the column | `cold`; murphree 1.0 | o1 `steady == true`; o2 answer `stage`: "Tap the feed stage on the McCabe–Thiele diagram" correct [10] | "Use 300× and watch the staircase settle"; "The feed stage is where the staircase switches lines" | Steady after 2.5–6 h (VC-7.4) |
+| G2 Minimum reflux | as §11.1 (60 trays, feed 30, E = 1, ratio mode, R = 1.3, boilup 115 kmol/h) | o1 xD ≥ 0.95 ∧ xB ≤ 0.05 ∧ R ≤ 1.20 ∧ steady, hold 600 s; o2 number R_min = 1.10 ± 0.055 | "boilup = 50 (R + 1)"; pinch hint | [P] xD at steady state: R 1.30 → 0.99279, 1.20 → 0.97142, 1.15 → 0.96071, 1.12 → 0.95429, 1.105 → 0.95107; 60 trays reach xD = 0.95 at R = 1.1000. Steady 10.2 h from cold at R = 1.3; 4.4, 3.5, 3.1, 2.8 h after each step down. Time limit 86 400 s, par 43 200 s |
+| G3 Total reflux and Fenske | `steady`; trays 5, feed 3, E = 1 | o1 lever.feedFlow ≤ 0.001 ∧ loop[LC-101].mode == man ∧ loop[LC-101].op ≤ 0.1 ∧ loop[LC-102].mode == man ∧ loop[LC-102].op ≤ 0.1 ∧ steady, hold 300 s; o2 number N_min = 6.0 ± 0.05 | "With nothing leaving, reflux must equal boilup"; Fenske formula | VC-3.2: 6.0000 |
+| G4 The q-line | `steady` (defaults) | o1 lever.feedQ between 1.19 and 1.21 ∧ xD ≥ 0.95 ∧ xB ≤ 0.05 ∧ steady ∧ kpi.boilup ≤ 1.05 V_min(1.2), hold 300; o2 (after o1) the same at q = 1.0; o3 (after o2) at q = 0.5; o4 (after o3) at q = 0; o5 choice "Where does the q-line pivot?" → "(z, z) on the diagonal" | "Keep D = 50: reflux = boilup + (1 − q) × 100 − 50 kmol/h" | [P] minimum boilup (D = 50, specs exactly met): q 1.2 → V_B 129.0, L₀ 59.0; q 1.0 → 115.5, 65.5; q 0.5 → 87.05, 87.05; q 0 → 66.96, 116.96 kmol/h. Limit 172 800 s |
+| G5 Where to feed | `steady` (defaults) | o1 answer `stage`/number: "Which feed tray gives the highest xD?" correct [11]; o2 feedStage == 11 ∧ steady, hold 300 | "The optimum is where the staircase crosses the operating-line intersection" | VC-4.14 scan (x_D 0.98203 at tray 11). Limit 172 800 s |
+| G6 Real trays (Murphree) | `steady`; murphree 0.5 (locked), feedStage locked (it follows the fractional rule of PHYSICS.md §13.4) | o1 xD ≥ 0.98 ∧ steady, hold 300; o2 number "fewest trays that reached 0.98" = 28 ± 1; o3 choice "What stays about constant?" → "N × E (the equilibrium stages)" | "Add trays a few at a time" | [P] E = 0.5: N 20 → 0.95331, 24 → 0.96968, 26 → 0.97568, 27 → 0.97761, **28 (feed 14) → 0.98056**. 20 × 0.7 = 28 × 0.5 = 14 |
+| G7 What CMO hides (M4) | B-T T1 → T2, then mw | o1 tier == t2 ∧ steady; o2 choice "Why is V at the bottom smaller than at the top?" → "toluene's latent heat is larger"; o3 choice for methanol–water | | VC-11 profile |
+| G8 Pressure and volatility (M4) | B-T T2 | o1 lever.pTop ≥ 199 000 ∧ xD ≥ xD(start) − 0.002 ∧ xB ≤ xB(start) + 0.002 (use `from: start`) ∧ steady, hold 300; o2 choice "What happened to α?" → "it fell" | v1.0 said "hold specs" without defining them: they are now the 1-atm start values ± 0.002 | VC-10.3 α 2.71 (0.5 bar) → 2.20 (3 bar) |
+| G9 The azeotrope wall (M5) | ew T3, N 40, E 1 | o1 number "highest x_D you could reach" = 0.8956 ± 0.01; o2 choice "Tier 1 went past it. Why?" → "constant α cannot represent an azeotrope"; o3 choice "Lower pressure moves the azeotrope to…" → "higher ethanol" | | VC-10.5 |
+| G10 The other azeotrope (M5) | ac T3 | o1 choice "Where does the azeotrope leave?" → "in the bottoms"; o2 number x_B,acetone = 0.33 ± 0.03 | | VC-10.5, VC-8.11 |
+| G11 Flooding (M2/M3, Tier 1, full hydraulics) | `steady` (defaults, full hydraulics) | o1 kpi.maxFloodPct ≥ 100 (reach flood); o2 (after o1) maxFloodPct between 80 and 88 ∧ steady, hold 600; o3 number "throughput at flood onset (% of design)" = 120 ± 10 | "Raise F, L₀ and V_B together by 10 %: 110/110/165, 120/120/180, 130/130/195 kmol/h" | Uniform scaling keeps F_LV constant, so φ scales with the vapour rate: design max φ 0.832 (VC-12.3) → flood at ≈ 1/0.832 = 120 % |
+| G12 Turndown and weeping (M2/M3) | `steady`, full hydraulics, sieve | o1 throughput 35 % (F 35, L₀ 35, V_B 52.5 kmol/h) ∧ steady ∧ kpi.maxWeepFrac ≥ 0.3; o2 choice "What did weeping do to x_B?" → "raised it"; o3 (after o1) trayType.0 == valve ∧ steady ∧ kpi.maxWeepFrac < 0.05; o4 choice "Why don't valve trays weep yet?" → "closed valves keep the hole velocity up" | "Tray type can only be changed while paused" | VC-12.4 (w 0.51 sieve), VC-12.5 (w 0 valve at 35 %) |
+
+Every guided scenario's JSON carries these objectives verbatim. Its hints must, followed literally, complete it (SCOPE.md M3 acceptance; VC-26.4 plays G1–G6 automatically by applying the hint values).
 
 ---
 
@@ -950,7 +1392,9 @@ painters/
                                rivets.dart, vignette.dart (all cached; quality-aware)
 widgets/
   time_bar.dart, kpi_strip.dart, lever_tile.dart (slider + ± + numeric entry + SP/OP badge),
-  faceplate.dart, alarm_banner.dart, math_overlay.dart (flutter_math_fork), tray_inspector.dart,
+  faceplate.dart (PV/SP/OP, mode, quality badge, signal look, valve-curve mini plot, field check),
+  alarm_banner.dart, alarm_list.dart, balance_panel.dart (cross-checks, window selector, C6 chart),
+  math_overlay.dart (flutter_math_fork), tray_inspector.dart,
   fault_panel.dart, scenario_hud.dart, drill_hud.dart, diagnose_dialog.dart
 ```
 
@@ -1039,11 +1483,11 @@ Widget tests for each layout class (no overflow at 360×800, 800×360, 1440×900
 | condenser / pressure | Tier-1 drum | | | ● | | | | | | |
 | reboiler kettle / thermosyphon | Tier-1 sump | | | kettle | | thermosyphon | | | | |
 | side ops, strippers, steam | | | | | | | | | ● | |
-| control system | internal LC | | ● | PC, TC | | | | | crude loops | |
-| faults | | F01–F07 | F19–F20 | F08–F15 | | F16–F18 | | F21–F23 | F24–F27 | |
+| control system | internal LC | | ● loops, valves, fast layer, instruments + noise, analysers, field gauges, alarms, cross-checks C1–C5, plant view, PRNG | PC, TC, T2 instruments, C3a/b, C6, C7 | | | | | crude loops | |
+| faults | | F01–F07 | F19, F20, F28 | F08–F15 | | F16–F18 | | F21–F23 | F24–F27 | |
 | explain | | ● | | T2 equations | NRTL | thermosyphon | FUG | packing | crude | |
 | snapshot: McCabe–Thiele | ● | | | non-CMO | T-x-y | | Hengstebeck, FUG | | crude charts | |
-| scenarios, drills | | | runner + G1–G6, G11–G12 | G7–G8 | G9–G10 | drills H1–H5, G14 | G13, H6 | G15, H7 | G16, H8 | review |
+| scenarios, drills | | | runner, scoring, schema test + G1–G6, G11–G12 | G7–G8 | G9–G10 | drills H1–H5, H9, H10, G14 | G13, H6 | G15, H7 | G16, H8 | review |
 | runner | Local | | | | | | | | | Isolate |
 | app themes | Blueprint | | | Control Room | Paper | | Phosphor | | Brass | |
 
