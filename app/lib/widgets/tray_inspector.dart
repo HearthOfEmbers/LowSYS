@@ -5,7 +5,8 @@ import '../app_scope.dart';
 import '../controllers/sim_controller.dart';
 import '../theme/lowsys_theme.dart';
 
-/// Tap a tray to see x, y, y*, L, V, holdup and E_MV (numbers only; the math overlay is M2).
+/// Tap a tray to see x, y, y*, L, V, holdup and E_MV, plus the hydraulic indicators with full hydraulics.
+/// "Equations" opens the math overlay for the stage.
 class TrayInspector extends StatelessWidget {
   /// Collapse to nothing when no stage is selected (used where space is tight).
   final bool hideWhenEmpty;
@@ -28,23 +29,27 @@ class TrayInspector extends StatelessWidget {
               ? Center(
                   child: Text('Tap a tray on the column or a stage on the diagram to inspect it.', style: t.type.label.style(12.5, p.inkMuted), textAlign: TextAlign.center),
                 )
-              : ValueListenableBuilder<SimSnapshot?>(
-                  valueListenable: sim.snapshot,
-                  builder: (context, s, _) => s == null ? const SizedBox() : _body(context, s, sel, sim, t),
+              : ValueListenableBuilder<UnitSystem>(
+                  valueListenable: sim.units,
+                  builder: (context, u, _) => ValueListenableBuilder<SimSnapshot?>(
+                    valueListenable: sim.snapshot,
+                    builder: (context, s, _) => s == null ? const SizedBox() : _body(context, s, sel, sim, t, u),
+                  ),
                 ),
         );
       },
     );
   }
 
-  Widget _body(BuildContext context, SimSnapshot s, int j, SimController sim, LowsysTheme t) {
+  Widget _body(BuildContext context, SimSnapshot s, int j, SimController sim, LowsysTheme t, UnitSystem u) {
     final p = t.palette;
     final st = s.stages;
     final nc = st.nc;
     final N = s.layout.nTrays;
     final feed = s.layout.feedStages.first;
+    final full = s.hydraulics == HydraulicsMode.full;
     String frac(double v) => v.toStringAsFixed(4);
-    String kmolh(double v) => (v * 3.6).toStringAsFixed(1);
+    String flow(double v) => '${u.fromSI(Quantity.molarFlow, v).toStringAsFixed(1)} ${u.symbol(Quantity.molarFlow)}';
     String section() {
       if (j == 0) return 'condenser drum';
       if (j == N + 1) return 'sump and reboiler (equilibrium stage)';
@@ -62,13 +67,18 @@ class TrayInspector extends StatelessWidget {
       ('x', frac(x)),
       if (j >= 1) ('y', frac(y)),
       if (j >= 1) ('y*', frac(ys)),
-      if (j >= 1) ('L', '${kmolh(st.liquidDown[j])} kmol/h'),
-      if (j >= 1) ('V', '${kmolh(st.vaporUp[j])} kmol/h'),
-      ('holdup', '${(st.holdup[j] / 1000).toStringAsFixed(3)} kmol'),
+      if (j >= 1) ('L', flow(st.liquidDown[j])),
+      if (j >= 1) ('V', flow(st.vaporUp[j])),
+      ('holdup', '${u.fromSI(Quantity.molarAmount, st.holdup[j]).toStringAsFixed(3)} ${u.symbol(Quantity.molarAmount)}'),
       if (j >= 1 && j <= N) ('E_MV', st.efficiency[j].toStringAsFixed(3)),
-      if (j == 0) ('reflux L0', '${kmolh(s.streams[StreamId.reflux]!.flow)} kmol/h'),
-      if (j == 0) ('D', '${kmolh(s.kpis.d)} kmol/h'),
-      if (j == N + 1) ('B', '${kmolh(s.kpis.b)} kmol/h'),
+      if (full && j >= 1 && j <= N) ('dP', '${u.fromSI(Quantity.pressureDelta, st.dp[j]).toStringAsFixed(u == UnitSystem.si ? 2 : 3)} ${u.symbol(Quantity.pressureDelta)}'),
+      if (full && j >= 1 && j <= N) ('flood', '${(100 * st.jetFlood[j]).toStringAsFixed(0)} %'),
+      if (full && j >= 1 && j <= N) ('downcomer', '${(100 * st.dcFlood[j]).toStringAsFixed(0)} %'),
+      if (full && j >= 1 && j <= N && st.weepFrac[j] > 0) ('weeping', '${(100 * st.weepFrac[j]).toStringAsFixed(0)} %'),
+      if (full && j >= 1 && j <= N) ('froth', '${u.fromSI(Quantity.smallLength, st.froth[j]).toStringAsFixed(u == UnitSystem.si ? 0 : 1)} ${u.symbol(Quantity.smallLength)}'),
+      if (j == 0) ('reflux L0', flow(s.streams[StreamId.reflux]!.flow)),
+      if (j == 0) ('D', flow(s.kpis.d)),
+      if (j == N + 1) ('B', flow(s.kpis.b)),
     ];
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -92,6 +102,18 @@ class TrayInspector extends StatelessWidget {
                       TextSpan(text: r.$2, style: t.type.number.style(13.5, p.ink)),
                     ])),
                 ],
+              ),
+              const SizedBox(height: 4),
+              InkWell(
+                onTap: () => sim.openMath(ExplainStage(j)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.functions, size: 18, color: p.accent),
+                    const SizedBox(width: 4),
+                    Text('Equations', style: t.type.label.style(13.5, p.accent, weight: FontWeight.w700)),
+                  ]),
+                ),
               ),
             ],
           ),

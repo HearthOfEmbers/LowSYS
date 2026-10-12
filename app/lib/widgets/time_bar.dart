@@ -4,6 +4,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../controllers/sim_controller.dart';
 import '../theme/lowsys_theme.dart';
+import 'scenario_ui.dart';
 
 String formatClock(double t) {
   final s = t.floor();
@@ -137,7 +138,7 @@ class _SteadyChip extends StatelessWidget {
                 decoration: BoxDecoration(color: steady ? c : Colors.transparent, border: Border.all(color: c, width: 1.6), shape: BoxShape.circle),
               ),
               const SizedBox(width: 5),
-              Text(steady ? 'Steady' : (dense ? 'Moving' : 'Transient'), style: t.type.label.style(12.5, c)),
+              Text(steady ? 'Steady' : 'Transient', style: t.type.label.style(12.5, c)),
             ],
           ),
         );
@@ -164,6 +165,13 @@ class _PresetMenu extends StatelessWidget {
           sim.reset();
         } else if (v == 'rmin') {
           sim.toggleRmin();
+        } else if (v == 'units') {
+          sim.toggleUnits();
+        } else if (v == 'scenarios') {
+          showScenarioList(context, sim);
+        } else if (v == 'leave') {
+          sim.leaveScenario();
+          sim.reset();
         } else {
           sim.load(v);
         }
@@ -172,6 +180,9 @@ class _PresetMenu extends StatelessWidget {
         for (final e in kPresetNames.entries)
           CheckedPopupMenuItem<String>(value: e.key, checked: sim.presetId == e.key, child: Text(e.value, style: t.type.label.style(14, p.ink))),
         const PopupMenuDivider(),
+        PopupMenuItem<String>(value: 'scenarios', child: Text('Guided scenarios…', style: t.type.label.style(14, p.ink))),
+        if (sim.scenario != null) PopupMenuItem<String>(value: 'leave', child: Text('Leave scenario (sandbox)', style: t.type.label.style(14, p.ink))),
+        PopupMenuItem<String>(value: 'units', child: Text('Units: ${sim.units.value == UnitSystem.si ? 'SI → US field' : 'US field → SI'} (U)', style: t.type.label.style(14, p.ink))),
         PopupMenuItem<String>(value: 'rmin', child: Text(sim.showRmin ? 'Hide R_min construction' : 'Show R_min construction', style: t.type.label.style(14, p.ink))),
         PopupMenuItem<String>(value: 'reset', child: Text('Reset to steady state', style: t.type.label.style(14, p.ink))),
       ],

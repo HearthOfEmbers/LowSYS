@@ -87,7 +87,10 @@ class ColumnVesselPainter extends CustomPainter {
   final int feedStage;
   final double trayHeightM, diameterM;
 
-  ColumnVesselPainter({required this.theme, required this.trays, required this.feedStage, this.trayHeightM = 0.6, this.diameterM = 1.2});
+  /// Broken trays: stage to open fraction s (F04), drawn as a deck with a gap and bent ends.
+  final Map<int, double> broken;
+
+  ColumnVesselPainter({required this.theme, required this.trays, required this.feedStage, this.trayHeightM = 0.6, this.diameterM = 1.2, this.broken = const {}});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -155,8 +158,36 @@ class ColumnVesselPainter extends CustomPainter {
     for (var j = 1; j <= trays; j++) {
       final dy = g.deckY(j);
       final (x0, x1) = g.deckX(j);
-      canvas.drawLine(Offset(x0, dy), Offset(x1, dy), trayP);
-      if (!compact) canvas.drawLine(Offset(x0, dy + 2.2), Offset(x1, dy + 2.2), trayP);
+      final bs = broken[j];
+      if (bs == null) {
+        canvas.drawLine(Offset(x0, dy), Offset(x1, dy), trayP);
+        if (!compact) canvas.drawLine(Offset(x0, dy + 2.2), Offset(x1, dy + 2.2), trayP);
+      } else {
+        // broken deck: the middle is missing, both ends hang down in a jagged break
+        final w = x1 - x0;
+        final gapL = x0 + w * (0.62 - 0.30 * bs), gapR = x0 + w * 0.62;
+        final bp = Paint()
+          ..color = p.alarm
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+        canvas.drawLine(Offset(x0, dy), Offset(gapL, dy), trayP);
+        canvas.drawLine(Offset(gapR + w * 0.1, dy), Offset(x1, dy), trayP);
+        canvas.drawPath(
+            Path()
+              ..moveTo(gapL, dy)
+              ..lineTo(gapL + 2, dy + 3)
+              ..lineTo(gapL - 1, dy + 5)
+              ..lineTo(gapL + 3, dy + 8),
+            bp);
+        canvas.drawPath(
+            Path()
+              ..moveTo(gapR + w * 0.1, dy)
+              ..lineTo(gapR + w * 0.1 - 2, dy + 4)
+              ..lineTo(gapR + w * 0.1 + 1, dy + 6),
+            bp);
+        // fallen plate
+        canvas.drawLine(Offset(gapL + 3, dy + g.spacing * 0.5), Offset(gapR + 4, dy + g.spacing * 0.62), bp);
+      }
       // weir (short upstand at the downcomer end) and downcomer baffle down to the next tray
       final right = g.dcRight(j);
       final wx = right ? x1 : x0;
@@ -279,7 +310,7 @@ class ColumnVesselPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(ColumnVesselPainter old) =>
-      old.theme != theme || old.trays != trays || old.feedStage != feedStage || old.trayHeightM != trayHeightM || old.diameterM != diameterM;
+      old.theme != theme || old.trays != trays || old.feedStage != feedStage || !_sameMap(old.broken, broken) || old.trayHeightM != trayHeightM || old.diameterM != diameterM;
 }
 
 /// Everything that moves: liquid hatching, levels, vapour bubbles, flow dashes, labels, selection.
@@ -290,9 +321,10 @@ class ColumnLivePainter extends CustomPainter {
   final ColumnAnimation anim;
   final LowsysTheme theme;
   final bool lowQuality;
+  final ValueListenable<UnitSystem> units;
 
-  ColumnLivePainter({required this.snapshot, required this.selected, required this.anim, required this.theme, this.lowQuality = false})
-      : super(repaint: Listenable.merge([snapshot, selected, anim]));
+  ColumnLivePainter({required this.snapshot, required this.selected, required this.anim, required this.theme, required this.units, this.lowQuality = false})
+      : super(repaint: Listenable.merge([snapshot, selected, anim, units]));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -310,39 +342,155 @@ class ColumnLivePainter extends CustomPainter {
 
     Color compColor(int stage) => p.composition(1 - st.x[stage * nc]);
 
-    // ---- liquid on trays and in downcomers
+    // ---- liquid on trays and in downcomers (full hydraulics adds froth, spray, drips, flooding, foam)
+    final full = s.hydraulics == HydraulicsMode.full;
+    final foam = <int, double>{};
+    final fouled = <int, double>{};
+    final broken = <int, double>{};
+    for (final f in s.visibleFaults) {
+      final loc = f.location;
+      if (loc.stageFrom == null) continue;
+      for (var j = loc.stageFrom!; j <= math.min(loc.stageTo!, N); j++) {
+        switch (f.type) {
+          case FaultType.foaming:
+            foam[j] = f.severity;
+          case FaultType.trayFouling:
+            fouled[j] = f.severity;
+          case FaultType.trayDamage:
+            broken[j] = f.severity;
+          default:
+            break;
+        }
+      }
+    }
     final nominalHold = _median(st.holdup, 1, N);
     final hatchGapBase = g.spacing < 9 ? 3.2 : 5.0;
+    final tAnim = anim.time;
+    final sprayPaint = Paint()..color = p.liquidLight.withValues(alpha: 0.9);
+    final dripPaint = Paint()
+      ..color = p.liquidLight
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
     for (var j = 1; j <= N; j++) {
       final col = compColor(j);
       final dy = g.deckY(j);
       final (x0, x1) = g.deckX(j);
+      final isBroken = broken.containsKey(j);
+      final flooded = full && (st.frothFill[j] >= 1 || st.jetFlood[j] >= 1 || (st.flags[j] & 16) != 0);
       final frac = (st.hcl[j] / 0.06).clamp(0.0, 1.15);
-      final hVis = math.max(1.5, frac * g.spacing * 0.62);
-      final r = Rect.fromLTRB(x0 + 1, dy - hVis, x1 - 1, dy - 0.5);
-      canvas.drawRect(r, Paint()..color = col.withValues(alpha: 0.16));
-      final densify = nominalHold > 0 ? (st.holdup[j] / nominalHold).clamp(0.4, 1.8) : 1.0;
-      _hatch(canvas, r, col, hatchGapBase / densify, 0.9, alpha: 0.9);
+      var hVis = math.max(1.5, frac * g.spacing * 0.62);
+      if (st.hcl[j] < 0.002 && full) hVis = 1.0; // dry or dumped tray
+      var hFroth = hVis;
+      if (full) {
+        final fr = (st.froth[j] / 0.06).clamp(0.0, 1.6) * g.spacing * 0.62;
+        hFroth = math.max(hVis, math.min(fr, g.spacing * 0.98));
+      }
+      if (flooded) {
+        hFroth = g.spacing * 0.98;
+        hVis = math.max(hVis, g.spacing * 0.7);
+      }
+      final xa = isBroken ? x0 + (x1 - x0) * 0.62 : x0;
+      final r = Rect.fromLTRB(x0 + 1, dy - hVis, (isBroken ? xa : x1) - 1, dy - 0.5);
+      if (r.width > 1) {
+        canvas.drawRect(r, Paint()..color = col.withValues(alpha: 0.16));
+        final densify = nominalHold > 0 ? (st.holdup[j] / nominalHold).clamp(0.4, 1.8) : 1.0;
+        _hatch(canvas, r, col, hatchGapBase / densify, 0.9, alpha: 0.9);
+      }
+      // froth layer above the clear liquid: stippled
+      final fr = Rect.fromLTRB(x0 + 1, dy - hFroth, (isBroken ? xa : x1) - 1, dy - hVis);
+      if (full && fr.height > 1.5 && fr.width > 1) {
+        canvas.drawRect(fr, Paint()..color = p.froth.withValues(alpha: flooded ? 0.22 : 0.10));
+        final dots = Paint()..color = p.froth.withValues(alpha: 0.55);
+        final cols = math.max(2, (fr.width / 7).floor());
+        for (var c = 0; c < cols; c++) {
+          for (var rr = 0; rr < math.max(1, (fr.height / 6).floor()); rr++) {
+            final u1 = _hash(j * 5.1 + c * 1.3 + rr * 7.7), u2 = _hash(j * 2.9 + c * 3.1 + rr * 1.9);
+            canvas.drawCircle(Offset(fr.left + (c + u1) * fr.width / cols, fr.bottom - (rr + u2) * 6.0 - 1), 0.9 + u2 * 1.1, dots);
+          }
+        }
+      }
+      // foaming (F06): dense scalloped bubbles on the froth surface
+      final foamS = foam[j] ?? 0.0;
+      if (foamS > 0 && r.width > 1) {
+        final topY = dy - math.max(hFroth, hVis);
+        final fp = Paint()
+          ..color = p.froth.withValues(alpha: 0.85)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9;
+        final n = (r.width / 4.5).floor();
+        for (var k = 0; k < n; k++) {
+          final u = _hash(j * 3.3 + k * 1.7);
+          canvas.drawCircle(Offset(r.left + (k + 0.5) * r.width / n, topY - 1 - u * 2.5 * (0.5 + foamS)), 1.6 + u * 1.6 * (0.5 + foamS), fp);
+        }
+      }
       // surface line with a little ripple
-      final surf = Path()..moveTo(r.left, r.top);
+      final topSurf = (flooded || foamS > 0) ? dy - hFroth : r.top;
+      final surf = Path()..moveTo(r.left, topSurf);
       final steps = math.max(3, (r.width / 5).floor());
       for (var k = 1; k <= steps; k++) {
         final xx = r.left + r.width * k / steps;
-        surf.lineTo(xx, r.top + math.sin(anim.time * 2.2 + k * 0.9 + j) * 0.7);
+        surf.lineTo(xx, topSurf + math.sin(tAnim * 2.2 + k * 0.9 + j) * 0.7);
       }
       canvas.drawPath(
           surf,
           Paint()
-            ..color = p.froth
+            ..color = flooded ? p.alarm : p.froth
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.1);
-      // downcomer: liquid column from the weir to the tray below
+            ..strokeWidth = flooded ? 1.6 : 1.1);
+      // entrainment spray (psi above 2 %) rising from the froth to the tray above
+      if (full && j > 1) {
+        final l = st.liquidDown[j], e = st.entrain[j];
+        final psi = (l + e) > 0 ? e / (l + e) : 0.0;
+        if (psi > 0.02) {
+          final count = (3 + 40 * psi.clamp(0.0, 0.6)).round();
+          final yTop = g.deckY(j - 1) + 3;
+          final yBot = dy - hFroth;
+          for (var k = 0; k < count; k++) {
+            final u1 = _hash(j * 9.1 + k * 2.3), u2 = _hash(j * 4.7 + k * 6.1), u3 = _hash(j * 1.3 + k * 3.7);
+            final ph = (u3 + anim.bubblePhase * (0.8 + u2)) % 1.0;
+            final yy = yBot - ph * (yBot - yTop);
+            canvas.drawCircle(Offset(x0 + 4 + u1 * (x1 - x0 - 8), yy), 0.8 + u2 * 0.7, sprayPaint);
+          }
+        }
+      }
+      // weeping drips through the deck
+      final w = full ? st.weepFrac[j] : 0.0;
+      final dumping = full && (st.flags[j] & 2) != 0;
+      if (w > 0.05 || dumping || isBroken) {
+        final count = dumping ? 8 : (2 + 10 * (isBroken ? math.max(w, broken[j]!) : w)).round();
+        final nextY = j < N ? g.deckY(j + 1) - hVis - 1 : g.sumpTop;
+        for (var k = 0; k < count; k++) {
+          final u1 = _hash(j * 6.1 + k * 1.9), u3 = _hash(j * 2.3 + k * 4.3);
+          final ph = (u3 + anim.flowPhase * 0.9) % 1.0;
+          final xx = isBroken ? xa + 2 + u1 * (x1 - xa - 4) : x0 + 3 + u1 * (x1 - x0 - 6);
+          final y0 = dy + 3 + ph * (nextY - dy - 6);
+          canvas.drawLine(Offset(xx, y0), Offset(xx, y0 + 2.5), dripPaint);
+        }
+      }
+      // fouling (F05): plugged holes drawn as dark ticks on the deck
+      final fouledS = fouled[j] ?? 0.0;
+      if (fouledS > 0 && !isBroken) {
+        final fp = Paint()
+          ..color = p.accent2
+          ..strokeWidth = 2.0;
+        final n = (4 + 8 * fouledS).round();
+        for (var k = 0; k < n; k++) {
+          final xx = x0 + (k + 0.5) * (x1 - x0) / n;
+          canvas.drawLine(Offset(xx, dy - 1.5), Offset(xx, dy + 3.5), fp);
+        }
+      }
+      // downcomer: liquid column from the weir to the tray below, backed up when the limit nears
       final right = g.dcRight(j);
       final dcx0 = right ? x1 : g.shellL, dcx1 = right ? g.shellR : x0;
       final nextY = j < N ? g.deckY(j + 1) : g.sumpTop + g.spacing * 0.2;
       final dcRect = Rect.fromLTRB(dcx0 + 1.5, dy + 2.5, dcx1 - 1.5, nextY - g.spacing * 0.3);
       if (dcRect.height > 2 && dcRect.width > 2) {
         canvas.drawRect(dcRect, Paint()..color = col.withValues(alpha: 0.10));
+        final back = full ? st.dcFlood[j].clamp(0.0, 1.0) : 0.0;
+        if (back > 0.15) {
+          final level = Rect.fromLTRB(dcRect.left, dcRect.bottom - dcRect.height * back, dcRect.right, dcRect.bottom);
+          _hatch(canvas, level, back > 0.95 ? p.alarm : col, 3.0, 0.9, alpha: 0.9);
+        }
         final flow = Paint()
           ..color = col.withValues(alpha: 0.85)
           ..strokeWidth = 1.2;
@@ -417,7 +565,8 @@ class ColumnLivePainter extends CustomPainter {
     final tag = num.style(12, p.accent);
     final narrow = size.width < 260; // phone portrait: tags only, values live in the KPI strip and inspector
     final labS = lab.style(12, p.ink);
-    String kmolh(double v) => (v * 3.6).toStringAsFixed(1);
+    final uSys = units.value;
+    String kmolh(double v) => uSys.fromSI(Quantity.molarFlow, v).toStringAsFixed(1);
     // feed: value above the line, tray number below
     final fy = g.deckY(s.layout.feedStages.first) - g.spacing * 0.5;
     _dashedLine(canvas, Offset(6, fy), Offset(g.shellL - wall - 2, fy), flowP, 5, 4, phase: -anim.flowPhase * 24);
@@ -482,4 +631,12 @@ class ColumnLivePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(ColumnLivePainter old) => old.theme != theme || old.lowQuality != lowQuality;
+}
+
+bool _sameMap(Map<int, double> a, Map<int, double> b) {
+  if (a.length != b.length) return false;
+  for (final e in a.entries) {
+    if (b[e.key] != e.value) return false;
+  }
+  return true;
 }

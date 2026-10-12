@@ -34,12 +34,13 @@ LowSYS/
           sim/                  simulator.dart, stepper.dart, component_solver.dart,
                                 hydraulic_solver.dart, initializer.dart, steady_monitor.dart,
                                 rebuild.dart, tier_switch.dart, history_ring.dart
-          control/              pid.dart, loop.dart, valve.dart, instrument.dart,
-                                control_system.dart, alarms.dart
+          control/              pid.dart, loop.dart, valve.dart, instrument.dart, analyser.dart,
+                                field_gauge.dart, fast_layer.dart (PHYSICS.md §10.1), control_system.dart,
+                                alarms.dart, cross_checks.dart (PHYSICS.md §14.6)
           faults/               fault_spec.dart, fault_manager.dart, fault_effects.dart
           explain/              trace.dart, explain_engine.dart, equation_catalog.dart
           snapshot/             sim_snapshot.dart, kpis.dart, mccabe_thiele.dart, profiles.dart,
-                                fug.dart, crude_products.dart, txy.dart
+                                fug.dart, crude_products.dart, txy.dart, plant_view.dart (masking, PHYSICS.md §10.9)
           scenario/             scenario_def.dart, predicate.dart, scenario_runner.dart,
                                 drill.dart, scoring.dart
           runner/               sim_runner.dart (interface), local_sim_runner.dart,
@@ -82,8 +83,9 @@ class SimOptions {
   final double dtFastForward;      // 2.0 s
   final int murphreePasses;        // 2
   final double thermosyphonSubstep;// 0.1 s
-  final int seed;                  // PRNG seed (noise, drills)
-  final bool measurementNoise;     // false
+  final int seed;                  // PRNG seed (noise, drills), 0 ≤ seed < 2^32 (PHYSICS.md §12.9)
+  final bool measurementNoise;     // engine default false (tests); the app's sandbox starts with the
+                                   // `noise` lever on (SCOPE.md §4.2); scenarios set it explicitly
   const SimOptions({this.dt = 0.5, this.dtFastForward = 2.0, this.murphreePasses = 2,
       this.thermosyphonSubstep = 0.1, this.seed = 1, this.measurementNoise = false});
 }
@@ -290,6 +292,8 @@ All JSON values are SI (mol/s, K, Pa, m, kg/s, W). The UI converts for display.
 
 `TrendBuffer` stores selected variables every 5 s of sim time for 2 h (1440 points each) in ring `Float64List`s: all loop PV/SP/OP, xD, xB (or key specs), P_top, total ΔP, max flood, Q_C, Q_R, V_B, levels, and up to 6 user-pinned stage variables.
 
+Every instrument reading is stored as **three** series per 5-s bin: mean, min and max of all its updates in that bin (FT: 50 updates; others: 10 at dt = 0.5 s), plus the worst quality seen in the bin. The trend painter draws the min–max envelope per pixel column, so a 1-s spike or the noise band stays visible after decimation (PHYSICS.md §14.6). Cross-checks read the bin means. In plant view the model series (xD, xB, max flood, …) are not sent; the reading series are.
+
 ### 5.5 Steady-state cache
 
 `SteadyCache` stores, per preset id and tier, a serialised `ColumnState` produced by `runToSteadyState()`. A tool test (`test/data/steady_cache_test.dart`) regenerates each cache and fails if it differs from the stored one by more than 1×10⁻⁶ (VALIDATION.md VC-4).
@@ -327,6 +331,16 @@ class Simulator {
   ControlSystem get control;               // §10
   FaultManager get faults;                 // §9
   ScenarioRunner? get scenario;            // §11, attached by the scenario layer
+  void startScenario(ScenarioDef def);     // builds config + overrides, starts warm, applies levers/loops,
+                                           // draws the drill fault (§11.2); replaces any running scenario
+
+  // --- operator actions (all deterministic, all logged in the event journal) ---
+  void acknowledgeAlarm(String alarmId);   // PHYSICS.md §10.8
+  void acknowledgeAllAlarms();
+  void requestFieldCheck(String gaugeTag); // LG-101, LG-102, PG-101: result after 180 s (PHYSICS.md §10.5)
+  void requestMaintenance(String tag);     // sandbox only; throws StateError in a drill
+  void setCheckWindow(double seconds);     // 300 | 600 | 1800 | 3600 (PHYSICS.md §14.6)
+  void setTemperatureReference();          // C6 reference = current 300-s means
 
   // --- outputs ---
   SimSnapshot snapshot();                  // immutable copy; allocates (call once per frame)
@@ -365,6 +379,27 @@ class LeverSpec {
 
 Lever ids (SI values): `feedFlow`, `feedZ.<componentId>`, `feedQ`, `feedT`, `feedVaporFraction`, `feedStage`, `refluxFlow`, `refluxRatio`, `refluxMode` (0 flow / 1 ratio), `refluxSubcooling`, `boilup`, `reboilerDuty`, `pTop`, `condenserType`, `drumLevelSp`, `sumpLevelSp`, `distillateValve`, `bottomsValve`, `nTrays`, `murphree`, `trayType.<section>`, `hydraulics`, `cwInletT`, `cwMaxFlow`, `steamHeaderP`, `reboilerType`, `tsInletValve`, `antifoam`, `inertVent`, `tc101Enable`, `tc101Tray`, `tc101Sp`, `noise`, `crudeRate`, `cot`, `topTSp`, `drawRate.<product>`, `paDuty`, `steam.<point>`, `drumTSp`. Ranges and defaults: SCOPE.md §4.
 
+M3 additions:
+- `view`: 0 model, 1 plant (PHYSICS.md §10.9).
+- `badPvShed`: 1 shed (default) / 0 none (§10.2).
+- `bypass.<valveId>`: −1 closed (default) or 0–100 % (§10.3).
+- `feedFlowOp`, `refluxOp`, `boilupOp`: OP % of FC-101/102/103, effective in MAN, alongside the existing `distillateValve` and `bottomsValve`.
+
+**Lever-to-loop binding** (M3). Each loop-bound lever edits the SP while its loop is in AUTO and the OP lever while it is in MAN; in CAS the SP lever is read-only and shows the cascade SP.
+
+| SP lever | OP lever | Loop |
+|---|---|---|
+| `feedFlow` | `feedFlowOp` | FC-101 |
+| `refluxFlow` | `refluxOp` | FC-102 |
+| `refluxRatio` | – (ratio station) | FC-102 |
+| `boilup` / `reboilerDuty` | `boilupOp` | FC-103 |
+| `drumLevelSp` | `distillateValve` | LC-101 |
+| `sumpLevelSp` | `bottomsValve` | LC-102 |
+| `pTop` | – (CW valve via the faceplate) | PC-101 |
+| `tc101Sp` | – | TC-101 |
+
+Setting an SP lever while its loop is in MAN stores the value but has no effect until the loop is in AUTO again. The value is then overwritten by setpoint tracking, and the UI disables the SP control in MAN.
+
 ### 6.4 Scheduling contract (for the runner)
 
 `advance(s)` performs `floor((carry + s)/dt)` steps. The runner decides how much sim time to request per frame (§13.3). The simulator never reads a wall clock.
@@ -392,6 +427,18 @@ abstract class SimRunner {
   Future<void> setLoopOp(LoopTag tag, double op);
   Future<FaultId> injectFault(FaultSpec spec);
   Future<void> clearFault(FaultId id);
+  // M3: operator actions and scenarios (the app never touches Simulator directly)
+  Future<void> acknowledgeAlarm(String alarmId);
+  Future<void> acknowledgeAllAlarms();
+  Future<void> requestFieldCheck(String gaugeTag);
+  Future<void> requestMaintenance(String tag);
+  Future<void> setCheckWindow(double seconds);
+  Future<void> setTemperatureReference();
+  Future<void> startScenario(ScenarioDef def, {int? seed});    // seed defaults to a new random value per attempt
+  Future<void> takeHint(int index);                            // unlocks and charges its cost (§11.4)
+  Future<AnswerResult> submitAnswer(String objectiveId, Object answer);
+  Future<DrillResult> submitDiagnosis(Diagnosis d);
+  Future<ScoreCard> finishScenario();
   Future<ExplainResult> explain(ExplainTarget target);
   Future<SteadyStateResult> runToSteadyState({void Function(double progress)? onProgress});
   Future<Map<String, Object?>> save();
@@ -433,6 +480,97 @@ class SimSnapshot {
   final SolverHealth solverHealth;
   final List<FaultInfo> visibleFaults;  // empty in drills
   final double achievedSpeed;       // filled by the runner
+  // M3
+  final SimView view;               // model | plant (PHYSICS.md §10.9); in plant view the fields above are masked
+  final List<InstrumentReading> instruments;
+  final List<ValveSnapshot> valves;
+  final List<CrossCheckResult> crossChecks;    // PHYSICS.md §14.6
+  final List<FieldCheck> fieldChecks;          // pending and completed field-gauge readings
+  final ScenarioSnapshot? scenario;            // objectives, unlocked hints, messages, timer; no fault data in drills
+}
+
+enum SimView { model, plant }
+enum Quality { good, uncertain, bad, oos }
+enum InstrumentType { ftLiquid, ftSteam, ftWater, ltDrum, ltSump, pt, pdt, tiTray, tiLine, at }
+
+@immutable
+class InstrumentReading {
+  final String tag;                 // 'FT-102'
+  final InstrumentType type;
+  final Quantity quantity;          // for display units
+  final double value;               // v_meas, SI (PHYSICS.md §10.5 step 9); for AT the shown result
+  final double lo, hi;              // span, SI
+  final double milliamps;           // I_q (NaN for AT)
+  final Quality quality;
+  final String? qualityText;        // 'IOP−', 'IOP+', 'OOR▲', 'OOR▼', 'STALE', 'OOS' or null
+  final double lastGoodValue;       // shown greyed when BAD
+  final double sigma5min;           // std of the readings over the last 300 s (signal look)
+  final double typicalSigma;        // σ_disp of a healthy transmitter (PHYSICS.md §10.5 table)
+  final double digitsAge;           // s since the displayed digits last changed (Fmt resolution)
+  final double? resultAge;          // AT only: age of the shown result (s)
+  final String? loopTag;            // loop that uses it as PV, if any
+}
+
+@immutable
+class ValveSnapshot {
+  final String id;                  // 'FV-102'
+  final double op;                  // command from its loop (%)
+  final double position;            // p (%), NaN in plant view
+  final double fMax;                // SI; NaN for FV-103 in Tiers 2/3 (see expectedFlow)
+  final double expectedFlow;        // F_max g(OP), or Q_max,0 g(OP) for the steam valve (C4 curve)
+  final double bypass;              // −1 closed or 0–100
+}
+
+@immutable
+class LoopSnapshot {
+  final LoopTag tag;
+  final LoopMode mode;              // man | auto | cas | iman
+  final bool shed;                  // in MAN because of a BAD PV
+  final double pv, sp, op;          // pv = the reading (SI), sp SI, op %
+  final Quality pvQuality;
+  final double spLo, spHi, opLo, opHi;
+  final double kc, ti, td;
+  final Action action;
+  final bool spTracked;             // SP was set by MAN→AUTO tracking (faceplate note)
+  final double lastError, lastDeltaOp;   // for eq.pid
+}
+
+enum AlarmState { unack, acked, rtnUnack }   // NORMAL alarms are not listed
+enum AlarmPriority { high, medium, low }
+
+@immutable
+class Alarm {
+  final String id;                  // '<tag>.<type>' or 'model.<type>' (PHYSICS.md §10.8)
+  final String message;             // localisation key + parameters
+  final AlarmPriority priority;
+  final AlarmState state;
+  final double raisedAt, changedAt; // sim time
+}
+
+enum CheckStatus { ok, check, fail, notAvailable, transient }
+
+@immutable
+class CrossCheckResult {
+  final String id;                  // 'C1' … 'C7', 'C4:FV-102', 'C5:drum', 'C6:TI-114'
+  final String titleKey;
+  final double residual, band;      // SI
+  final CheckStatus status;
+  final List<String> inputs;        // tags used
+  final String? reason;             // e.g. 'BAD input FT-104'
+  final Map<String, double> terms;  // the numbers the panel row prints (F, D+B, accumulation, …)
+}
+
+@immutable
+class FieldCheck { final String gaugeTag; final double requestedAt, readyAt; final double? value; }
+
+@immutable
+class ScenarioSnapshot {
+  final String id; final ScenarioKind kind; final double elapsed, timeLimit;
+  final List<ObjectiveState> objectives;   // id, text, met, metAt, holdProgress (s)
+  final List<HintState> hints;             // index, unlocked, taken, cost, text (only when taken)
+  final List<ScenarioMessage> messages;    // event messages so far (time, text)
+  final int diagnosisAttemptsLeft;         // drills
+  final bool finished;
 }
 
 @immutable
@@ -527,6 +665,11 @@ class ExplainReboiler extends ExplainTarget {}
 class ExplainFeed extends ExplainTarget { final int feedIndex; }
 class ExplainLoop extends ExplainTarget { final LoopTag tag; }
 class ExplainMcCabe extends ExplainTarget { final McCabeElement element; } // opLine, qLine, rmin, fug…
+class ExplainInstrument extends ExplainTarget { final String tag; }   // eq.instrument / eq.analyser
+class ExplainValve extends ExplainTarget { final String valveId; }    // eq.valve
+class ExplainCheck extends ExplainTarget { final String checkId; }    // eq.check.* (PHYSICS.md §14.6)
+// In plant view only ExplainInstrument, ExplainValve, ExplainLoop and ExplainCheck are accepted;
+// other targets return an ExplainResult with a single note "Not observable on a real plant".
 
 @immutable
 class ExplainResult {
@@ -567,8 +710,17 @@ class EquationLine {
 ```dart
 enum FaultType { trayDamage, trayFouling, foaming, feedComposition, feedThermal, coolingLoss,
   condenserFouling, nonCondensables, refluxPumpTrip, reboilerFouling, condensateBackup,
-  steamHeaderLoss, tsInletRestriction, tsOutletRestriction, instrument, valve,
-  packingMaldistribution, packingCrush, strippingSteamLoss, pumparoundTrip, cotUpset }
+  steamHeaderLoss, tsInletRestriction, tsOutletRestriction, instrument /* F19 */, transmitter /* F28 */,
+  valve /* F20 */, packingMaldistribution, packingCrush, strippingSteamLoss, pumparoundTrip, cotUpset }
+
+// Location and params for the control faults (PHYSICS.md §10.6), JSON form:
+//   F19: {"type": "instrument",  "location": {"tag": "FT-102"}, "params": {"kind": "bias"|"drift"|"stuck", "sign": 1|-1}}
+//   F28: {"type": "transmitter", "location": {"tag": "TI-114"},
+//         "params": {"kind": "signalLossLow"|"signalLossHigh"|"signalLoss"(AT)|"plugged"|"spiking"|"coated"}}
+//   F20: {"type": "valve",       "location": {"valve": "FV-102"}, "params": {"kind": "stuck"|"failOpen"|"failClosed"}}
+// "sign" is required for bias/drift (1 = reads high). A kind that does not apply to the tag's type
+// (e.g. coated on an FT) is a ConfigException. At most one F19/F28 fault per tag at a time
+// (injecting a second replaces the first).
 
 @immutable
 class FaultSpec {

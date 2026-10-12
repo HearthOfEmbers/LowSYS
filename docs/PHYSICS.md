@@ -80,7 +80,11 @@ X = [ m_ij for j = 0..N+1, i = 1..n_c          (component holdups, main chain)
       n_V, n_I                                    (overhead vapour and inert inventory; Tier 2/3)
       ψ_j, L̄_j for j = 1..N                      (entrainment fraction, filtered liquid load)
       W, x_r, u, v                                (thermosyphon: circulation kg/s, riser quality, oscillator)
-      controller integrals / OPs, valve positions, measurement filters
+      controller OPs and PID histories (e_{k−1}, PVf), valve positions, bypass openings
+      instrument states: sensed noise n_s, impulse-line and damping lags v_p, v_m, analyser v_ss / pending / shown result,
+        spike schedule, frozen outputs (stuck), field-check requests        (§10.5)
+      valve disturbances d, PRNG stream states                             (§12.9)
+      alarm states and the event journal                                    (§10.8)
       T_j^{n-1} for j = 0..N+1                     (previous stage temperature, for sensible storage; Tier 2/3)
       fault clocks ]
 ```
@@ -868,6 +872,8 @@ Q_R,delivered = min(Q_R,SP , Q_max)                                             
 steam valve OP (display) = 100 · Q_R,delivered / Q_max          ("duty limited" alarm when Q_R,SP > Q_max)
 ```
 
+From M3, Q_R,SP is replaced by the steam valve's duty request Q_v = Q_max,0 g(p)(1 + d), and FC-103 positions the valve on the *measured* duty (§10.3). The delivered duty is the sub-step mean of min(Q_v, Q_max), and the "display OP" line above is superseded by the real valve position. "Duty limited" means Q_v > Q_max for 60 s (`model.dutyLimited`). On the plant, it shows as FC-103 at 100 % OP with the duty below SP (`FC-103.OPSAT`).
+
 UA_R,clean is stored in the preset, chosen so that the design duty uses 60 % of Q_max (B-T: Q = 1.30 MW at T_B = 110.4 °C and T_st = 148.1 °C → UA_R,clean = 57.5 kW/K); for a new preset it is found offline from a steady-state run, like the condenser UA (§7.2). Fouling raises R_f,R; condensate backup raises f_flooded (§11).
 
 In Tier 1 the boilup lever V_B is used directly; heat-transfer limits do not apply.
@@ -1087,54 +1093,330 @@ D86_5  = (D86_0 + D86_10)/2      D86_95 = (D86_90 + D86_100)/2
 
 ---
 
-## 10. Control system
+## 10. Control system and instruments
 
-### 10.1 PID (velocity form)
+This section is the M3 contract (revised 2026-10-12, v1.1). It replaces the v1.0 "ideal flow controller"; §10.4 says why. Tags, spans and tunings are for the B-T preset; other presets list theirs in `control_config.dart` (ENGINE_API.md §10). Everything here is deterministic for a given seed (§12.9).
 
-Each loop executes every main step (dt = 0.5 s). PV and SP are normalised to % of the transmitter span [lo, hi]; OP is % valve.
+### 10.1 Objects and timing
+
+| Object | B-T tags | Updated in |
+|---|---|---|
+| Valves | FV-101 feed, FV-102 reflux, FV-103 boilup (T1) / steam (T2/3), LV-101 distillate, LV-102 bottoms, PV-101 cooling water (T2/3, total condenser), PV-102 vapour product (partial condenser) | fast layer |
+| Flow transmitters | FT-101 feed, FT-102 reflux, FT-103 boilup / reboiler duty, FT-104 distillate, FT-105 bottoms, FT-201 cooling water (T2/3) | fast layer |
+| Flow loops | FC-101, FC-102 (with the ratio station), FC-103 | fast layer |
+| Other instruments | LT-101, LT-102, PDT-101, AT-100, AT-101, AT-102; from M4 PT-101, PT-201, TI-100, tray TIs, TI-201, TI-202 | main layer |
+| Other loops | LC-101, LC-102; from M4 PC-101, TC-101 | main layer |
+| Alarms, cross-check bins | | main layer |
+
+**Fast layer.** Sub-step δ_c = 0.1 s; n_c = round(dt/δ_c) sub-steps per main step (5 at dt = 0.5 s, 20 at 2 s, 300 at 30 s). It runs at step 2 of the main step (§12.4) and covers the interval [t, t + dt]. Everything it needs from the column (pump limits, Q_max) is frozen at the start-of-step state, as for the thermosyphon (§8.3). Order inside one sub-step:
+
+1. For every valve, in the fixed order FV-101, FV-102, FV-103, LV-101, LV-102, PV-101, PV-102: position update from the current command (§10.3), then valve flow F_k (§10.3), then the flow transmitter on that line (§10.5).
+2. For every flow loop in tag order: ratio station (FC-102 in ratio mode, §10.2), then PID execution (§10.2) with h = δ_c. The new OP acts on the valve from the next sub-step.
+
+The flow that every column balance uses in the main step is the mean over the sub-steps:
 
 ```
-e_k = +(PV%_k − SP%_k)   for direct action (OP rises when PV rises above SP)
-e_k = −(PV%_k − SP%_k)   for reverse action
-ΔOP_k = Kc [ (e_k − e_{k−1}) + (dt/Ti) e_k − (Td/dt) s (PVf_k − 2 PVf_{k−1} + PVf_{k−2}) ]       (10.1)
-OP_k = clamp(OP_{k−1} + ΔOP_k, 0, 100)
+F̄ = (1/n_c) Σ_{k=1..n_c} F_k                                                          (10.0)
 ```
 
-s = +1 for direct, −1 for reverse action; PVf is the PV filtered with τ = Td/8 (derivative on filtered PV, not on error). Clamping the increment is the anti-windup. Kc is dimensionless (%OP per %span); Ti and Td in seconds (Ti = ∞ disables integral).
+F_k is the valve flow after the position update of sub-step k. `StepDebug` and the snapshot report F̄ (DEVIATIONS.md E5), so conservation stays exact (VC-5).
 
-Modes: **MAN** (user sets OP), **AUTO** (PID), **CAS** (SP from a master loop's OP mapped onto this loop's span). MAN→AUTO is bumpless: SP is set to the current PV (setpoint tracking) and the velocity form continues from the current OP.
+**Main layer**, at step 12 with the end-of-step state: every non-flow instrument updates with h = dt, then the loops LC-101, LC-102, PC-101, TC-101 execute in that order (h = dt). Their OPs reach their valves, or for TC-101 the FC-103 setpoint, in the next step's fast layer. Alarms are evaluated last (§10.8).
 
-### 10.2 Flow loops
+**Why a fast layer.** A real flow loop has a closed-loop time constant of 2–5 s, shorter than the fast-forward step (2 s). Executed once per main step it would respond differently at every dt and go unstable at dt = 2 s. With a fixed 0.1 s sub-step the loop behaves identically at every main step: with noise off and constant inputs, the sub-step sequence is bit-identical at dt = 0.5 s and 2 s (VC-16.4). Cost: about 30 flops per valve per sub-step, ≈ 1 µs per main step.
 
-Flow loops are fast relative to the process, so an ideal flow controller is used: in AUTO the flow follows SP (clamped to valve capacity) through a first-order lag τ_FC (3 s; 5 s for duty), updated implicitly. In MAN, flow = characteristic(OP) × F_max (linear characteristic) with actuator lag τ_v = 2 s. This removes the fastest, stiffest loops without changing what the learner sees.
+### 10.2 PID algorithm (velocity form)
 
-### 10.3 Instruments and valves
+PV and SP are normalised to percent of the span [lo, hi] of the loop's PV instrument. OP is percent.
 
 ```
-PV_meas = filter(true value, τ_m) + bias + drift · (t − t_fault) + noise              (10.2)
+PV%_k = 100 (PV_k − lo)/(hi − lo)            SP%_k likewise
+s = +1 for direct action (OP rises when PV rises), −1 for reverse action
+e_k = s (PV%_k − SP%_k)
+PVf_k = PVf_{k−1} + (PV%_k − PVf_{k−1}) h/(τ_f + h)        τ_f = Td/8       (only when Td > 0)
+ΔOP_k = Kc [ (e_k − e*_{k−1}) + (h/Ti) e_k + s (Td/h)(PVf_k − 2 PVf_{k−1} + PVf_{k−2}) ]          (10.1)
+OP_k  = clamp(OP_{k−1} + ΔOP_k, OPLO, OPHI)
 ```
 
-τ_m: flows 1 s, levels 2 s, pressures 1 s, temperatures 10 s (thermowell), analysers 300 s dead time + 60 s lag (composition). Noise: Gaussian, σ = 0.2 % of span, from a seeded xorshift64* generator; off by default except in drills. Valve faults: stuck (position frozen), fail-open, fail-closed.
+- h is the execution interval: δ_c for flow loops, dt for all other loops. Kc is %OP per %span. Ti and Td are in seconds; Ti = ∞ disables the integral term.
+- **Derivative sign.** The derivative acts on the filtered PV, so a setpoint change gives no derivative kick. It carries the same sign s as the error, so for direct action a rising PV raises OP. v1.0 printed "− s"; that was wrong. Every default loop has Td = 0, so no existing behaviour changes.
+- **Proportional kick on setpoint changes.** e*_{k−1} is normally e_{k−1}. If the loop's `spKick` is false, any setpoint change by the operator (lever, faceplate), a scenario event or setpoint tracking re-bases it: e*_{k−1} = s (PV%_{k−1} − SP%_new). A setpoint step then acts through the integral term only, so the output does not jump when the learner drags a level SP. Cascade setpoint updates never re-base. Defaults: `spKick` = true for flow loops (normal PI on error) and false for LC, PC and TC loops (DEVIATIONS.md E12 is adopted here).
+- **Anti-windup** is the clamp itself: the velocity form stores no integral, so OP leaves a limit on the first execution after the error changes sign (VC-16.2).
+- **Execution in MAN or IMAN.** PV%, e and PVf are updated every execution, but OP is not changed by the PID. Switching to AUTO is therefore bumpless.
 
-### 10.4 Default loops
+**Modes and transfers.**
 
-| Tag | PV (span) | MV | Action | Default mode | Kc | Ti (s) | Td (s) | Tier |
-|---|---|---|---|---|---|---|---|---|
-| FC-101 | feed flow (0–250 kmol/h) | feed valve | ideal FC | AUTO | – | – | – | all |
-| FC-102 | reflux flow (0–300 kmol/h) | reflux valve | ideal FC | AUTO (or ratio: SP = R × D) | – | – | – | all |
-| FC-103 | boilup (T1, 0–300 kmol/h) / duty (T2/3, 0–3000 kW) | steam valve | ideal FC | AUTO | – | – | – | all |
-| LC-101 | drum level (0–100 %) | distillate valve (D_max = 2 × design D) | direct | AUTO | 2.0 | 1800 | 0 | all |
-| LC-102 | sump level (0–100 %) | bottoms valve (B_max = 2 × design B) | direct | AUTO | 2.0 | 1800 | 0 | all |
-| PC-101 | top pressure (0–2 × P_design) | CW valve (total) / vapour product valve (partial) | direct | AUTO | 2.0 (total) / 1.0 (partial) | 60 / 30 | 0 | T2/3 |
-| TC-101 | tray temperature (preset tray; span T_top−10 K to T_bottom+10 K) | FC-103 SP (cascade) | reverse | MAN (disabled) | 1.0 | 900 | 0 | T2/3 |
+| Mode | OP comes from | SP comes from |
+|---|---|---|
+| MAN | the user (lever bound to the loop, or the faceplate) | held |
+| AUTO | the PID | the user |
+| CAS | the PID | the master: SP = lo + (OP_master/100)(hi − lo) of this loop's span, clamped to the SP limits |
+| IMAN (masters only) | tracks the slave's SP: OP = 100 (SP_slave − lo_s)/(hi_s − lo_s) | held |
 
-Crude (M9): TC-201 top temperature → FC reflux (direct, Kc 1.0, Ti 300 s); LC-201 drum → naphtha; LC-202 sump → residue; FC-201..203 side draws; FC-204 PA duty (ideal); TC-202 COT (ideal, τ = 60 s); FC-205..208 steam.
+- MAN → AUTO: SP := current PV, and e*_{k−1} := 0. This is setpoint tracking; the faceplate shows "SP tracked PV". OP does not move on the switch (VC-16.3).
+- AUTO → MAN: OP is held.
+- A master is in IMAN whenever its slave is not in CAS. Its OP tracks the slave SP, so switching the slave to CAS gives no SP bump. The master's own requested mode (AUTO or MAN) is remembered and resumes when the slave returns to CAS.
+- CAS → AUTO: the slave SP is held at its last cascade value.
+- `tc101Enable` = 1 sets TC-101 to AUTO with SP := TI PV, and sets FC-103 to CAS; both transfers are bumpless. `tc101Enable` = 0 sets FC-103 to AUTO with its SP held.
+- SP limits are the bound lever's range (SCOPE.md §4). OP limits OPLO/OPHI default to 0/100. TC-101 uses 20/65 % of the FC-103 span (600–1950 kW for B-T), so a lying temperature cannot drive the duty to zero or full.
 
-Level loops are tuned for averaging (they absorb flow upsets instead of passing them on), which is the normal practice for drum and sump levels. These are starting values; if a loop check in VALIDATION.md VC-16 fails, the implementer may retune within ±50 % and must record the change in the preset JSON.
+**BAD PV handling.** This is set per simulation by the lever `badPvShed`: 1 = shed (default), 0 = none.
 
-### 10.5 Alarms
+- Shed: on the execution where the PV quality becomes BAD or OOS (§10.5), the loop drops to MAN with OP held. The faceplate shows "MAN (shed)" and alarm `<loop>.SHED` is raised. AUTO and CAS cannot be selected while the PV is BAD. The master of a shed slave goes to IMAN. This is modern DCS behaviour.
+- None: the loop keeps executing on the converted failure value (−2.5 % or 106.25 % of span, §10.6), which drives its valve to a limit. This is the behaviour of old systems without failure detection; drill H9 uses it.
+- In both cases the instrument's own BAD alarm is raised (§10.8).
 
-Each loop has PV HI/LO limits (defaults: levels 85 %/15 %, pressure 1.15/0.85 × SP, flows 110 %/10 % of span); plus model alarms: max flood % > 90, weeping fraction > 0.3, downcomer limited, duty limited, drum or sump < 5 % or > 95 %, relief lifting, thermosyphon I_s > 1, water condensing (crude), draw tray dry (crude), solver fallback. Alarms latch until acknowledged (M3).
+**Ratio station** (FC-102 in ratio mode, `refluxMode` = 1): FC-102 SP = R × (FT-104 reading), updated every sub-step before FC-102 executes. When FT-104 is BAD or OOS, the station holds the last SP computed from a GOOD reading. Ratio SP updates count as cascade updates: no re-basing.
+
+### 10.3 Valves
+
+```
+command   c = OP                                      (normal)
+            = 100 (failOpen), 0 (failClosed)          (F20)
+position  p ← p + (c − p) h/(τ_v + h)                 τ_v = 2.0 s, implicit, every sub-step; frozen when F20 'stuck'
+flow      F_valve = F_max · g(p) · (1 + d)
+          g(p) = p/100                                (linear; every shipped valve)
+          [option g(p) = (R^(p/100) − 1)/(R − 1), R = 50, "modified equal-percentage", g(0) = 0, g(100) = 1]
+          d: supply disturbance (pump head and header pressure), Ornstein–Uhlenbeck with σ_d = 0.010, τ_d = 30 s
+             (§10.5 discretisation); d = 0 when noise is off
+          F_k = clamp(F_valve, 0, F_cap)                                                   (10.2)
+```
+
+- **F_cap.** F_cap is +∞, except in three cases:
+  - Fault F12 sets F_cap = (1 − s) F_max for FV-102.
+  - If the main step's hydraulic stage had to cut this valve's flow in the previous step (pump limit of §7.3/§8.1: the drum or sump could not supply it), F_cap = the flow actually delivered in that step.
+  - The hydraulic stage keeps the exact holdup ≥ 0 limit. When it cuts a flow, the cut value is what the balances, the snapshot and `StepDebug` use, and the transmitter sees it from the next step on.
+- **Steam valve FV-103, Tiers 2/3.** It delivers duty, not a molar flow:
+  - F_max·g(p) becomes the duty request Q_v = Q_max,0 · g(p)(1 + d), where Q_max,0 = UA_R,clean (T_st − T_{N+1}) is the clean-exchanger maximum at the start of the step.
+  - The delivered duty is Q_k = min(Q_v, Q_max), with Q_max the fouled/flooded value of (8.2) (kettle) or of §8.3 (thermosyphon, where Q_v takes the place of Q_R,SP).
+  - Q_R,delivered = Q̄. This replaces "min(Q_R,SP, Q_max)" in (8.2). The duty limit now shows physically: FC-103 opens the valve to 100 % and the duty still falls short.
+  - The v1.0 "steam valve OP (display) = 100 Q/Q_max" is no longer needed, because the valve position is real.
+- **Tier 1 FV-103** delivers boilup V_B = F_max g(p)(1 + d) with F_max = 300 kmol/h. In both tiers, the FT-103 reading is what V_B or Q_R becomes.
+- **No position feedback.** The DCS sees OP only, as on most plants; the snapshot carries p for the model view. Plant view masks it (§10.9).
+- **Bypass** (F20 fix, operator action). Lever `bypass.<valve>` takes −1 (closed, default) or 0–100 % opening. When it is ≥ 0, the control valve is isolated and the line flow is F_max g(b)(1 + d). The opening b follows the lever at most 2 %/s, the speed of a person turning a hand wheel. The loop is forced to MAN, and the transmitter keeps measuring the line flow.
+
+| Valve | F_max (B-T) | Characteristic |
+|---|---|---|
+| FV-101 | 250 kmol/h (= FT-101 span) | linear |
+| FV-102 | 300 kmol/h (= FT-102 span) | linear |
+| FV-103 | T1: 300 kmol/h (= FT-103 span); T2/3: Q_max,0 (≈ 2170 kW at design, so design duty is at 60 % open, §8.2) | linear |
+| LV-101 | D_max = 2 × design D = 100 kmol/h | linear |
+| LV-102 | B_max = 100 kmol/h | linear |
+| PV-101 | ṁ_cw,max (150 m³/h) | linear (§7.2 already uses ṁ_cw = OP/100 · ṁ_cw,max) |
+| PV-102 | D_V,max | linear, with the √ΔP term of (7.5) |
+
+Valve F_max equals the FT span on the three flow loops, so their process gain is 1 %span per %OP (Tier 1). This makes the valve-characteristic cross-check (§14.6) a straight line a learner can read.
+
+### 10.4 Flow loops
+
+FC-101 (FT-101 → FV-101), FC-102 (FT-102 → FV-102) and FC-103 (FT-103 → FV-103) are real PI loops on the *measured* flow, executed in the fast layer. Settings: reverse action, Kc = 0.6, Ti = 2.0 s, Td = 0, spKick = true.
+
+Closed-loop response (prototype of this exact algorithm). Reflux SP step 100 → 110 kmol/h, noise off:
+
+| Measure | Value |
+|---|---|
+| True flow reaches 63 % of the step | 3.0 s |
+| Measured flow reaches 63 % | 3.5 s |
+| Overshoot | none |
+| Within 1 % of the step | 12.5 s |
+
+This is the τ_FC ≈ 3 s of v1.0, now produced by a loop instead of being imposed. In Tier 2 the duty loop has gain Q_max,0/3000 kW ≈ 0.72 and reaches 63 % in 4.2 s (v1.0: "5 s for duty"). At steady state with noise off, the integral action makes measured flow = SP exactly, so every v1.0 steady state is unchanged.
+
+**Why v1.0's ideal flow controller was dropped.** Instrument and valve faults (F19, F20, F28) and drills H3, H6, H9 and H10 need a controller that acts on the measured flow and has an OP that can move while the flow does not. An ideal controller (flow = lag(SP)) has neither.
+
+**VC-7.2 and τ_FC.** The tester found the conflict: tray 1 must reach 63 % within 1–4 s of the lever change, which held with M1's 1 s ideal lag (DEVIATIONS.md E2/E18) but gives ≈ 4.7 s with a 3 s flow loop. VC-7.2 was derived from a prototype that stepped the *delivered* reflux directly, and its stated purpose is the weir hydraulics. It is therefore redefined to time each tray from the moment the delivered reflux reaches 63 % (VALIDATION.md VC-7.2). With that definition it holds for M1's 1 s lag (1.5 s and 29.0 s) and for this loop. The lever-to-flow dynamics have their own test (VC-16.4). From M3 on, E2/E18 are superseded.
+
+Initialisation (cold start, warm start, rebuild, tier switch): each valve's p and c are set to the OP that gives the initialised flow, transmitter lags start at the true value, and e_{k−1} = 0.
+
+### 10.5 Instrument model
+
+Every transmitter runs the same pipeline on its true value v (SI) at each update (h = δ_c for FT, dt otherwise). Fault hooks are marked [F19]/[F28] (§10.6).
+
+```
+1  sensed signal     v_s = v + n_s                     n_s: OU(σ_s, τ_s) of the signal at the sensor
+                                                       (turbulence, surface waves, froth temperature); 0 with noise off
+2  impulse line      v_p = v_s                         [F28 plugged: v_p ← v_p + (v_s − v_p) h/(τ_plug + h)]
+3  damping           v_m ← v_m + (v_p − v_m) h/(τ_m,eff + h)          τ_m,eff = τ_m   [F28 coated: τ_m (1 + 9 s)]
+4  calibration       v_c = v_m + b                     [F19 bias / drift: b(t)]
+5  4–20 mA           I = 4 + 16 (v_c − lo)/(hi − lo) + 0.16 n_e + 0.16 a_spike
+                                                       n_e: white N(0, σ_e) in % of span (electronics), 0 with noise off
+                                                       a_spike: [F28 spiking], % of span
+6  failure current   [F28 signal loss: I = 3.6 mA (low) or 21.0 mA (high)]
+7  saturation        I_c = clamp(I, 3.8, 20.5), except that failure currents (I ≤ 3.6 or ≥ 21.0) pass unchanged
+8  A/D               I_q = round(4096 I_c)/4096        (65 536 counts over 4–20 mA)
+9  value             v_meas = lo + (I_q − 4)/16 · (hi − lo)
+10 quality           BAD if I_q ≤ 3.6 or I_q ≥ 21.0 ; UNCERTAIN ("out of range") if I_q < 4.0 or I_q > 20.0 ;
+                     OOS during maintenance ; else GOOD
+[F19 stuck: steps 1–10 are skipped; v_meas, I_q and quality stay at their last values before the onset]
+```
+
+- Noise processes use the exact Ornstein–Uhlenbeck discretisation, so their statistics do not depend on h:
+
+  ```
+  n ← a n + σ √(1 − a²) ξ,      a = exp(−h/τ),   ξ ~ N(0, 1) from the instrument's own stream (§12.9)
+  ```
+- **Displayed noise.** For a healthy transmitter (continuous-time value):
+
+  ```
+  σ_disp = √( σ_s² τ_s/(τ_s + τ_m) + σ_e² )
+  ```
+
+  The discrete pipeline stays within 4 % of it at h ≤ 2 s.
+- **Noise switch.** Lever `noise` (0/1) enables n_s, n_e and the valve disturbances d together. When it is off they are 0 and their streams draw nothing. When switched on, every noise state starts at 0. Fault randomness (spikes, drill draws) uses separate streams and does not depend on this lever.
+- **Initialisation.** v_m = v and v_p = v at the start; with noise off a healthy transmitter reads exactly v at steady state. The only difference is A/D quantisation (≤ 1/131 072 of span), which is why loop and KPI tests use 1×10⁻⁵ of span as their resolution.
+
+**Parameters by type** (B-T spans; % of span unless stated):
+
+| Type | Tags and spans | τ_m | σ_s | τ_s | σ_e | σ_disp | Physical source |
+|---|---|---|---|---|---|---|---|
+| FT, liquid (orifice ΔP, √-extracted) | FT-101 0–250 kmol/h, FT-102 0–300, FT-103 (T1) 0–300, FT-104 0–100, FT-105 0–100 | 0.5 s | 0.50 | 1 s | 0.02 | 0.409 % (FT-102: 1.23 kmol/h) | turbulence at the orifice |
+| FT, steam (duty) | FT-103 (T2/3) 0–3000 kW | 0.5 s | 0.50 | 1 s | 0.02 | 0.409 % (12.3 kW) | as above |
+| FT, cooling water (magnetic) | FT-201 0–150 m³/h | 0.5 s | 0.30 | 1 s | 0.02 | 0.246 % | |
+| LT, drum (ΔP cell) | LT-101 0–100 % | 2 s | 0.50 | 5 s | 0.02 | 0.423 % | surface waves from the reflux return |
+| LT, sump (ΔP cell, boiling liquid) | LT-102 0–100 % | 2 s | 1.00 | 3 s | 0.02 | 0.775 % | boiling and vapour disengagement |
+| PT | PT-101 0–2 P_design (B-T 0–202.65 kPa abs), PT-201 steam header 0–1000 kPa g | 1 s | 0.05 | 2 s | 0.02 | 0.046 % (PT-101: 0.09 kPa) | |
+| PDT | PDT-101 column ΔP 0–40 kPa (top vapour space to sump) | 2 s | 1.00 | 5 s | 0.02 | 0.845 % (0.34 kPa) | froth fluctuations |
+| TI, tray and sump (RTD in a thermowell) | TI-1jj, TI-1(N+1): 0–200 °C | 10 s | 0.075 (0.15 K) | 20 s | 0.01 (0.02 K) | 0.062 % (0.124 K) | froth temperature fluctuations |
+| TI, liquid line | TI-100 reflux (drum outlet), TI-201/202 CW in/out: 0–200 °C | 10 s | 0.025 | 20 s | 0.01 | 0.022 % | |
+| AT, process GC | AT-100 feed light component 0–1; AT-101 heavy impurity in D 0–0.10; AT-102 light impurity in B 0–0.10 (mol frac) | see below | – | – | 0.5 per result | 5×10⁻⁴ (AT-101/102) | repeatability |
+
+Tag rule for tray TIs: TI-(100 + j) for tray j, TI-100 for the drum, TI-(100 + N + 1) for the sump (B-T: TI-121).
+
+Instrumented trays come from the control config list `temperatureTrays`; B-T uses [1, 4, 7, 10, 12, 14, 17, 20]. On a tray-count rebuild (§13.4) each entry keeps its fractional height, the result is de-duplicated, and the TC-101 tray is always included. The `tc101Tray` lever only offers instrumented trays.
+
+Measured quantities:
+- PDT-101 measures P_{N+1} − P_top (0 in ideal hydraulics).
+- TI-100 measures the reflux temperature T_0 (§7.3, after subcooling).
+- TI-202 measures T_cw,in + Q_C/(ṁ_cw c_p,w).
+- FT-201 measures ṁ_cw/ρ_w with ρ_w = 995 kg/m³.
+- FT-103 measures the delivered boilup (T1) or the delivered duty Q_k (T2/3).
+
+**Analysers (AT).** A sample system plus a cyclic gas chromatograph, updated in the main layer:
+
+```
+v_ss ← v_ss + (v − v_ss) dt/(τ_ss + dt)              τ_ss = 60 s sample-line mixing   [F28 plugged: τ_ss + τ_plug]
+sample times t_k = φ + k T_c,  T_c = 300 s           phase φ: AT-100 0 s, AT-101 100 s, AT-102 200 s
+at the first main step ending at or after t_k:  r_k = v_ss + b(t_k) + σ_a ξ_k   (σ_a = 0.5 % of span; noise on only)
+publish r_k, rounded to 1×10⁻⁴ and clamped to [lo, hi], at the first step ending at or after t_k + T_c (analysis time);
+hold it until the next publication
+quality: GOOD ; UNCERTAIN ("stale") when the shown result is older than 2 T_c ; BAD on signal loss
+         ("analyser fault": no further results; the held value is flagged)
+```
+
+A displayed analysis is therefore 300–600 s old (mean ≈ 450 s, plus the 60 s sample lag): composition control by analyser is slow, which is why TC-101 exists.
+
+**Field gauges** (the redundant instruments of the F19/F28 "fix" column):
+- LG-101 is the drum sight glass, LG-102 the sump sight glass, and PG-101 a local overhead pressure gauge (T2/3).
+- A "field check" request returns the true value 180 s of sim time later (the operator's walk).
+- Readings are rounded to the glass graduations (2 % level) with a reading error N(0, 1 %), or to 0.01 bar with N(0, 0.005 bar). Errors are drawn from stream `field:<tag>`.
+- Gauges never fail, and only one request per gauge can be pending at a time. Requests are logged in the drill timeline; good practice is not penalised.
+
+**Maintenance** (sandbox only; it is the "flag instrument for maintenance" fix). The instrument goes OOS for 1800 s; loops on it shed to MAN whatever `badPvShed` says. Then every fault on that tag clears, and the transmitter returns GOOD with fresh lag and noise states. Maintenance is disabled in drills, where the Diagnose button takes its place.
+
+### 10.6 Instrument failure modes (F19, F28) and valve faults (F20)
+
+A fault acts on one tag. s is the current severity (11.1) and σ = ±1 the fault's sign (`params.sign`, or drawn in drills).
+
+| Mode | Fault | Applies to | Model | Default τ_r |
+|---|---|---|---|---|
+| `bias` | F19 | every transmitter, AT | b = σ · s · 0.10 (hi − lo), pipeline step 4 | 0 |
+| `drift` | F19 | every transmitter, AT | b(t) = σ · s · 0.10 (hi − lo) · (t − t₀)/3600 s | 0 (the drift is its own ramp) |
+| `stuck` | F19 | every transmitter, AT | outputs frozen at their last pre-onset values (no noise, no quantisation flicker) | 0 |
+| `signalLossLow` | F28 | every transmitter | I = 3.6 mA → v_meas = lo − 0.025 (hi − lo) | 0 |
+| `signalLossHigh` | F28 | every transmitter | I = 21.0 mA → v_meas = lo + 1.0625 (hi − lo) | 0 |
+| `signalLoss` | F28 | AT | analyser fault: no new results | 0 |
+| `plugged` | F28 | FT, LT, PT, PDT; AT (sample line) | extra lag τ_plug = 10^(4s) − 1 s (s = 0.5: 99 s; 0.75: 999 s; 0.9: 3980 s; 1: 9999 s). The state starts at the sensed value at onset. A step in the true value shows only 45 % (s = 0.75), 14 % (0.9) or 6 % (1.0) after 10 min | 300 s |
+| `spiking` | F28 | FT, LT, PT, PDT, TI | Spikes arrive as a Poisson process with rate s/20 s⁻¹. Each spike adds a_spike = σ_k · s · (10 + 40 u) % of span to the current for 1.0 s (at least one update). σ_k = ±1 and u ∈ [0, 1) are drawn from stream `inst:<tag>:spike`. σ_e × 5 while the fault is active | 0 |
+| `coated` | F28 | TI | τ_m,eff = τ_m (1 + 9 s): 100 s instead of 10 s at s = 1 | 0 |
+
+**What the learner sees, and what the DCS shows.**
+
+| Mode | On the trend and faceplate | Loop on this PV (AUTO) | DCS quality / alarm |
+|---|---|---|---|
+| bias | A step at onset with no process cause; noise looks normal | Moves the true value by −b: for FT-102 at σ = +1, s = 0.3 (+9 kmol/h), the true reflux settles at 91 kmol/h and the OP at 30.3 % instead of 33.3 % | GOOD; nothing |
+| drift | Slow creep; noise normal | Walks the true value away at the drift rate | GOOD until the current saturates (UNCERTAIN, `<tag>.OOR`) |
+| stuck | Perfectly flat line: the same digits for minutes, 5-min σ = 0 | Integrates the frozen error, so its OP ramps while nothing responds | GOOD; nothing |
+| signal loss | Jumps to −2.5 % or 106.25 % of span | Shed to MAN (`badPvShed` = 1) or driven to a valve limit (= 0) | BAD: PV digits grey; red "BAD" badge with "IOP−" (low) or "IOP+" (high); BAD segments dashed in trends; alarm `<tag>.BAD` (high) |
+| plugged | Stops following the process; the fuzz collapses from σ_disp to σ_e, 20× smaller ("too steady"); fast 0.5-s differences fall from 0.71 to 0.09 kmol/h on FT-102 | A flow loop keeps integrating the small offset between SP and the trapped value. Prototype (FC-102, s = 1, noise on): the true reflux swung between ≈ 50 and 150 kmol/h over 30 min while the reading stayed at SP | GOOD; nothing |
+| spiking | Spikes of up to 50 % of span; intermittent BAD or out-of-range flicker | Proportional action kicks the valve at each spike | Intermittent BAD / OOR alarms (they latch, §10.8) |
+| coated | Lags its neighbours after any change (t63 82–100 s instead of 10 s); fuzz about halved (0.033 vs 0.062 % of span at s = 1) | A TC loop on it becomes sluggish and may cycle | GOOD; nothing |
+
+**Valve faults (F20).** Location is a valve id; `params.kind` is one of:
+- `stuck`: p frozen at its onset value. OP keeps moving, because the loop integrates the supply disturbance d, while the flow follows only d. Prototype, FC-102 with noise on: OP wandered 34–45 % within 10 min while the reflux stayed within ±2 %.
+- `failOpen`: c = 100. Flow goes to F_max within about 5 s, and the loop drives OP to 0.
+- `failClosed`: c = 0.
+
+The DCS shows no valve fault (there is no position feedback). The only signs are OP versus flow (§14.6, C4) and `<loop>.OPSAT` once OP saturates.
+
+**Comparing look-alikes** (the H10 logic):
+- A stuck valve and a plugged flow transmitter both show OP moving while the reading barely moves. The plugged meter's trend is too smooth and the balances disagree. The stuck valve's trend has normal noise and the balances agree.
+- A biased meter fails both its own valve check and a balance.
+- A real upset fails nothing.
+
+### 10.7 Loops of the B-T preset
+
+| Tag | PV instrument (span) | MV | Action | Default mode | Kc | Ti (s) | Td | spKick | OP limits | Rate | Tier |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| FC-101 | FT-101 (0–250 kmol/h) | FV-101 | reverse | AUTO | 0.6 | 2.0 | 0 | yes | 0–100 | δ_c | all |
+| FC-102 | FT-102 (0–300 kmol/h) | FV-102 | reverse | AUTO (ratio mode: SP = R × FT-104) | 0.6 | 2.0 | 0 | yes | 0–100 | δ_c | all |
+| FC-103 | FT-103 (T1 0–300 kmol/h; T2/3 0–3000 kW) | FV-103 | reverse | AUTO (CAS when TC-101 is enabled) | 0.6 | 2.0 | 0 | yes | 0–100 | δ_c | all |
+| LC-101 | LT-101 (0–100 %) | LV-101 | direct | AUTO | 2.0 | 1800 | 0 | no | 0–100 | dt | all |
+| LC-102 | LT-102 (0–100 %) | LV-102 | direct | AUTO | 2.0 | 1800 | 0 | no | 0–100 | dt | all |
+| PC-101 | PT-101 (0–2 P_design) | PV-101 (total condenser) / PV-102 (partial) | direct | AUTO | 2.0 / 1.0 | 60 / 30 | 0 | no | 0–100 | dt | T2/3 |
+| TC-101 | TI on the chosen tray (0–200 °C) | FC-103 SP (cascade) | reverse | disabled (MAN) | 4.0 | 900 | 0 | no | 20–65 | dt | T2/3 |
+
+TC-101's Kc = 4.0 on the 200 K TI span equals v1.0's 1.0 on the old 50 K span (T_top − 10 K … T_bottom + 10 K): 30 kW per 0.5 K.
+
+Crude (M9): TC-201 top temperature → FC reflux (direct, Kc 1.0 on a 50 K span, Ti 300 s); LC-201 drum → naphtha; LC-202 sump → residue; FC-201…203 side draws; FC-204 PA duty; TC-202 COT (ideal first-order, τ = 60 s: the furnace is not modelled); FC-205…208 steam. Every FC uses the flow-loop settings of §10.4.
+
+Level loops are tuned for averaging: they absorb flow upsets instead of passing them on, which is normal practice for drum and sump levels. These are starting values. If a VC-16 loop check fails, the implementer may retune within ±50 % and must record the change in the preset JSON and DEVIATIONS.md.
+
+### 10.8 Alarms
+
+Each alarm has a stable id `<tag>.<type>` (or `model.<type>`), a priority (H/M/L), an on-delay, an off-delay and a deadband. It follows ISA-18.2 states:
+- NORMAL → UNACK (raised; blinks in themes with `alarmBlink`)
+- UNACK → ACKED (acknowledged, still active)
+- ACKED → NORMAL when it clears
+- UNACK → RTN-UNACK when it clears before acknowledgement (shown grey with "RTN" until acknowledged; acknowledgement removes it)
+
+"Latch until acknowledged" means exactly the RTN-UNACK state.
+
+| Type | Condition (on the measured PV unless stated) | Priority | On / off delay | Deadband |
+|---|---|---|---|---|
+| `HIHI` / `LOLO` | Levels > 95 % / < 5 % | H | 5 s / 10 s | 1 % |
+| `HI` / `LO` | Levels > 85 % / < 15 %; PT-101 > 1.15 / < 0.85 × P_design; flows > 90 % of span (no LO for flows); AT-101, AT-102 > 0.05 | M | 5 s / 10 s | 1 % of span |
+| `DEV` | Loop in AUTO/CAS and \|PV − SP\| > limit: flows 5 % of span, levels 10 %, PT-101 3 %, TC-101 2 K | M | 30 s / 10 s | clears below 80 % of the limit |
+| `OPSAT` | Loop in AUTO/CAS, OP at OPLO or OPHI, and \|e\| > 2 % | M | 60 s / 10 s | – |
+| `BAD` | Quality BAD (on a loop PV: H; display-only: M) | H/M | 0 / 10 s | – |
+| `OOR` | Quality UNCERTAIN | L | 5 s / 10 s | – |
+| `SHED` | Loop shed to MAN on BAD PV | M | 0 / – (clears when the learner acknowledges and the PV is GOOD) | – |
+| `STALE` | Analyser result older than 2 T_c | L | 0 / 0 | – |
+| `model.flood`, `model.weep`, `model.dcLimited`, `model.dutyLimited`, `model.tsUnstable`, `model.waterCondensing`, `model.drawDry` | As in v1.0: max flood % > 90, weep fraction > 0.3, any downcomer limited, Q_v > Q_max for 60 s, I_s > 1, crude conditions | M (dcLimited L) | 30 s / 30 s | – |
+| `model.relief` | Relief valve lifting | H | 0 / 30 s | – |
+| `model.solver` | Solver fallback (developer overlay only) / fatal (H) | L/H | 0 | – |
+
+- With noise on, the delays and deadbands keep a level sitting near a limit from making an alarm chatter. The tests in VC-25 check this.
+- The alarm list holds every alarm not in NORMAL, sorted by priority and then newest first. The banner shows the newest UNACK alarm of the highest priority.
+- Every state change goes into the event journal with its sim time, and the journal feeds the debrief timeline.
+- Acknowledge works for one alarm or for all.
+- **Truth versus readings.** The safety score and the scenario predicates use true values (§10.9). Alarms use readings, so a lying transmitter raises or hides alarms exactly as on a real plant.
+
+### 10.9 Plant view and model view
+
+Lever `view`: 0 = model view (default), 1 = plant view. Drills H9 and H10 use plant view; the sandbox offers it as a toggle.
+
+- **Model view**: the snapshot carries the model's true values everywhere (as in M1) plus the instrument readings.
+- **Plant view**: the engine masks the snapshot *before* it leaves the simulator, so no UI code can leak the truth:
+  - `stages.x`, `y`, `yStar`, `liquidDown`, `vaporUp`, `entrain`, `weep`, `dp`, `jetFlood`, `dcFlood`, `frothFill`, `stability`, `weepFrac`, `efficiency`, `hetp`, `packFlood` become NaN.
+  - `stages.t` is NaN except on instrumented trays, which carry the TI reading.
+  - `stages.holdup`, `hcl`, `froth` and `flags` keep their model values for the column animation, except stage 0 and stage N+1. Their holdups are rewritten from the LT-101 and LT-102 readings (holdup = level/100 · V/v_L,design), so the painter draws the *measured* levels.
+  - `streams` flows are the FT readings; compositions are NaN, except where an analyser reads them (D, B, feed: last published result).
+  - `kpis`: d, b, boilup, qr and refluxRatio (from FT-102/FT-104), drumLevelPct, sumpLevelPct, pTop, columnDp and qc (from CW) are computed from readings. xD and xB are the analyser results (x_D = 1 − AT-101 for B-T). maxFloodPct, balanceResidual and energyResidual are NaN; their measured counterparts are the cross-checks (§14.6).
+  - Valve positions p are removed; loops show OP only.
+  - `visibleFaults` is empty (already the case in drills). The McCabe–Thiele builder returns `available = false`, and the diagram panel says "Not available on a real plant — the analysers are on the Products tab".
+  - The math overlay offers only `ExplainInstrument`, `ExplainLoop` and `ExplainCheck` targets.
+  - Model-only alarms (`model.*` except `model.relief`) are suppressed.
+- In both views, scenario predicates, scoring, safety and drill off-spec tests read the **unmasked** state inside the engine.
 
 ---
 
@@ -1164,8 +1446,9 @@ Faults act only by changing physical parameters or adding physical flows. No fau
 | F15 Steam header pressure loss | steam | P_hdr × (1 − 0.6 s) → lower T_st | 120 s |
 | F17 Thermosyphon inlet restriction | loop | K_in += 300 s | 1800 s |
 | F18 Thermosyphon outlet restriction | loop | K_out += 40 s | 1800 s |
-| F19 Instrument fault | instrument tag | bias: +s · b_span (b_span = ±10 % of span); drift: +s · 10 % of span per hour; stuck: output frozen at its value at t₀ | 0 |
-| F20 Valve fault | valve tag | stuck at current position / fail open (100 %) / fail closed (0 %) | 0 |
+| F19 Instrument calibration fault | instrument tag | `bias`: b = σ s · 10 % of span; `drift`: σ s · 10 % of span per hour; `stuck`: outputs frozen at t₀ (§10.6) | 0 |
+| F28 Transmitter hard failure | instrument tag | `signalLossLow` / `signalLossHigh` (3.6 / 21.0 mA, BAD), `plugged` (extra lag 10^(4s) − 1 s on the sensed signal), `spiking` (Poisson spikes, rate s/20 s⁻¹, 10–50 % s of span), `coated` (TI lag × (1 + 9 s)) (§10.6) | 0; `plugged` 300 s |
+| F20 Valve fault | valve id | `stuck` (position frozen at t₀) / `failOpen` (command 100 %) / `failClosed` (command 0 %); the actuator lag still applies (§10.3, §10.6) | 0 |
 | F21 Packing maldistribution | packed bed | f = 0.6 s in (6.6) | 0 or 1800 s |
 | F23 Packing crushed | packed bed | F_p × (1 + 1.5 s); H_bed × (1 − 0.15 s) (fewer metres of packing, same segment count) | 0 |
 | F24 Stripping steam loss | steam injection point | steam × (1 − s) | 60 s |
@@ -1191,7 +1474,7 @@ Time constants in a typical column (B-T default unless noted):
 | Tray composition (own holdup / throughput) | 2–10 s | Implicit |
 | Overhead pressure | 2–10 s | Implicit scalar |
 | Thermosyphon loop | 1–10 s | Sub-stepped implicit, 0.1 s |
-| Flow controllers | 3 s | Ideal FC, implicit lag |
+| Flow loops (PI + valve + transmitter) | 2–4 s closed loop | Sub-stepped at 0.1 s (§10.1) |
 | Level and composition dynamics of the column | 30 min – 3 h (B-T: ≈ 0.6 h) | Implicit (same equations) |
 
 The stiffness ratio is about 10⁴. The physics that learners care about is in the slow modes and in the hydraulic modes of seconds. Two more facts decide the method:
@@ -1319,7 +1602,9 @@ After the solve the new state is m_ij^(n+1); M_j = Σ_i m_ij (not M̂_j); x = m/
 
 ```
  1. Faults: update s(t) for every active fault; build the effective parameter set.
- 2. Inputs: flows from valve positions / ideal FC states (from the end of the previous step); lever changes.
+ 2. Inputs: apply lever changes and scenario events; then the control fast layer (§10.1): n_c sub-steps of
+    valves, flow transmitters, ratio station and flow loops over [t, t + dt], using the start-of-step pump
+    limits and Q_max → the mean flows F̄ (10.0) used by every balance of this step.
  3. Thermo (from end of previous step, cached): T_j, K̃_ij, y_j, h_j, H_j, ρ, σ, v_L.
  4. Hydraulic coefficients at state n: Bennett α_e, ΔP_j, P_j profile, φ_j, ψ filter update, e_j,
     bypass fractions f_j, L_max,j, k_d, M_max; packing φ_p, ΔP, holdup factor, HETP, E.
@@ -1330,8 +1615,11 @@ After the solve the new state is m_ij^(n+1); M_j = Σ_i m_ij (not M̂_j); x = m/
  9. Component step (§12.3), two Murphree passes → m_ij^(n+1).
 10. Overhead pressure solve (§7.4) → P_top, n_V, n_I, N_cond, Q_C (Tier 2/3).
 11. Thermo update at n+1: bubble points (§3.6.1) at P_j, enthalpies, densities, K̃ for the next step, y via (4.2).
-12. Controllers: instruments → PV; PID (10.1); ideal FC lags; valve lags → flows for the next step. Alarms.
-13. Diagnostics: KPIs, steady-state monitor (every 60 s of sim time), trend buffer (every 5 s), solver health.
+12. Control main layer (§10.1): non-flow instruments (LT, PT, PDT, TI, AT, field checks) from the end-of-step
+    state; loops LC-101, LC-102, PC-101, TC-101 (10.1) → OPs and the FC-103 cascade SP for the next step's
+    fast layer; alarms (§10.8).
+13. Diagnostics: KPIs, steady-state monitor (§13.3), trend buffer bins (every 5 s; mean/min/max of every
+    reading), cross-checks (§14.6, every 5 s), scenario runner update, solver health.
 14. t ← t + dt.
 ```
 
@@ -1341,7 +1629,7 @@ Tier 1 skips 5 (V_B lever instead), 10 and 11 (no T, fixed P), and uses K̃ from
 
 - Main step dt = 0.5 s at all speeds up to the frame budget. Fixed, so a run is reproducible regardless of the speed it was watched at.
 - Fast-forward ("Run to steady state", and speeds ≥ 300× when the user enables "coarse fast-forward" in Settings) uses dt = 2.0 s. Prototype: identical steady states; transients differ by under 1 % in composition.
-- Thermosyphon sub-step 0.1 s; pressure solve once per main step.
+- Thermosyphon sub-step 0.1 s; control fast layer sub-step 0.1 s (§10.1); pressure solve once per main step.
 - Tests use dt = 0.5 s unless stated.
 
 ### 12.6 Cost per step: 40 trays, 8 components, Tier 2
@@ -1367,12 +1655,55 @@ Implementation rules for speed **[impl]**: structure-of-arrays storage in `Float
 
 - After each step, check all states for NaN/Inf and negative holdups beyond −1×10⁻¹².
 - On failure: restore the start-of-step state, halve dt, retry; up to 3 halvings (dt = 0.0625 s), then advance the same total time with the smaller steps.
-- If it still fails: pause the simulation, set `solverHealth.fatal = true` with the stage and quantity that failed, and show "The model could not continue from this state — rewind 60 s?" (the engine keeps a ring buffer of states at 60 s intervals, last 10 min).
+- If it still fails: pause the simulation, set `solverHealth.fatal = true` with the stage and quantity that failed, and show "The model could not continue from this state — rewind 60 s?" (the engine keeps a ring buffer of states at 60 s intervals, last 10 min). A ring entry is the complete state of §1.2, including controller, instrument, alarm and PRNG states, so a rewound run continues deterministically.
+- A halved step re-runs the control fast layer with the same δ_c (n_c = round(dt_half/δ_c), at least 1).
 - Every fallback is counted in `solverHealth` and shown in a developer overlay (Settings → Developer).
 
 ### 12.8 Determinism
 
-The engine uses only IEEE-754 double arithmetic, fixed iteration orders, and its own seeded PRNG (xorshift64*). With the same build on the same platform a run is bit-identical. Across platforms `exp`/`log`/`pow` may differ in the last bit; results then agree to 1×10⁻⁹ relative after 1 h of sim time (VALIDATION.md VC-20).
+The engine uses only IEEE-754 double arithmetic, fixed iteration orders, and its own seeded PRNG (§12.9). With the same build on the same platform a run is bit-identical. Across platforms `exp`/`log`/`pow` may differ in the last bit; results then agree to 1×10⁻⁹ relative after 1 h of sim time (VALIDATION.md VC-20). With noise on, a last-bit difference in a Gaussian draw can grow, so the cross-platform tolerance applies only to noise-off runs. Noise-on runs must be bit-identical on the same platform.
+
+### 12.9 Random numbers
+
+v1.0 named xorshift64*. That generator needs 64-bit integer arithmetic, which Dart compiled to JavaScript (web, M10) does not have. LowSYS therefore uses **xoshiro128\*\*** (Blackman and Vigna), which needs only 32-bit operations. Every operation below must be exact on both native and web.
+
+```
+32-bit helpers (all results reduced mod 2^32, i.e. "& 0xFFFFFFFF" after each operation):
+  rotl(x, k) = ((x << k) | (x >>> (32 − k))) & 0xFFFFFFFF
+  products only with small constants (5, 9, 403, 69069), so x·c < 2^53 is exact in a double on the web
+
+next32():                                   state s0, s1, s2, s3 (unsigned 32-bit)
+  result = rotl((s1 · 5) & M, 7) · 9 & M
+  t = (s1 << 9) & M
+  s2 ^= s0;  s3 ^= s1;  s1 ^= s2;  s0 ^= s3;  s2 ^= t;  s3 = rotl(s3, 11)
+  return result
+
+uniform():   a = next32() >>> 5 ;  b = next32() >>> 6 ;  return (a · 67108864 + b) / 9007199254740992      ∈ [0, 1)
+normal():    Box–Muller with a cached second value:
+             u1 = 1 − uniform(), u2 = uniform(), r = √(−2 ln u1);
+             return r cos(2π u2), and cache r sin(2π u2) for the next call
+
+stream seeding, for an integer seed (0 ≤ seed < 2^32) and a string key:
+  h = FNV-1a-32(UTF-8 bytes of key): h = 2166136261; for each byte b: h = (h ^ b); h = ((h << 24) + 403·h) mod 2^32
+      (= h · 16777619 mod 2^32 without a 57-bit product)
+  x = (seed ^ h) mod 2^32 ;  for i = 0..3: x = (69069 x + 1) mod 2^32 ;  s_i = x
+  discard the first 16 outputs of next32()
+```
+
+Test vectors (VC-20.3): FNV-1a-32("a") = 3826002220; FNV-1a-32("FT-102") = 1498766031. Stream (seed 1, key "FT-102") gives next32() = 3793846675, 4233283444, 1026389867, 4162901922 after the warm-up. A fresh stream with the same seed and key gives uniform() = 0.883323766184137, then normal() = −0.6076328127833632, −0.42066679512424215.
+
+**Streams.** Each random process has its own stream, so adding an instrument, switching noise on one tag or injecting a fault never changes the numbers another process sees:
+
+| Key | Used for |
+|---|---|
+| `inst:<tag>:s`, `inst:<tag>:e` | sensed and electronic noise of a transmitter or analyser |
+| `inst:<tag>:spike` | spike arrival times, amplitudes and signs (F28 `spiking`) |
+| `valve:<id>:d` | supply disturbance d of a valve |
+| `field:<tag>` | field-gauge reading errors |
+| `drill:<attempt>` | drill draws (ENGINE_API.md §11.2) |
+| `scenario:events` | randomised event times in scenarios |
+
+The seed is `SimOptions.seed`. Stream states are part of the saved state (§1.2).
 
 ---
 
@@ -1385,7 +1716,7 @@ The engine uses only IEEE-754 double arithmetic, fixed iteration orders, and its
 3. Pressure: P_top = SP; P_j from the tray ΔP at these flows (Tier 2/3); n_V from the ideal-gas law.
 4. Temperatures: bubble point of z at each P_j.
 5. Holdups: trays from Bennett at the estimated L_j and V_j; packed segments from (6.3); drum and sump at 50 % level.
-6. Controllers: OPs set to the values that give the estimated flows (bias); integrals zero; filters at their inputs (ψ_j = ψ_eq, L̄_j = L_j).
+6. Controllers: OPs set to the values that give the estimated flows; valve positions p = c = OP; PID histories e = 0, PVf = PV; filters at their inputs (ψ_j = ψ_eq, L̄_j = L_j); instrument lags v_p = v_m = v_ss = true value; noise states 0; each analyser shows the current true value as a result of age 0; no alarms.
 7. Thermosyphon: run the loop model alone for 600 s with the column frozen.
 
 From there the dynamic model itself is the solver (pseudo-transient continuation): it is physically stable, so marching in time converges to the steady state for any physically feasible lever set. "Run to steady state" marches with dt = 2 s until the monitor (§13.3) passes, or 48 h of sim time; it reports "no steady state" if the cap is hit (e.g. an oscillating thermosyphon or a flooded column).
@@ -1407,10 +1738,21 @@ Every 60 s of sim time compute
 
 Steady when δ < 1×10⁻⁷ for 5 consecutive checks. The TimeBar shows the indicator; scenario objectives can require it.
 
+The monitor always uses true (model) values. **With noise on**, controllers act on noisy readings and the valve disturbances move the real flows, so the state never stops moving at the 1×10⁻⁷ level and the test above would never pass. With noise on, the monitor instead compares successive 300-s means (each quantity averaged over 300 s, checked every 300 s):
+
+```
+δ̄ = max( max_ij |x̄_ij − x̄_ij,prev| / 2×10⁻⁵ ,  max_j |M̄_j − M̄_j,prev| / (2×10⁻³ M̄_j) ,
+         |P̄_top − P̄_top,prev| / (1×10⁻⁴ P̄_top) ,  max_loops |OP̄ − OP̄_prev| / 1.0 % )
+steady when δ̄ < 1 for 3 consecutive checks
+```
+
+These thresholds are **[impl-tunable]**: VC-20.6 fixes the required behaviour, and any change goes into DEVIATIONS.md. "Run to steady state" always runs with noise and valve disturbances suspended. The noise streams draw nothing during the run and the noise states are 0 afterwards; the lever value is restored when the run ends. The noise-free monitor is used for that run.
+
 ### 13.4 Changing the number of trays, feed tray, internals
 
 - Feed tray change: no rebuild; the feed moves to the new stage at the next step.
 - Number of trays N → N': rebuild the stage arrays. For each new tray at fractional height s' = (j' − ½)/N', interpolate liquid composition and h_cl linearly from the old profile at s = s'; drum, sump, controllers, pressure inventory unchanged; the feed tray keeps its fractional position (rounded). Then continue. Allowed while running; the UI pauses for the rebuild frame.
+- On a rebuild, tray TIs are remapped as in §10.5. A TI that keeps its tag keeps its state. A new TI starts at the true value, and a TI that disappears loses its faults and alarms. The sump TI is renamed TI-(100 + N' + 1) and keeps its state.
 - Tray type or section geometry changes: allowed only while paused; holdups re-initialised from Bennett at current flows.
 
 ### 13.5 Switching thermodynamic tier at runtime
@@ -1424,6 +1766,10 @@ The state X is the same in every tier. On a switch:
 | T2 ↔ T3 | Only the K model changes; temperatures re-converge in the next bubble-point solve. |
 
 Switching never resets compositions or holdups.
+
+Control on a tier switch:
+- FT-103 changes quantity: T1 boilup kmol/h ↔ T2/3 duty kW. FV-103's position is re-initialised so the delivered boilup or duty is continuous. FT-103's lag and noise states restart at the new true value, and FC-103's PID history restarts (e = 0).
+- Instruments whose quantity does not exist in Tier 1 (PT, TI, CW instruments, PC-101, TC-101) are hidden in Tier 1. They start at their true values when Tier 2/3 is entered. Faults on hidden instruments are kept and resume when the instruments reappear.
 
 ---
 
@@ -1484,7 +1830,56 @@ TBP curves (feed and each product), D86 curves (naphtha to AGO), 5–95 gap/over
 
 ### 14.5 Profiles (all systems)
 
-Per stage: T, P, x (all components), L, V, L/V, holdup, ΔP, φ (jet), downcomer flood fraction, weeping fraction, E_eff, HETP (packing). Tier 2/3 vs Tier 1 comparison overlay (ghost line) is available when the learner has just switched tier.
+Per stage: T, P, x (all components), L, V, L/V, holdup, ΔP, φ (jet), downcomer flood fraction, weeping fraction, E_eff, HETP (packing). Tier 2/3 vs Tier 1 comparison overlay (ghost line) is available when the learner has just switched tier. In plant view (§10.9) the Profiles tab shows only the instrumented temperatures (C6 below).
+
+### 14.6 Cross-checks: catching a lying instrument
+
+The engine computes these checks from **readings only** (instrument values and quality, plus lever values a real operator also knows: feed q or T_F, reflux subcooling, design constants). They therefore work in plant view and cannot leak the truth. The app shows them in the **Balance** panel (a ControlPanel tab from M3), and each one opens in the math overlay (`ExplainCheck`, ids `eq.check.*`) with the readings substituted.
+
+**Common rules**
+- **Window.** W ∈ {300, 600, 1800, 3600} s, selectable in the panel, default 600 s. Checks are recomputed every 5 s of sim time from the 5-s trend bins (bin means).
+- **Notation.** X̄ is the mean of reading X over the window. X_start and X_end are the means over the first and last 60 s of the window. ∫X is Σ over bins of (bin mean × 5 s).
+- **Level to moles.** N_0,1% and N_S,1% are the mol per 1 % of drum and sump level, from the preset's design steady state (constant; B-T Tier 1: 307 mol and 236 mol). ΔN_0 = (LT-101_end − LT-101_start) N_0,1%, and likewise ΔN_S.
+- **Status and band.** Each check has a residual r and a band. Status is `ok` for |r| ≤ band, `check` for band < |r| ≤ 2 band and `fail` for |r| > 2 band, shown green, amber and red with the number r/band.
+- **Bad inputs.** If any input is BAD or OOS, the status is `n/a` with the tag named. UNCERTAIN inputs are used but flagged.
+- **Steady-only checks** (C2, C7) show `transient` while the steady indicator (§13.3) is false.
+- **Band sizes.** Bands are 3–10× the noise of the windowed residual at the default window. A fault larger than about twice the band is unambiguous on a phone, and drill severities are chosen to meet that (ENGINE_API.md §11.5).
+
+| Id | Check | Residual (B-T notation) | Band | What the learner sees |
+|---|---|---|---|---|
+| C1 | **Total material balance** (all tiers) | r1 = F̄ − D̄ − B̄ − (ΔN_0 + ΔN_S)/W with F = FT-101, D = FT-104, B = FT-105 | max(2.0 kmol/h, 0.02 F̄) | Row "In F 100.2 · Out D + B 99.9 · Accumulating +0.1 · Unaccounted +0.2 kmol/h (band ±2.0)" |
+| C2 | **Component balance** (light component; LK for multicomponent); steady only, W ≥ 1800 s | r2 = F̄ z̄ − D̄ x̄_D − B̄ x̄_B, with z = AT-100, x_D = 1 − AT-101, x_B = AT-102 (B-T). Also D/F from meters, D̄/F̄, against D/F from analysers, (z − x_B)/(x_D − x_B) | 0.01 F̄ z̄; D/F ± 0.01 | "Benzene in 50.1, out 49.6 kmol/h; D/F: meters 0.502, analysers 0.499" |
+| C3 | **Top vapour, Tier 1**: boilup vs reflux + distillate (CMO) | V_boil = V̄_B + (1 − q) F̄ (V_B = FT-103, q = feed lever); V_refl = L̄_0 + D̄ + ΔN_0/W (L_0 = FT-102); r3 = V_boil − V_refl | max(2.0 kmol/h, 0.015 V_refl) | Three numbers: "Vapour to the top: from boilup 150.1 · from reflux + distillate 149.8 · difference +0.3 (band ±2.3)" |
+| C3a | **Top vapour, Tiers 2/3**: condenser duty vs reflux + distillate | Q_C,cw = ρ_w FT-201 c_p,w (TI-202 − TI-201) (windowed means; ρ_w 995 kg/m³, c_p,w 4180 J/kg/K); λ_top = H_V(x_D, T_cond) − h_L(x_D, T̄_100), T_cond = T_bub(x_D, P̄_101); V_cw = Q_C,cw/λ_top; r3a = V_cw − V_refl | max(2.0 kmol/h, 0.02 V_refl) | "Condenser 1282 kW ≈ 150.3 kmol/h of vapour · reflux + distillate 149.9" |
+| C3b | **Column energy balance**, Tiers 2/3 | r3b = Q̄_R + F̄ h_F − Q_C,cw − D̄ h_D − B̄ h_B; Q_R = FT-103; h_F from the feed lever (T_F) and z = AT-100 with the simulator's own feed-enthalpy function; h_D = h_L(x_D, T̄_100); h_B = h_L(x_B, T̄_121) | 0.02 Q̄_R | "Reboiler 1301 kW + feed −12 kW = condenser 1282 kW + products 4 kW · unaccounted +3 kW (band ±26)" |
+| C4 | **Valve characteristic**, one per valve–meter pair: FV-101/FT-101, FV-102/FT-102, FV-103/FT-103, LV-101/FT-104, LV-102/FT-105, PV-101/FT-201 | F_exp = F_max g(OP̄); for FV-103 in Tiers 2/3, Q_exp = Q_max,0 g(OP̄) with Q_max,0 = UA_R,clean (T_st(P̄_201) − T̄_121); r4 = F̄_meas − F_exp | 0.02 F_max | On each faceplate, a small plot of flow vs OP with the straight characteristic, a band and the window-mean operating point. Panel row: "FV-102: OP 30.3 % → expects 90.9 kmol/h; meter says 100.0 (−9.1, band ±6.0)" |
+| C5 | **Level vs integrated flows** (drum, sump) | Drum: Δ_pred = ∫(V̂ − L_0 − D) dt / N_0,1%; sump: Δ_pred = ∫(F + L_0 − V̂ − B) dt / N_S,1% (tray holdups taken constant). V̂ = V_boil (T1) or V_cw (T2/3); Δ_meas = LT_end − LT_start; r5 = Δ_meas − Δ_pred (in % level) | 1.0 % + 0.5 % per 600 s of window | A mini-trend over the window: measured level (solid) and "level predicted from the flows" (dashed, starting at the same point). The gap at the end is r5 |
+| C6 | **Tray temperatures** (T2/3), in two parts | (a) Ordering: going down the column readings must rise; flag TI k if T̄_k < T̄_above − 0.5 K or T̄_k > T̄_below + 0.5 K. (b) Change since a reference: ΔT_k = T̄_k − T_k,ref, where the reference is the 300-s mean at drill start or when the learner presses "Set reference". Flag k if \|ΔT_k − ½(ΔT_above + ΔT_below)\| > max(1.0 K, 0.5 max(\|ΔT_above\|, \|ΔT_below\|)); the end TIs use their single neighbour | (as stated) | The plant-view temperature profile: dots at instrumented trays, the reference profile as a ghost line, and a bar chart of ΔT per TI with flagged TIs in red. A lying TI is a lone bar; a real process change is a smooth wave of bars |
+| C7 | **Bubble-point consistency** (T2/3 binaries); steady only | Top: r7a = (T̄_100 + ΔT_sub,lever) − T_bub(x_D, P̄_101). Bottom: r7b = T̄_121 − T_bub(x_B, P̄_101 + P̄DT_101) | ±1.0 K each | "Top: drum 80.1 °C + 0 K subcooling vs bubble point of the analysed distillate at the measured pressure 80.3 °C (−0.2 K)". A lying PT moves both rows by about (dT/dP)·b with the same sign (B-T near 1 atm: 0.33 K/kPa) |
+
+Signal look (on every faceplate detail, all tiers): the 5-min standard deviation of the reading next to its typical healthy value σ_disp (§10.5), and the age of the last change of the displayed digits. "σ 0.00 (typical 1.23)" means frozen; "σ 0.06 (typical 1.23)" means too steady; "σ 9.4 (typical 1.23)" means erratic.
+
+Trends make faults visible on a phone because:
+- Each trend auto-scales its y-axis to the data, with a minimum visible range of 10 σ_disp of the tag. Healthy fuzz then fills about a fifth of the plot height, and a plugged or stuck line is visibly flat.
+- Each pixel column draws the min–max envelope of its bins, so 1-s spikes survive decimation (ENGINE_API.md §5.4).
+
+**Which checks fail for which fault.** This table is used by hints and debriefs. "Own C4" means the check of the faulty meter's own valve line.
+
+| Fault | C1 | C3 / C5 (drum) | Own C4 | C5 (sump) | C6 | C7 | Signal look |
+|---|---|---|---|---|---|---|---|
+| FT-102 bias or drift | ok | fail | fail | ok | coherent (true reflux changed) | ok | normal |
+| FT-102 plugged | ok | fail | fail | ok | coherent | ok | too steady |
+| FV-102 stuck (F20) | ok | ok | fail | ok | ok | ok | normal; OP wandering |
+| FT-103 bias, drift or plugged | ok | fail | fail | fail | coherent | ok | normal / too steady |
+| FV-103 stuck | ok | ok | fail | ok | ok | ok | normal; OP wandering |
+| FT-101 bias or drift | fail | ok (q = 1) | fail | fail | coherent | ok | normal |
+| FT-104 or FT-105 fault | fail | fail (FT-104) / ok | fail | ok / fail | ok | ok | as mode |
+| LT-101 bias | fail for one window after onset | fail for one window | ok | ok | ok | ok | step at onset; field gauge LG-101 disagrees |
+| LT-101 or LT-102 drift | fail (∝ W) | fail (∝ W) | ok | fail (LT-102) | ok | ok | normal |
+| LT stuck or plugged | fail after any flow change | fail after any flow change | ok | as drum | ok | ok | flat / too steady |
+| PT-101 bias | ok | small | ok | ok | coherent shift | fail both rows, same sign | normal |
+| TI bias, drift, spiking, stuck or coated | ok | ok | ok | ok | flagged at that TI (coated: during transients only) | fail if TI-100 or TI-121 | as mode |
+| Real feed upset (F07) | ok | ok | ok | ok | coherent wave | ok once the analysers catch up | normal |
 
 ---
 
@@ -1500,7 +1895,9 @@ The math overlay (ENGINE_API.md §8) shows, for the selected item, equations fro
 | Condenser / drum | `eq.condenserDuty` (7.3), `eq.condensation` (7.4), `eq.overheadPressure` (7.1), `eq.drumBalance` (7.6) |
 | Reboiler | `eq.kettleDuty` (8.2) or the thermosyphon set `eq.ts.subcooling`, `eq.ts.exitQuality`, `eq.ts.drivingHead`, `eq.ts.friction`, `eq.ts.instabilityIndex` (8.3–8.4), and `eq.boilup` (4.7) |
 | Streams D, B, products | composition, flow, `eq.overallBalance` (F z = D x_D + B x_B, live residual), enthalpy |
-| Controller | `eq.pid` (10.1) with the last e, ΔOP, OP |
+| Controller | `eq.pid` (10.1) with the last e, ΔOP, OP; `eq.valve` (10.2) with OP, flow and the expected flow |
+| Instrument | `eq.instrument` (pipeline of §10.5 with the current values of v, v_m, b, I, v_meas and the quality); analysers add `eq.analyser` (sample time, publication time, age) |
+| Cross-check | `eq.check.material` (C1), `eq.check.component` (C2), `eq.check.topVapour` (C3, C3a), `eq.check.energy` (C3b), `eq.check.valve` (C4), `eq.check.level` (C5), `eq.check.trayT` (C6), `eq.check.bubble` (C7), with the readings substituted |
 | McCabe–Thiele elements | operating line equations, q-line, R_min construction (14.1), Fenske/Underwood/Gilliland (14.3) |
 
 ---
@@ -1520,7 +1917,8 @@ The math overlay (ENGINE_API.md §8) shows, for the selected item, equations fro
 | Thermosyphon instability via index + oscillator | §8.3.3 | First-principles density waves need fine meshes and ms steps | Exact oscillation waveform |
 | DePriester K for hydrocarbons instead of an EOS | §3.4.2 | Textbook standard, fast | Composition dependence of K |
 | Crude: no light ends, constant K_W, steam as inert vapour, 2-stage strippers | §9 | Teaching fidelity; captures cut points, gaps, steam stripping, PA heat balance | Offgas, water dew point details, kerosene flash point |
-| Ideal flow controllers | §10.2 | Flow loops are seconds; learners care about the process | Flow-loop tuning |
+| Valves deliver F_max g(p)(1 + d): no pump curves, no line losses, inherent = installed characteristic | §10.3 | Gives a straight characteristic a learner can check; real loops behave the same in the small | Installed-characteristic distortion, pump run-out |
+| Instrument noise as OU processes with textbook magnitudes; no process-condition dependence | §10.5 | Signatures (bias, frozen, too steady, erratic, slow) are what diagnosis needs | Flashing in impulse lines, temperature effects on transmitters |
 
 ---
 

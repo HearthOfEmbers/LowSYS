@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
 import '../layout/sim_layout.dart';
 import '../painters/effects/blueprint_grid.dart';
 import '../theme/lowsys_theme.dart';
+import '../widgets/math_overlay.dart';
+import '../widgets/scenario_ui.dart';
 
 /// Simulator screen S2: backdrop, layout, frame loop, keyboard shortcuts, run-to-steady overlay.
 class SimScreen extends StatefulWidget {
@@ -65,6 +68,19 @@ class _SimScreenState extends State<SimScreen> with SingleTickerProviderStateMix
       sim.stepSpeed(-1);
     } else if (k == LogicalKeyboardKey.keyS) {
       sim.runToSteady();
+    } else if (k == LogicalKeyboardKey.keyU) {
+      sim.toggleUnits();
+    } else if (k == LogicalKeyboardKey.keyM) {
+      if (sim.mathTarget.value != null) {
+        sim.closeMath();
+      } else {
+        final sel = sim.selectedStage.value;
+        sim.openMath(sel == null ? const ExplainStream(StreamId.distillate) : ExplainStage(sel));
+      }
+    } else if (k == LogicalKeyboardKey.digit1) {
+      sim.diagramTab.value = 0;
+    } else if (k == LogicalKeyboardKey.digit2) {
+      sim.diagramTab.value = 1;
     } else {
       return KeyEventResult.ignored;
     }
@@ -90,6 +106,9 @@ class _SimScreenState extends State<SimScreen> with SingleTickerProviderStateMix
                 builder: (context, _) => sim.loaded ? const SimLayout() : Center(child: Text('Setting up the drawing board…', style: t.type.display.style(18, p.inkMuted))),
               ),
             ),
+            const ScenarioHud(),
+            const MathOverlayHost(),
+            const DebriefHost(),
             ValueListenableBuilder<String?>(
               valueListenable: sim.notice,
               builder: (context, msg, _) => msg == null

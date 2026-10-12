@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:lowsys_engine/lowsys_engine.dart' show StreamId;
+
 /// Layout of the column drawing inside a panel of [size] for [n] trays. Shared by the painters and
 /// the tap hit-test so they cannot disagree.
 class ColumnGeometry {
@@ -59,6 +61,20 @@ class ColumnGeometry {
     // tray j owns the band (deck_{j-1}, deck_j]
     final j = ((p.dy - (yT0 + spacing * 0.6 + spacing * 0.9 - spacing)) / spacing).ceil().clamp(1, n);
     return j;
+  }
+
+  /// Stream under a tap: the feed, bottoms, distillate or reflux pipe, or null.
+  StreamId? hitStream(Offset p) {
+    final fy = deckY(feedStage.clamp(1, n)) - spacing * 0.5;
+    final by = sumpBot - (sumpBot - sumpTop) * 0.18;
+    final dy = yT0 - spacing * 0.2;
+    final ry = deckY(1) - spacing * 0.55;
+    if (p.dx < shellL - 4 && (p.dy - fy).abs() < 14) return StreamId.feed;
+    if (p.dx < shellL - 4 && (p.dy - by).abs() < 14) return StreamId.bottoms;
+    if (p.dx > size.width * 0.66 && (p.dy - dy).abs() < 12) return StreamId.distillate;
+    if (p.dx > shellR && p.dx < size.width * 0.66 && (p.dy - ry).abs() < 14) return StreamId.reflux;
+    if (p.dx > shellR && (p.dy - reboilerCenter.dy).abs() < reboilerR + 14) return StreamId.boilup;
+    return null;
   }
 
   /// Band covered by tray j for the selection highlight.

@@ -24,8 +24,35 @@ class SimController extends ChangeNotifier {
   /// Column structure (trays, feed tray); changes rarely, so the static vessel layer rebuilds rarely.
   final ValueNotifier<({int trays, int feed})> structure = ValueNotifier((trays: 20, feed: 10));
 
+  /// Broken trays from the visible faults (stage to open fraction); the static vessel layer redraws on change.
+  final ValueNotifier<Map<int, double>> brokenStages = ValueNotifier(const {});
+
   /// Lever values (SI); notifies only when a value changed.
   final ValueNotifier<Map<String, double>> leverValues = ValueNotifier(const {});
+
+  /// Diagram tab (0 McCabe-Thiele, 1 Profiles) and the profile quantity (index into ProfileKind).
+  final ValueNotifier<int> diagramTab = ValueNotifier<int>(0);
+  final ValueNotifier<int> profileKind = ValueNotifier<int>(0);
+
+  /// Control tab (0 Levers, 1 Faults).
+  final ValueNotifier<int> controlTab = ValueNotifier<int>(0);
+
+  /// Display unit system (SCOPE.md 4: SI / US field, switchable at runtime).
+  final ValueNotifier<UnitSystem> units = ValueNotifier<UnitSystem>(UnitSystem.si);
+
+  /// Math overlay: the target being explained and the live result (re-evaluated about 4 times a second).
+  final ValueNotifier<ExplainTarget?> mathTarget = ValueNotifier<ExplainTarget?>(null);
+  final ValueNotifier<ExplainResult?> mathResult = ValueNotifier<ExplainResult?>(null);
+
+  /// Active scenario, if any; [scenarioTick] changes when objectives or hints change.
+  ScenarioDef? scenarioDef;
+  ScenarioRunner? scenario;
+  final ValueNotifier<int> scenarioTick = ValueNotifier<int>(0);
+  ScoreCard? scoreCard;
+  String? debriefText;
+
+  /// Levers the scenario locks.
+  Set<String> get lockedLevers => {...?scenarioDef?.leverLock};
 
   /// Selected stage (0 = drum, 1..N trays, N+1 = sump), or null.
   final ValueNotifier<int?> selectedStage = ValueNotifier<int?>(null);
@@ -56,15 +83,102 @@ class SimController extends ChangeNotifier {
   List<LeverSpec> get levers => runner.levers;
   ColumnConfig get config => runner.config;
 
-  Future<void> load(PresetId id) async {
+  /// Sandbox default is full hydraulics (SCOPE.md 4.2); the preset itself stays ideal (docs/DEVIATIONS.md E19).
+  Future<void> load(PresetId id, {ColumnConfig? config, bool keepScenario = false}) async {
     _loaded = false;
     presetId = id;
     _debt = 0;
     selectedStage.value = null;
-    await runner.load(Presets.byId(id));
+    closeMath();
+    if (!keepScenario) {
+      scenario = null;
+      scenarioDef = null;
+      scoreCard = null;
+    }
+    await runner.load(config ?? Presets.byId(id).copyWith(hydraulics: HydraulicsMode.full));
     _loaded = true;
     await _refresh();
     notifyListeners();
+  }
+
+  void toggleUnits() {
+    units.value = units.value == UnitSystem.si ? UnitSystem.usField : UnitSystem.si;
+  }
+
+  // ---------------------------------------------------------------- math overlay
+
+  Future<void> openMath(ExplainTarget target) async {
+    mathTarget.value = target;
+    mathResult.value = await runner.explain(target);
+  }
+
+  void closeMath() {
+    mathTarget.value = null;
+    mathResult.value = null;
+  }
+
+  int _mathFrame = 0;
+  Future<void> _refreshMath() async {
+    final t = mathTarget.value;
+    if (t == null || ++_mathFrame % 15 != 0) return;
+    mathResult.value = await runner.explain(t);
+  }
+
+  // ---------------------------------------------------------------- faults
+
+  Future<FaultId> injectFault(FaultSpec spec) async {
+    final id = await runner.injectFault(spec);
+    await _refresh();
+    return id;
+  }
+
+  Future<void> clearFault(FaultId id) async {
+    await runner.clearFault(id);
+    await _refresh();
+  }
+
+  // ---------------------------------------------------------------- scenarios
+
+  Future<void> startScenario(ScenarioDef def) async {
+    await load(def.preset, config: def.buildConfig(), keepScenario: true);
+    scenarioDef = def;
+    scoreCard = null;
+    debriefText = null;
+    for (final e in def.leverSet.entries) {
+      await runner.setLever(e.key, e.value);
+    }
+    scenario = ScenarioRunner(def, _ControllerHost(this));
+    scenarioTick.value++;
+    await _refresh();
+    scenario!.update(snapshot.value);
+    notifyListeners();
+  }
+
+  /// Ends the scenario: score card and debrief text.
+  void finishScenario() {
+    final r = scenario;
+    if (r == null) return;
+    scoreCard = r.finish();
+    debriefText = r.debriefText(snapshot.value!);
+    scenarioTick.value++;
+    notifyListeners();
+  }
+
+  void leaveScenario() {
+    scenario = null;
+    scenarioDef = null;
+    scoreCard = null;
+    scenarioTick.value++;
+    notifyListeners();
+  }
+
+  void _updateScenario(SimSnapshot s) {
+    final r = scenario;
+    if (r == null || scoreCard != null) return;
+    final before = '${r.objectives.where((o) => o.achieved).length}/${r.unlockedHints.length}';
+    r.update(s);
+    final after = '${r.objectives.where((o) => o.achieved).length}/${r.unlockedHints.length}';
+    if (before != after || s.time.floor() % 5 == 0) scenarioTick.value++;
   }
 
   Future<void> _refresh() async {
@@ -74,6 +188,17 @@ class SimController extends ChangeNotifier {
     final st = (trays: s.layout.nTrays, feed: s.layout.feedStages.first);
     if (st != structure.value) structure.value = st;
     if (!mapEquals(s.levers, leverValues.value)) leverValues.value = s.levers;
+    final br = <int, double>{};
+    for (final fa in s.visibleFaults) {
+      if (fa.type == FaultType.trayDamage && fa.location.stageFrom != null) {
+        for (var j = fa.location.stageFrom!; j <= fa.location.stageTo!; j++) {
+          br[j] = fa.severity;
+        }
+      }
+    }
+    if (!mapEquals(br, brokenStages.value)) brokenStages.value = br;
+    _updateScenario(s);
+    _refreshMath();
   }
 
   void setSpeed(double v) {
@@ -175,13 +300,49 @@ class SimController extends ChangeNotifier {
   void dispose() {
     snapshot.dispose();
     structure.dispose();
+    brokenStages.dispose();
     leverValues.dispose();
     mccabe.dispose();
+    units.dispose();
+    diagramTab.dispose();
+    profileKind.dispose();
+    controlTab.dispose();
+    mathTarget.dispose();
+    mathResult.dispose();
+    scenarioTick.dispose();
     selectedStage.dispose();
     steadyProgress.dispose();
     achievedSpeed.dispose();
     notice.dispose();
     runner.dispose();
     super.dispose();
+  }
+}
+
+/// Lets a [ScenarioRunner] drive the controller's runner (calls complete synchronously on the local runner).
+class _ControllerHost implements ScenarioHost {
+  final SimController c;
+  _ControllerHost(this.c);
+  @override
+  SimSnapshot snapshot() => c.snapshot.value!;
+  @override
+  void setLever(LeverId id, double value) {
+    c.setLever(id, value);
+  }
+
+  @override
+  void setLoopMode(LoopTag tag, LoopMode mode) {
+    c.runner.setLoopMode(tag, mode);
+  }
+
+  @override
+  FaultId injectFault(FaultSpec spec) {
+    c.runner.injectFault(spec);
+    return '';
+  }
+
+  @override
+  void clearFault(FaultId id) {
+    c.runner.clearFault(id);
   }
 }
