@@ -23,7 +23,7 @@ class TrayInspector extends StatelessWidget {
         if (sel == null && hideWhenEmpty) return const SizedBox.shrink();
         return Container(
           constraints: const BoxConstraints(minHeight: 64),
-          decoration: BoxDecoration(color: p.bgAlt.withValues(alpha: 0.75), border: Border.all(color: sel == null ? p.gridMajor : p.selection)),
+          decoration: BoxDecoration(color: p.bgAlt.withValues(alpha: 0.97), border: Border.all(color: sel == null ? p.gridMajor : p.selection)),
           padding: const EdgeInsets.fromLTRB(10, 6, 4, 8),
           child: sel == null
               ? Center(

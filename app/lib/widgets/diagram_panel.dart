@@ -22,7 +22,7 @@ class DiagramBody extends StatelessWidget {
               child: InkWell(
                 onTap: () => sim.diagramTab.value = i,
                 child: Container(
-                  height: 36,
+                  height: MediaQuery.sizeOf(context).height < 500 ? 30 : 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     border: Border(bottom: BorderSide(color: tab == i ? p.accent : p.gridMajor, width: tab == i ? 2.5 : 1)),

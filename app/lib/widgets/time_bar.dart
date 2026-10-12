@@ -35,7 +35,7 @@ class TimeBar extends StatelessWidget {
       builder: (context, _) {
         final paused = sim.paused;
         return SizedBox(
-          height: 52,
+          height: dense ? 46 : 52,
           child: Row(
             children: [
               IconButton(

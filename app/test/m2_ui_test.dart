@@ -40,6 +40,11 @@ void main() {
       await snap(tester, key, '${e.key}_faults', dir: 'm2');
       expect(tester.takeException(), isNull);
 
+      sim.selectStage(11);
+      await frames(tester, 3);
+      await snap(tester, key, '${e.key}_inspector', dir: 'm2');
+      expect(tester.takeException(), isNull);
+
       // math overlay for a tray and a stream, opened in well under 100 ms
       final sw = Stopwatch()..start();
       await sim.openMath(const ExplainStage(7));

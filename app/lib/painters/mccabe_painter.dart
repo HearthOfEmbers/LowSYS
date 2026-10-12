@@ -8,7 +8,8 @@ import '../theme/lowsys_theme.dart';
 
 /// Plot area of the McCabe-Thiele chart inside a panel of [size] (shared with tap picking).
 Rect mccabePlotRect(Size size) {
-  final side = math.min(size.width - 52, size.height - 56);
+  final reserve = size.height < 300 ? 32.0 : 56.0; // short panels (phone landscape): x label only
+  final side = math.min(size.width - 52, size.height - reserve);
   final s = math.max(40.0, side);
   return Rect.fromLTWH(44 + (size.width - 52 - s).clamp(0.0, 1e9) / 2, 10, s, s);
 }
@@ -36,6 +37,7 @@ class McCabePainter extends CustomPainter {
     final plot = mccabePlotRect(size);
     final num = theme.type.number;
     final lab = theme.type.label;
+    final tight = size.height < 300;
     final narrow = plot.width < 220; // phone portrait: thin the markers, one-line legend
 
     // --- paper: hand-ruled grid
@@ -203,7 +205,13 @@ class McCabePainter extends CustomPainter {
             ..color = p.qLine
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.4);
-      if (!narrow) _text(canvas, 'pinch', o + const Offset(8, -3), lab.style(12, p.qLine), Alignment.bottomLeft);
+      if (!narrow) {
+        final tip = o + const Offset(22, -22);
+        canvas.drawLine(o + const Offset(3, -3), tip, Paint()
+          ..color = p.qLine
+          ..strokeWidth = 0.9);
+        _text(canvas, 'pinch', tip + const Offset(2, 0), lab.style(12, p.qLine), Alignment.bottomLeft);
+      }
     }
 
     // --- Murphree gap markers + highlight for the selected tray
@@ -249,12 +257,12 @@ class McCabePainter extends CustomPainter {
       _text(canvas, name, o + off, num.style(12, p.marker), a);
     }
 
-    marker(d.xB, 'xB ${d.xB.toStringAsFixed(3)}', Alignment.centerLeft, const Offset(9, 4));
+    marker(d.xB, 'xB ${d.xB.toStringAsFixed(3)}', Alignment.bottomLeft, const Offset(8, -6));
     marker(d.xF, 'xF', Alignment.topCenter, const Offset(0, 11));
     marker(d.xD, 'xD ${d.xD.toStringAsFixed(3)}', Alignment.centerRight, const Offset(-9, 6));
 
     // --- legend (top-left inside the plot, wide layouts only) (top-left inside the plot, wide layouts only)
-    if (narrow) {
+    if (narrow && !tight) {
       var lx = plot.left;
       final ly = plot.bottom + 52;
       for (final (name, color, dashed) in [('eq', p.eqCurve, false), ('op', p.opLineCmo, true), ('q', p.qLine, false), ('stages', p.stepLine, false)]) {
