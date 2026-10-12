@@ -17,11 +17,10 @@ Future<void> loadFonts() async {
     await loader.load();
   }
 
-  await load('Architects Daughter', 'C:/Windows/Fonts/Inkfree.ttf');
-  await load('Ink Free', 'C:/Windows/Fonts/Inkfree.ttf');
-  await load('Share Tech Mono', 'C:/Windows/Fonts/consola.ttf');
-  await load('Consolas', 'C:/Windows/Fonts/consola.ttf');
-  await load('STIX Two Math', 'C:/Windows/Fonts/cambria.ttc');
+  await load('MaterialIcons', 'C:/dev/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+  await load('Architects Daughter', 'assets/fonts/ArchitectsDaughter-Regular.ttf');
+  await load('Share Tech Mono', 'assets/fonts/ShareTechMono-Regular.ttf');
+  await load('STIX Two Math', 'assets/fonts/STIXTwoMath-Regular.ttf');
 }
 
 final bool shots = Platform.environment['LOWSYS_SHOTS'] == '1';

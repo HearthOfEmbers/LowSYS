@@ -118,7 +118,7 @@ class SimController extends ChangeNotifier {
         final inst = adv / dtWall;
         achievedSpeed.value = achievedSpeed.value * 0.9 + inst * 0.1;
       }
-      final limited = dtWall * _speed > cap || (requested >= 0.5 && adv < 0.9 * requested);
+      final limited = dtWall * _speed > cap || (requested - adv > 1.0);
       if (limited != speedLimited) {
         speedLimited = limited;
         notifyListeners();

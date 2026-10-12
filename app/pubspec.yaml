@@ -21,3 +21,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/fonts/LICENSES/
+  fonts:
+    - family: Architects Daughter
+      fonts:
+        - asset: assets/fonts/ArchitectsDaughter-Regular.ttf
+    - family: Share Tech Mono
+      fonts:
+        - asset: assets/fonts/ShareTechMono-Regular.ttf
+    - family: STIX Two Math
+      fonts:
+        - asset: assets/fonts/STIXTwoMath-Regular.ttf

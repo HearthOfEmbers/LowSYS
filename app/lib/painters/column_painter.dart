@@ -256,9 +256,8 @@ class ColumnVesselPainter extends CustomPainter {
       canvas.drawLine(Offset(g.shellR + wall + 3, yb), Offset(dxv + 5, yb), dim);
       _arrowHead(canvas, Offset(dxv, ya), const Offset(0, -1), 4.5, Paint()..color = p.inkMuted);
       _arrowHead(canvas, Offset(dxv, yb), const Offset(0, 1), 4.5, Paint()..color = p.inkMuted);
-      if (size.width > 180) {
-        _drawText(canvas, 'TS ${trayHeightM.toStringAsFixed(2)} m', Offset(dxv + 7, (ya + yb) / 2), theme.type.label.style(12, p.inkMuted), anchor: Alignment.centerLeft);
-      }
+      final tsText = size.width > 220 ? 'TS ${trayHeightM.toStringAsFixed(2)} m' : '${trayHeightM.toStringAsFixed(1)} m';
+      _drawText(canvas, tsText, Offset(dxv + 7, (ya + yb) / 2), theme.type.label.style(12, p.inkMuted), anchor: Alignment.centerLeft);
     }
     // horizontal: diameter under the lower head
     final yd = g.headBot + size.height * 0.04;
@@ -267,7 +266,7 @@ class ColumnVesselPainter extends CustomPainter {
     canvas.drawLine(Offset(g.shellR, yd - 5), Offset(g.shellR, yd + 5), dim);
     _arrowHead(canvas, Offset(g.shellL, yd), const Offset(-1, 0), 4.5, Paint()..color = p.inkMuted);
     _arrowHead(canvas, Offset(g.shellR, yd), const Offset(1, 0), 4.5, Paint()..color = p.inkMuted);
-    _drawText(canvas, size.width > 250 ? 'Ø ${diameterM.toStringAsFixed(2)} m  ·  $trays trays' : 'Ø ${diameterM.toStringAsFixed(2)} m', Offset(g.cx, yd - 3), theme.type.label.style(12, p.inkMuted), anchor: Alignment.bottomCenter);
+    _drawText(canvas, size.width > 250 ? 'Ø ${diameterM.toStringAsFixed(2)} m  ·  $trays trays' : 'Ø ${diameterM.toStringAsFixed(2)} m', Offset(g.cx, yd + 3), theme.type.label.style(12, p.inkMuted), anchor: Alignment.topCenter);
     // cross-hair registration marks in the corners (drafting sheet)
     final reg = Paint()
       ..color = p.inkFaint
@@ -416,29 +415,30 @@ class ColumnLivePainter extends CustomPainter {
       ..strokeWidth = 1.8
       ..strokeCap = StrokeCap.round;
     final tag = num.style(12, p.accent);
+    final narrow = size.width < 260; // phone portrait: tags only, values live in the KPI strip and inspector
     final labS = lab.style(12, p.ink);
     String kmolh(double v) => (v * 3.6).toStringAsFixed(1);
     // feed: value above the line, tray number below
     final fy = g.deckY(s.layout.feedStages.first) - g.spacing * 0.5;
     _dashedLine(canvas, Offset(6, fy), Offset(g.shellL - wall - 2, fy), flowP, 5, 4, phase: -anim.flowPhase * 24);
     _arrowHead(canvas, Offset(g.shellL - wall, fy), const Offset(1, 0), 6, Paint()..color = p.accent);
-    _drawText(canvas, 'F ${kmolh(s.streams[StreamId.feed]!.flow)}', Offset(5, fy - 4), tag, anchor: Alignment.bottomLeft);
-    _drawText(canvas, g.shellL < 90 ? 'tray ${s.layout.feedStages.first}' : 'feed tray ${s.layout.feedStages.first}', Offset(5, fy + 4), lab.style(12, p.inkMuted), anchor: Alignment.topLeft);
+    _drawText(canvas, narrow ? 'F' : 'F ${kmolh(s.streams[StreamId.feed]!.flow)}', Offset(5, fy - 4), tag, anchor: Alignment.bottomLeft);
+    if (!narrow) _drawText(canvas, g.shellL < 90 ? 'tray ${s.layout.feedStages.first}' : 'feed tray ${s.layout.feedStages.first}', Offset(5, fy + 4), lab.style(12, p.inkMuted), anchor: Alignment.topLeft);
     // bottoms
     final by = g.sumpBot - (g.sumpBot - g.sumpTop) * 0.18;
     _dashedLine(canvas, Offset(g.shellL - wall - 2, by), Offset(8, by), flowP, 5, 4, phase: -anim.flowPhase * 24);
     _arrowHead(canvas, Offset(5, by), const Offset(-1, 0), 6, Paint()..color = p.accent);
-    _drawText(canvas, 'B ${kmolh(s.kpis.b)}', Offset(5, by - 4), tag, anchor: Alignment.bottomLeft);
+    _drawText(canvas, narrow ? 'B' : 'B ${kmolh(s.kpis.b)}', Offset(5, by - 4), tag, anchor: Alignment.bottomLeft);
     // distillate (label above its line) and reflux (label below its line)
     final dyOut = g.yT0 - g.spacing * 0.2;
     _arrowHead(canvas, Offset(size.width - 3, dyOut), const Offset(1, 0), 6, Paint()..color = p.accent);
-    _drawText(canvas, 'D ${kmolh(s.kpis.d)}', Offset(size.width - 6, dyOut - 3), tag, anchor: Alignment.bottomRight);
+    _drawText(canvas, narrow ? 'D' : 'D ${kmolh(s.kpis.d)}', Offset(size.width - 6, dyOut - 3), tag, anchor: Alignment.bottomRight);
     final refluxY = g.deckY(1) - g.spacing * 0.55;
     _arrowHead(canvas, Offset(g.shellR + wall + 1, refluxY), const Offset(-1, 0), 6, Paint()..color = p.accent);
-    _drawText(canvas, 'L₀ ${kmolh(s.streams[StreamId.reflux]!.flow)}', Offset(g.shellR + wall + 6, refluxY + 4), tag, anchor: Alignment.topLeft);
+    _drawText(canvas, narrow ? 'L0' : 'L0 ${kmolh(s.streams[StreamId.reflux]!.flow)}', Offset(g.shellR + wall + 6, refluxY + 4), tag, anchor: Alignment.topLeft);
     // boilup label kept inside the panel
     final rb = g.reboilerCenter;
-    final vbText = 'V_B ${kmolh(s.kpis.boilup)}';
+    final vbText = narrow ? 'V' : 'V_B ${kmolh(s.kpis.boilup)}';
     final vbW = _tp(vbText, tag).width;
     final vbX = (rb.dx - vbW / 2).clamp(g.shellR + wall + 4, size.width - vbW - 3).toDouble();
     _drawText(canvas, vbText, Offset(vbX, rb.dy + g.reboilerR + 5), tag, anchor: Alignment.topLeft);

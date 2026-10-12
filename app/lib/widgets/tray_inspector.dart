@@ -66,7 +66,7 @@ class TrayInspector extends StatelessWidget {
       if (j >= 1) ('V', '${kmolh(st.vaporUp[j])} kmol/h'),
       ('holdup', '${(st.holdup[j] / 1000).toStringAsFixed(3)} kmol'),
       if (j >= 1 && j <= N) ('E_MV', st.efficiency[j].toStringAsFixed(3)),
-      if (j == 0) ('reflux L₀', '${kmolh(s.streams[StreamId.reflux]!.flow)} kmol/h'),
+      if (j == 0) ('reflux L0', '${kmolh(s.streams[StreamId.reflux]!.flow)} kmol/h'),
       if (j == 0) ('D', '${kmolh(s.kpis.d)} kmol/h'),
       if (j == N + 1) ('B', '${kmolh(s.kpis.b)} kmol/h'),
     ];
