@@ -1,0 +1,23 @@
+name: lowsys_app
+description: "LowSYS - an interactive distillation column simulator for teaching."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  lowsys_engine:
+    path: ../packages/lowsys_engine
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
