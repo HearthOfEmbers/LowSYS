@@ -390,8 +390,8 @@ void dumping() {
   // FINDING: with 2.4 mol on 2 % of the area and ΔP_dry 4.7 Pa the stability
   // factor is 0.20, right at the dumping threshold (the doc says ≈ 0.25).
   check(
-      'broken tray Φ ≈ 0.25 (doc) — MARGINAL: reference gives 0.20 at the 0.2 threshold',
+      'broken tray Φ ≈ 0.208 (doc fb00526; stays above the 0.2 threshold, implicit)',
       phiB,
-      0.25,
-      0.06);
+      0.208,
+      0.02);
 }

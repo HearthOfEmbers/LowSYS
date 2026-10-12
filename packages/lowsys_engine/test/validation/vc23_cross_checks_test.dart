@@ -54,6 +54,11 @@ void main() {
     sim.setCheckWindow(1800);
     sim.advance(1900);
     expect(checkOf(sim.snapshot(), 'C5:drum')!.band, closeTo(2.5, 1e-9));
+    // C1 and C3 bands scale by max(1, 600/W) (spec fb00526)
+    sim.setCheckWindow(300);
+    sim.advance(400);
+    expect(checkOf(sim.snapshot(), 'C1')!.band / kmolh, closeTo(4.0, 1e-6));
+    expect(checkOf(sim.snapshot(), 'C3')!.band / kmolh, closeTo(4.5, 1e-3));
   });
 
   group('VC-23.2 no false alarms (noise on, steady, 2 h, every window)', () {

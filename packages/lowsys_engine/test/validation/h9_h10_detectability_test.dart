@@ -120,11 +120,9 @@ void main() {
         if (t > 600) {
           for (final r in s.instruments) {
             if (r.type == InstrumentType.at || r.sigma5min.isNaN) continue;
-            // FINDING: FT-104/FT-105 are moved by LC-101/102 (Kc 2) acting on
-            // LT noise, so their 5-min σ is ≈ 2.4× the transmitter-only typical in a
-            // healthy plant. The doc's "every tag in 0.5–2" needs to exempt them
-            // (or define typical per loop); asserted at 0.5–3 for those two tags.
-            final hi = r.tag == 'FT-104' || r.tag == 'FT-105' ? 3.0 : 2.0;
+            // FT-104/FT-105 use the level-loop typical σ of PHYSICS.md §10.5 (0.94 /
+            // 1.60 % of span), so every tag is held to 0.5–2 (spec fb00526).
+            const hi = 2.0;
             expect(r.sigma5min / r.typicalSigma, inInclusiveRange(0.5, hi),
                 reason: 'seed $seed ${r.tag} look at $t');
           }
