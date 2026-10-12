@@ -477,7 +477,7 @@ class Simulator {
           integer: true),
       LeverSpec(
           id: 'refluxFlow',
-          label: 'Reflux flow L₀',
+          label: 'Reflux flow L0',
           quantity: Quantity.molarFlow,
           min: 0,
           max: 300 * _kmolh,

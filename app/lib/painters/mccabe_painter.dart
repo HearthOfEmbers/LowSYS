@@ -8,9 +8,9 @@ import '../theme/lowsys_theme.dart';
 
 /// Plot area of the McCabe-Thiele chart inside a panel of [size] (shared with tap picking).
 Rect mccabePlotRect(Size size) {
-  final side = math.min(size.width - 44, size.height - 50);
+  final side = math.min(size.width - 52, size.height - 56);
   final s = math.max(40.0, side);
-  return Rect.fromLTWH(36 + (size.width - 44 - s).clamp(0.0, 1e9) / 2, 10, s, s);
+  return Rect.fromLTWH(44 + (size.width - 52 - s).clamp(0.0, 1e9) / 2, 10, s, s);
 }
 
 /// Live McCabe-Thiele diagram in the Blueprint "hand-ruled" style (theme tokens only).
@@ -67,7 +67,7 @@ class McCabePainter extends CustomPainter {
     }
     _text(canvas, 'x  ${d.lightLabel.toLowerCase()}, liquid', Offset(plot.center.dx, plot.bottom + 19), lab.style(12, p.inkMuted), Alignment.topCenter);
     canvas.save();
-    canvas.translate(10, plot.center.dy);
+    canvas.translate(8, plot.center.dy);
     canvas.rotate(-math.pi / 2);
     _text(canvas, 'y  vapour', Offset.zero, lab.style(12, p.inkMuted), Alignment.center);
     canvas.restore();
@@ -251,8 +251,8 @@ class McCabePainter extends CustomPainter {
 
     // --- title block (lower right, drafting-sheet style); a one-line caption when space is tight
     if (compact) {
-      final cap = '${d.lightLabel.toUpperCase()}–${d.heavyLabel.toUpperCase()} · T${snap.tier.name.substring(1)} · ${_clock(snap.time)}';
-      _text(canvas, cap, Offset(size.width / 2, plot.bottom + 36), num.style(12, p.inkMuted), Alignment.topCenter, maxWidth: size.width - 16);
+      final cap = 't = ${_clock(snap.time)}  ·  Tier ${snap.tier.name.substring(1)}';
+      _text(canvas, cap, Offset(size.width / 2, plot.bottom + 34), num.style(12, p.inkMuted), Alignment.topCenter, maxWidth: size.width - 16);
     } else {
       _titleBlock(canvas, plot, d, snap, compact);
     }

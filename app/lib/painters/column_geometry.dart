@@ -8,8 +8,8 @@ class ColumnGeometry {
   final int n;
   final int feedStage;
 
-  late final double shellL = size.width * 0.20;
-  late final double shellR = size.width * 0.60;
+  late final double shellL = size.width * (size.width < 260 ? 0.25 : 0.20);
+  late final double shellR = size.width * (size.width < 260 ? 0.63 : 0.60);
   late final double cx = (shellL + shellR) / 2;
   late final double shellW = shellR - shellL;
 
