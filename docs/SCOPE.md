@@ -202,6 +202,7 @@ Each fault has a physical model (PHYSICS.md §11 gives the equations), a severit
 | F18 | Thermosyphon outlet restriction | Outlet loss coefficient K_out + 40 s | Lower circulation; surging (raises I_s strongly) | Throttle inlet (stabilise); cut duty | M6 |
 | F19 | Instrument bias / drift / stuck | Measured = true + bias (step), + drift·t, or frozen | Controller holds the wrong value; mass/energy balance mismatch; cross-checks disagree (e.g. level vs flows) | Switch loop to MAN; use redundant instrument | M3 |
 | F20 | Control valve stuck / failed | Valve position frozen, or failed open/closed | Controller output moves but flow does not | Switch to bypass (manual flow) | M3 |
+| F28 | Transmitter hard failure | Signal loss (4–20 mA under/over-range → reads 0 % or 100 %), plugged impulse line (DP/level/flow reading stops following the process but still shows transmitter noise), spiking/erratic (heavy-tailed noise bursts), coated thermowell (TI lag τ × 10) | Loop on that PV drives its valve to a limit or goes sluggish; reading disagrees with neighbours (adjacent tray TIs, mass balance, valve OP vs flow); plugged lines look "too steady" | Put loop in MAN; use redundant/inferred measurement; flag instrument for maintenance (clears) | M3 |
 | F21 | Packing maldistribution (distributor plugged) | Parallel-column model with liquid split fraction f = 0.6 s (PHYSICS.md §6.6) | Fewer effective stages; T profile in the bed distorts; ΔP almost unchanged | None (needs shutdown); raise reflux | M8 |
 | F22 | Packing flooding (operating condition) | Robbins ΔP reaches the Kister–Gill flood ΔP; holdup rises steeply; HETP rises | Steep ΔP rise across the bed; HETP and separation worsen; liquid carryover | Cut rates | M8 |
 | F23 | Packing crushed / compacted | Packing factor F_p × (1 + 1.5 s), area unchanged, bed height lowered by 0.15 s | Higher ΔP at the same load; earlier flooding | Cut rates | M8 |
@@ -210,7 +211,7 @@ Each fault has a physical model (PHYSICS.md §11 gives the equations), a severit
 | F26 | Furnace outlet temperature upset (crude) | COT step | Overflash changes; residue yield and gas-oil yields shift | Re-target COT | M9 |
 | F27 | Draw tray dry (crude; operating condition) | Side draw exceeds internal liquid; draw pan empties | Draw flow cannot meet SP (FC saturates); trays below the draw dry; next-heavier product front end gets lighter | Reduce the draw rate | M9 |
 
-The hidden-fault drill pool uses F04, F05, F06, F07, F09, F10, F11, F13, F14, F17, F18, F19, F20, F21, F24, F25.
+The hidden-fault drill pool uses F04, F05, F06, F07, F09, F10, F11, F13, F14, F17, F18, F19, F20, F21, F24, F25, F28.
 
 ---
 
@@ -239,7 +240,7 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G15 | Packing retrofit | B-T, T2 | Compare 20 sieve trays to 9 m of structured packing | Report ΔP ratio and capacity gain (flood % at the same load) | M8 |
 | G16 | Crude cut points and gaps | Crude, T2 | Set draws and PA to meet kero D86 95 % ≤ 235 °C and a diesel–kero gap ≥ 0 °C | Meet both specs with residue D86-equivalent IBP ≥ 340 °C | M9 |
 
-### 6.2 Hidden-fault drills (8)
+### 6.2 Hidden-fault drills (10)
 
 In a drill the engine injects one fault (from the drill's candidate list, chosen by a seeded random draw) at a random onset time inside a window. Measurement noise is on. The learner may move levers and switch loops. The learner presses **Diagnose** and picks a category, a location and optionally a severity class.
 
@@ -253,6 +254,8 @@ In a drill the engine injects one fault (from the drill's candidate list, chosen
 | H6 | Off-spec overhead | Debutanizer, T3 | F07 feed upset (more nC4/iC5), F12 partial reflux loss, F20 reflux valve stuck | Feed analyser trend vs reflux flow vs valve OP–flow mismatch |
 | H7 | Packed bed underperforms | B-T packed, T2 | F21 maldistribution, F22 near-flood operation, F23 crushed packing | ΔP at constant load (crushed: up; maldistribution: flat) and bed T profile |
 | H8 | Crude product drift | Crude, T2 | F24 stripping steam loss, F25 pumparound trip, F26 COT upset | Bottom T and residue yield; overhead duty and top T; flash-zone T |
+| H9 | Don't trust the gauge | B-T, T1 or T2, loops in AUTO | One instrument fault on a random tag (TI, LT, FT, PT): F19 bias/drift/stuck or F28 signal loss / plugged impulse line / spiking / coated thermowell. The process itself is healthy. | Decide *process problem vs instrument problem* and name the tag: cross-check neighbouring TIs, material and energy balance, valve OP vs measured flow, "too steady" trends. Bonus for putting the affected loop in MAN before product goes off-spec. |
+| H10 | Bad valve or bad meter? | B-T, T2 | F20 reflux/steam valve stuck vs F19/F28 on the matching flow transmitter vs a real upset (F07) | OP moving while flow is flat (valve) vs flow reading disagreeing with the heat/mass balance (meter) vs everything consistent (real upset) |
 
 Scoring (both kinds): objectives 60 %, time 20 %, safety 10 % (no relief lift, no level < 5 % or > 95 % for more than 60 s), product quality 10 % (integrated off-spec). Drills: correct category 50 %, correct location 20 %, time to diagnosis 20 %, safety 10 %. Wrong diagnoses cost 10 % each (two attempts).
 
@@ -377,7 +380,7 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 ### M6 — Thermosyphon reboiler and hidden-fault drills
 
 - Engine: thermosyphon loop model with instability index and oscillator (PHYSICS.md §8.3); faults F16–F18; hidden-fault framework (seeded random fault draw and onset, diagnosis submission, scoring); measurement noise.
-- App: Equipment tab for the reboiler (loop schematic, circulation, exit quality, I_s gauge); Drill HUD and Diagnose dialog; drills H1–H5; scenario G14.
+- App: Equipment tab for the reboiler (loop schematic, circulation, exit quality, I_s gauge); Drill HUD and Diagnose dialog; drills H1–H5, H9, H10; scenario G14.
 - Acceptance: VC-14 (thermosyphon map) passes; each drill's injected fault produces its listed key evidence (automated symptom tests per drill in VALIDATION.md §H).
 
 ### M7 — Multicomponent light hydrocarbons
@@ -426,4 +429,4 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 These have defaults; the user may override them later.
 
 1. Crude assay: LowSYS ships a synthetic ~32 °API light crude (PHYSICS.md §9.1). If the user has a specific assay they care about, it can be added as a second preset.
-2. Hidden-fault drills use measurement noise by default. If the user finds noise frustrating on a phone, it can default to off.
+2. Resolved: the user wants measurement noise on, and instrument failure as its own troubleshooting drill (F28, H9, H10; delivered with the M6 drill framework).
