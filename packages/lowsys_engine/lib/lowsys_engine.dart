@@ -12,7 +12,8 @@ export 'src/explain/explain_types.dart';
 export 'src/faults/fault_manager.dart';
 export 'src/faults/fault_spec.dart';
 export 'src/math/banded_solver.dart';
-export 'src/model/tray_hydraulics.dart' show TrayCorrelations, TrayGeometryDerived;
+export 'src/model/tray_hydraulics.dart'
+    show TrayCorrelations, TrayGeometryDerived;
 export 'src/model/column_state.dart' show StepDebug;
 export 'src/runner/local_sim_runner.dart';
 export 'src/runner/sim_runner.dart';
@@ -24,3 +25,7 @@ export 'src/thermo/component.dart';
 export 'src/thermo/thermo_factory.dart';
 export 'src/thermo/thermo_model.dart';
 export 'src/thermo/tier1_constant_alpha.dart';
+export 'src/scenario/predicate.dart' show Predicate, MetricContext;
+export 'src/scenario/scenario_def.dart';
+export 'src/scenario/scenario_library.dart';
+export 'src/scenario/scenario_runner.dart';

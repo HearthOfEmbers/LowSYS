@@ -32,15 +32,18 @@ class FaultLocation {
   final int? stageFrom, stageTo;
   final int? feedIndex;
   final String? tagName;
-  const FaultLocation._({this.stageFrom, this.stageTo, this.feedIndex, this.tagName});
+  const FaultLocation._(
+      {this.stageFrom, this.stageTo, this.feedIndex, this.tagName});
 
   /// Stages [from]..[to] counted from the top (trays 1..N).
-  const FaultLocation.stages(int from, int to) : this._(stageFrom: from, stageTo: to);
+  const FaultLocation.stages(int from, int to)
+      : this._(stageFrom: from, stageTo: to);
   const FaultLocation.feed(int index) : this._(feedIndex: index);
   const FaultLocation.tag(String tag) : this._(tagName: tag);
   const FaultLocation.whole() : this._(stageFrom: 1, stageTo: 1000);
 
-  bool coversStage(int j) => stageFrom != null && j >= stageFrom! && j <= stageTo!;
+  bool coversStage(int j) =>
+      stageFrom != null && j >= stageFrom! && j <= stageTo!;
 
   Map<String, Object?> toJson() => {
         if (stageFrom != null) 'from': stageFrom,
@@ -58,7 +61,9 @@ class FaultLocation {
 
   @override
   String toString() => stageFrom != null
-      ? (stageFrom == stageTo ? 'tray $stageFrom' : (stageTo! >= 1000 ? 'all trays' : 'trays $stageFrom-$stageTo'))
+      ? (stageFrom == stageTo
+          ? 'tray $stageFrom'
+          : (stageTo! >= 1000 ? 'all trays' : 'trays $stageFrom-$stageTo'))
       : (feedIndex != null ? 'feed' : (tagName ?? ''));
 }
 
@@ -100,11 +105,13 @@ class FaultSpec {
 
   factory FaultSpec.fromJson(Map<String, Object?> j) => FaultSpec(
         type: FaultType.values.firstWhere((e) => e.name == j['type']),
-        location: FaultLocation.fromJson(j['location']! as Map<String, Object?>),
+        location:
+            FaultLocation.fromJson(j['location']! as Map<String, Object?>),
         severity: (j['severity']! as num).toDouble(),
         onset: (j['onset']! as num).toDouble(),
         ramp: (j['ramp']! as num).toDouble(),
-        params: Map<String, Object?>.from(j['params']! as Map<Object?, Object?>),
+        params:
+            Map<String, Object?>.from(j['params']! as Map<Object?, Object?>),
         hidden: (j['hidden'] as bool?) ?? false,
       );
 }

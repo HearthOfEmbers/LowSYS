@@ -223,7 +223,9 @@ class Stepper {
   /// Bennett holdups, drum and sump at 50 %, controllers at the matching flows.
   void initializeCold() {
     final N = nTrays;
-    final F = inp.feedFlowSp, L0 = inp.ratioMode ? 0.0 : inp.refluxFlowSp, VB = inp.boilupSp;
+    final F = inp.feedFlowSp,
+        L0 = inp.ratioMode ? 0.0 : inp.refluxFlowSp,
+        VB = inp.boilupSp;
     final fs = inp.feedStage, q = inp.feedQ;
     s.time = 0;
     s.feedAct = F;
@@ -244,7 +246,8 @@ class Stepper {
     // CMO flows
     s.vapor[N + 1] = VB;
     for (var j = N; j >= 1; j--) {
-      s.vapor[j] = math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
+      s.vapor[j] =
+          math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
     }
     s.liquid[0] = l0;
     for (var j = 1; j <= N; j++) {
@@ -347,7 +350,8 @@ class Stepper {
     final sSump = mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0;
     s.vapor[N + 1] = VB * sSump;
     for (var j = N; j >= 1; j--) {
-      s.vapor[j] = math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
+      s.vapor[j] =
+          math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
     }
 
     // --- 3./4. normalised K (4.4), efficiencies, froth density
@@ -373,7 +377,9 @@ class Stepper {
         s.alphaE[j] = hyd.alphaE[j];
         s.entrain[j] = hyd.entrain[j];
         s.bypass[j] = hyd.bypass[j];
-        s.eff[j] = inp.murphree * (1 - ep.brokenS[j]) * math.min(1.0, hyd.hcl[j] / 0.005);
+        s.eff[j] = inp.murphree *
+            (1 - ep.brokenS[j]) *
+            math.min(1.0, hyd.hcl[j] / 0.005);
       }
     } else {
       for (var j = 1; j <= N; j++) {
@@ -404,7 +410,13 @@ class Stepper {
       final fPrev = j >= 2 && full ? s.bypass[j - 1] : 0.0;
       final eNext = full && j + 1 <= N ? s.entrain[j + 1] : 0.0;
       final eJ = full ? s.entrain[j] : 0.0;
-      final inflow = (1 - fj) * lPrev + fPrev * lPrev2 + eNext + (j == fs ? F : 0.0) + s.vapor[j + 1] - s.vapor[j] - eJ;
+      final inflow = (1 - fj) * lPrev +
+          fPrev * lPrev2 +
+          eNext +
+          (j == fs ? F : 0.0) +
+          s.vapor[j + 1] -
+          s.vapor[j] -
+          eJ;
       final vl = s.vLiq[j];
       final ae = s.alphaE[j];
       final aa = full ? hyd.aAct[j] : aActive;
@@ -490,12 +502,22 @@ class Stepper {
     }
     refreshFromHoldups();
     for (var j = 1; j <= N; j++) {
-      s.eff[j] = full ? inp.murphree * (1 - ep.brokenS[j]) * math.min(1.0, s.holdup[j] * s.vLiq[j] / (aActive * math.max(1 - ep.brokenS[j], 0.02)) / 0.005) : _effOf(j);
+      s.eff[j] = full
+          ? inp.murphree *
+              (1 - ep.brokenS[j]) *
+              math.min(
+                  1.0,
+                  s.holdup[j] *
+                      s.vLiq[j] /
+                      (aActive * math.max(1 - ep.brokenS[j], 0.02)) /
+                      0.005)
+          : _effOf(j);
     }
     _computeVapour(s.x, s.y, s.yStar);
   }
 
-  void _componentPass(double dt, double F, int fs, double D, double B, double L0, Float64List z) {
+  void _componentPass(double dt, double F, int fs, double D, double B,
+      double L0, Float64List z) {
     final N = nTrays;
     final v1 = s.vapor[1];
     for (var i = 0; i < nc; i++) {
@@ -506,11 +528,20 @@ class Stepper {
       _c[0] = -dt * (v1 * s.eff[1] * _kt[nc + i] + s.entrain[1]) / _mhat[1];
       _d[0] = s.m[i] + dt * v1 * (1 - s.eff[1]) * _yhat[2 * nc + i];
       for (var j = 1; j <= N; j++) {
-        _g[j] = j >= 2 ? -dt * s.bypass[j - 1] * s.liquid[j - 2] / _mhat[j - 2] : 0.0;
+        _g[j] = j >= 2
+            ? -dt * s.bypass[j - 1] * s.liquid[j - 2] / _mhat[j - 2]
+            : 0.0;
         _a[j] = -dt * (1 - s.bypass[j]) * s.liquid[j - 1] / _mhat[j - 1];
-        _b[j] = 1 + dt * (s.liquid[j] + s.entrain[j] + s.vapor[j] * s.eff[j] * _kt[j * nc + i]) / _mhat[j];
+        _b[j] = 1 +
+            dt *
+                (s.liquid[j] +
+                    s.entrain[j] +
+                    s.vapor[j] * s.eff[j] * _kt[j * nc + i]) /
+                _mhat[j];
         final eNext = j + 1 <= N ? s.entrain[j + 1] : 0.0;
-        _c[j] = -dt * (s.vapor[j + 1] * s.eff[j + 1] * _kt[(j + 1) * nc + i] + eNext) / _mhat[j + 1];
+        _c[j] = -dt *
+            (s.vapor[j + 1] * s.eff[j + 1] * _kt[(j + 1) * nc + i] + eNext) /
+            _mhat[j + 1];
         var rhs = s.m[j * nc + i];
         var src = j == fs ? F * z[i] : 0.0;
         if (j + 2 <= N + 1) {
@@ -523,7 +554,8 @@ class Stepper {
       // sump row
       _g[N + 1] = -dt * s.bypass[N] * s.liquid[N - 1] / _mhat[N - 1];
       _a[N + 1] = -dt * s.liquid[N] / _mhat[N];
-      _b[N + 1] = 1 + dt * (B + s.vapor[N + 1] * _kt[(N + 1) * nc + i]) / _mhat[N + 1];
+      _b[N + 1] =
+          1 + dt * (B + s.vapor[N + 1] * _kt[(N + 1) * nc + i]) / _mhat[N + 1];
       _c[N + 1] = 0;
       _d[N + 1] = s.m[(N + 1) * nc + i];
       BandedSolver.solve(n, _g, _a, _b, _c, _d, _sol, _cp, _dp);
@@ -543,7 +575,9 @@ class Stepper {
     // ideal flow controllers follow their setpoints through a first-order lag (PHYSICS.md 10.2)
     final k = dt / (tauFlow + dt);
     s.feedAct += (inp.feedFlowSp - s.feedAct) * k;
-    final lSp = inp.ratioMode ? inp.refluxRatio * control.distillateValve.flow : inp.refluxFlowSp;
+    final lSp = inp.ratioMode
+        ? inp.refluxRatio * control.distillateValve.flow
+        : inp.refluxFlowSp;
     s.refluxAct += (lSp - s.refluxAct) * k;
     s.boilupAct += (inp.boilupSp - s.boilupAct) * k;
     if (s.feedAct.abs() < 1e-12) s.feedAct = 0;
@@ -553,5 +587,6 @@ class Stepper {
 
   /// Level (%) of the drum / sump from the current state.
   double get drumLevelPct => 100 * s.holdup[0] * s.vLiq[0] / drumVolume;
-  double get sumpLevelPct => 100 * s.holdup[nTrays + 1] * s.vLiq[nTrays + 1] / sumpVolume;
+  double get sumpLevelPct =>
+      100 * s.holdup[nTrays + 1] * s.vLiq[nTrays + 1] / sumpVolume;
 }

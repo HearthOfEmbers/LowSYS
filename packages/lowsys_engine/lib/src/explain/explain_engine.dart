@@ -53,10 +53,14 @@ class ExplainEngine {
   int get nc => st.nc;
   int get nTrays => snapshot.layout.nTrays;
 
-  static const _noteCmo = 'Tier 1 uses constant molar overflow: vapour flow changes only where feed vapour enters. Real columns have different latent heats (Tier 2).';
-  static const _noteIdeal = 'Hydraulics are ideal: only the Bennett weir relation is used; no pressure drop, entrainment, weeping or downcomer limit.';
-  static const _noteMixed = 'Trays are perfectly mixed stages; the Murphree efficiency lumps everything that is not equilibrium.';
-  static const _noteBennett = 'Bennett\'s correlation was fitted to air-water data; it sets the liquid residence time (seconds), not a design number.';
+  static const _noteCmo =
+      'Tier 1 uses constant molar overflow: vapour flow changes only where feed vapour enters. Real columns have different latent heats (Tier 2).';
+  static const _noteIdeal =
+      'Hydraulics are ideal: only the Bennett weir relation is used; no pressure drop, entrainment, weeping or downcomer limit.';
+  static const _noteMixed =
+      'Trays are perfectly mixed stages; the Murphree efficiency lumps everything that is not equilibrium.';
+  static const _noteBennett =
+      'Bennett\'s correlation was fitted to air-water data; it sets the liquid residence time (seconds), not a design number.';
 
   ExplainResult explain(ExplainTarget t) {
     switch (t) {
@@ -84,7 +88,9 @@ class ExplainEngine {
     if (j == 0) return _drum();
     if (j == N + 1) return _sump();
     final feed = snapshot.layout.feedStages.first;
-    final section = j == feed ? 'feed tray' : (j < feed ? 'rectifying section' : 'stripping section');
+    final section = j == feed
+        ? 'feed tray'
+        : (j < feed ? 'rectifying section' : 'stripping section');
     final groups = <EquationGroup>[];
     final x = st.xAt(j, 0), y = st.yAt(j, 0), ys = st.yStarAt(j, 0);
     final L = st.liquidDown[j], V = st.vaporUp[j], vBelow = st.vaporUp[j + 1];
@@ -105,7 +111,11 @@ class ExplainEngine {
     final xDn = st.xAt(j + 1, 0);
     final fFeed = j == feed ? snapshot.streams[StreamId.feed]!.flow : 0.0;
     final zF = snapshot.streams[StreamId.feed]!.composition[0];
-    final inflow = (1 - fj) * lUp * xUp + fPrev * lUp2 * xUp2 + vBelow * yb + eNext * xDn + fFeed * zF;
+    final inflow = (1 - fj) * lUp * xUp +
+        fPrev * lUp2 * xUp2 +
+        vBelow * yb +
+        eNext * xDn +
+        fFeed * zF;
     final outflow = (L + e) * x + V * y;
     final dmdt = inflow - outflow;
     groups.add(EquationGroup('Material balance', [
@@ -127,7 +137,8 @@ class ExplainEngine {
         id: 'eq.equilibrium.T1',
         physicsRef: 'PHYSICS.md (3.1)',
         texSymbolic: r'y^*_j = \frac{\alpha x_j}{1 + (\alpha-1)x_j}',
-        texSubstituted: 'y^*_{$j} = \\frac{${texNum(alpha)}\\times${texNum(x)}}{1 + (${texNum(alpha)}-1)\\times${texNum(x)}} = ${texNum(ys)}',
+        texSubstituted:
+            'y^*_{$j} = \\frac{${texNum(alpha)}\\times${texNum(x)}}{1 + (${texNum(alpha)}-1)\\times${texNum(x)}} = ${texNum(ys)}',
         value: ys,
         note: 'Constant relative volatility; no temperature in Tier 1.',
       ),
@@ -135,15 +146,18 @@ class ExplainEngine {
         id: 'eq.murphree',
         physicsRef: 'PHYSICS.md (4.2)',
         texSymbolic: r'y_j = y_{j+1} + E_j\,(y^*_j - y_{j+1})',
-        texSubstituted: 'y_{$j} = ${texNum(yb)} + ${texNum(E)}\\,(${texNum(ys)} - ${texNum(yb)}) = ${texNum(y)}',
+        texSubstituted:
+            'y_{$j} = ${texNum(yb)} + ${texNum(E)}\\,(${texNum(ys)} - ${texNum(yb)}) = ${texNum(y)}',
         value: y,
-        note: 'Murphree vapour efficiency, including the dry-tray factor min(1, h_cl / 5 mm).',
+        note:
+            'Murphree vapour efficiency, including the dry-tray factor min(1, h_cl / 5 mm).',
       ),
       EquationLine(
         id: 'eq.vapourFlow.cmo',
         physicsRef: 'PHYSICS.md (4.5)',
         texSymbolic: r'V_j = V_{j+1} + (1-q_j)F_j',
-        texSubstituted: 'V_{$j} = ${texNum(vBelow)} + (1-${texNum(snapshot.feedQ)})\\times${texNum(fFeed)} = ${texNum(V)}\\ \\mathrm{mol/s}',
+        texSubstituted:
+            'V_{$j} = ${texNum(vBelow)} + (1-${texNum(snapshot.feedQ)})\\times${texNum(fFeed)} = ${texNum(V)}\\ \\mathrm{mol/s}',
         value: V,
         quantity: Quantity.molarFlow,
       ),
@@ -151,33 +165,40 @@ class ExplainEngine {
 
     // --- hydraulics
     final hl = <EquationLine>[];
-    final vl = (st.holdup[j] > 0) ? st.hcl[j] * hyd.aAct[j] / st.holdup[j] : 0.0;
+    final vl =
+        (st.holdup[j] > 0) ? st.hcl[j] * hyd.aAct[j] / st.holdup[j] : 0.0;
     if (full) {
       hl.addAll([
         EquationLine(
           id: 'eq.bennett',
           physicsRef: 'PHYSICS.md (5.2)',
-          texSymbolic: r'h_{cl} = \frac{M_j v_L}{A_a},\quad \alpha_e = e^{-12.55K_s^{0.91}},\quad K_s = U_s\sqrt{\rho_V/(\rho_L-\rho_V)}',
+          texSymbolic:
+              r'h_{cl} = \frac{M_j v_L}{A_a},\quad \alpha_e = e^{-12.55K_s^{0.91}},\quad K_s = U_s\sqrt{\rho_V/(\rho_L-\rho_V)}',
           texSubstituted:
               'h_{cl} = \\frac{${texNum(st.holdup[j])}\\times${texNum(vl)}}{${texNum(hyd.aAct[j])}} = ${texNum(st.hcl[j])}\\ \\mathrm{m},\\ K_s = ${texNum(hyd.ks[j])},\\ \\alpha_e = ${texNum(hyd.alphaE[j])}',
           value: st.hcl[j],
           quantity: Quantity.smallLength,
-          note: 'Clear-liquid height from the holdup; froth height ${texNum(st.froth[j])} m.',
+          note:
+              'Clear-liquid height from the holdup; froth height ${texNum(st.froth[j])} m.',
         ),
         EquationLine(
           id: 'eq.dryDP',
-          physicsRef: hyd.trayType.name == 'valve' ? 'PHYSICS.md (5.4)' : 'PHYSICS.md (5.3)',
+          physicsRef: hyd.trayType.name == 'valve'
+              ? 'PHYSICS.md (5.4)'
+              : 'PHYSICS.md (5.3)',
           texSymbolic: hyd.trayType.name == 'valve'
               ? r'\Delta P_{dry} = \max\!\big(\text{closed, balancing } \Delta P_{lift}, \text{open}\big)'
               : r'\Delta P_{dry} = \frac{\rho_V}{2}\left(\frac{u_h}{C_0}\right)^2,\quad u_h = \frac{Q_{in}}{A_{h,eff}}',
-          texSubstituted: 'u_h = ${texNum(hyd.uh[j])}\\ \\mathrm{m/s}\\Rightarrow \\Delta P_{dry} = ${texNum(st.dpDry[j])}\\ \\mathrm{Pa}',
+          texSubstituted:
+              'u_h = ${texNum(hyd.uh[j])}\\ \\mathrm{m/s}\\Rightarrow \\Delta P_{dry} = ${texNum(st.dpDry[j])}\\ \\mathrm{Pa}',
           value: st.dpDry[j],
           quantity: Quantity.pressureDelta,
         ),
         EquationLine(
           id: 'eq.trayDP',
           physicsRef: 'PHYSICS.md (5.5)',
-          texSymbolic: r'\Delta P_j = \Delta P_{dry} + \rho_L g\,h_{cl} + \frac{4\sigma}{d_h}',
+          texSymbolic:
+              r'\Delta P_j = \Delta P_{dry} + \rho_L g\,h_{cl} + \frac{4\sigma}{d_h}',
           texSubstituted:
               '\\Delta P_{$j} = ${texNum(st.dpDry[j])} + ${texNum(hyd.rhoL * 9.80665 * st.hcl[j])} + ${texNum(st.dp[j] - st.dpDry[j] - hyd.rhoL * 9.80665 * st.hcl[j])} = ${texNum(st.dp[j])}\\ \\mathrm{Pa}',
           value: st.dp[j],
@@ -186,34 +207,43 @@ class ExplainEngine {
         EquationLine(
           id: 'eq.jetFlood',
           physicsRef: 'PHYSICS.md (5.5)',
-          texSymbolic: r'\varphi_j = \frac{Q_{out}/A_n}{U_{nf}},\quad U_{nf} = C_{SB}\left(\frac{\sigma}{0.02}\right)^{0.2}\sqrt{\frac{\rho_L-\rho_V}{\rho_V}}\,SF\,f_{hole}',
+          texSymbolic:
+              r'\varphi_j = \frac{Q_{out}/A_n}{U_{nf}},\quad U_{nf} = C_{SB}\left(\frac{\sigma}{0.02}\right)^{0.2}\sqrt{\frac{\rho_L-\rho_V}{\rho_V}}\,SF\,f_{hole}',
           texSubstituted:
               'F_{LV} = ${texNum(hyd.fLV[j])},\\ C_{SB} = ${texNum(hyd.csb[j])},\\ U_{nf} = ${texNum(hyd.unf[j])}\\ \\mathrm{m/s},\\ \\varphi_{$j} = \\frac{${texNum(hyd.qOut[j] / hyd.d.aN)}}{${texNum(hyd.unf[j])}} = ${texNum(st.jetFlood[j])}',
           value: st.jetFlood[j],
-          note: 'Fractional approach to jet flood (Fair, Lygeros-Magoulas fit).',
+          note:
+              'Fractional approach to jet flood (Fair, Lygeros-Magoulas fit).',
         ),
         EquationLine(
           id: 'eq.entrainment',
           physicsRef: 'PHYSICS.md (5.7, 5.8)',
-          texSymbolic: r'\psi_{eq} = \min\!\big(0.6,\ 4\times10^{-5}(F_{LV}/0.1)^{-0.83}e^{7.5\varphi}\big),\quad e_j = \frac{\psi}{1-\psi}L_j + e_{ov}',
-          texSubstituted: '\\psi_{eq} = ${texNum(hyd.psiEq[j])},\\ e_{$j} = ${texNum(st.entrain[j])}\\ \\mathrm{mol/s}',
+          texSymbolic:
+              r'\psi_{eq} = \min\!\big(0.6,\ 4\times10^{-5}(F_{LV}/0.1)^{-0.83}e^{7.5\varphi}\big),\quad e_j = \frac{\psi}{1-\psi}L_j + e_{ov}',
+          texSubstituted:
+              '\\psi_{eq} = ${texNum(hyd.psiEq[j])},\\ e_{$j} = ${texNum(st.entrain[j])}\\ \\mathrm{mol/s}',
           value: st.entrain[j],
           quantity: Quantity.molarFlow,
-          note: 'Entrained liquid is carried to the tray above; the separation loss is emergent.',
+          note:
+              'Entrained liquid is carried to the tray above; the separation loss is emergent.',
         ),
         EquationLine(
           id: 'eq.downcomer',
           physicsRef: 'PHYSICS.md (5.10, 5.11)',
-          texSymbolic: r'h_{dc} = \frac{\Delta P_j}{\rho_L g} + h_{norm,j+1} + 0.166\,u_{ap}^2,\quad \text{flood when } h_{dc}/\phi_{dc} \ge TS + h_w',
-          texSubstituted: 'h_{dc} = ${texNum(hyd.hDc[j])}\\ \\mathrm{m}\\ \\Rightarrow\\ ${texNum(100 * st.dcFlood[j])}\\ \\%\\ \\text{of the limit}',
+          texSymbolic:
+              r'h_{dc} = \frac{\Delta P_j}{\rho_L g} + h_{norm,j+1} + 0.166\,u_{ap}^2,\quad \text{flood when } h_{dc}/\phi_{dc} \ge TS + h_w',
+          texSubstituted:
+              'h_{dc} = ${texNum(hyd.hDc[j])}\\ \\mathrm{m}\\ \\Rightarrow\\ ${texNum(100 * st.dcFlood[j])}\\ \\%\\ \\text{of the limit}',
           value: st.dcFlood[j],
           note: 'Downcomer backup as a fraction of its limit.',
         ),
         EquationLine(
           id: 'eq.weeping',
           physicsRef: 'PHYSICS.md (5.12-5.14)',
-          texSymbolic: r'\Phi_j = \sqrt{h_{dry}/h_{cl}},\quad w_j = \mathrm{clamp}\big((0.75-\Phi_j)/0.55,\,0,\,1\big)',
-          texSubstituted: '\\Phi_{$j} = ${texNum(st.stability[j])}\\ \\Rightarrow\\ w_{$j} = ${texNum(st.weepFrac[j])}',
+          texSymbolic:
+              r'\Phi_j = \sqrt{h_{dry}/h_{cl}},\quad w_j = \mathrm{clamp}\big((0.75-\Phi_j)/0.55,\,0,\,1\big)',
+          texSubstituted:
+              '\\Phi_{$j} = ${texNum(st.stability[j])}\\ \\Rightarrow\\ w_{$j} = ${texNum(st.weepFrac[j])}',
           value: st.weepFrac[j],
           note: 'Fraction of the inlet liquid that falls through the deck.',
         ),
@@ -224,15 +254,25 @@ class ExplainEngine {
         EquationLine(
           id: 'eq.bennett',
           physicsRef: 'PHYSICS.md (5.2)',
-          texSymbolic: r'q_w = L_w\,\alpha_e\left[\frac{h_{cl}/\alpha_e - h_w}{C}\right]^{1.5}',
-          texSubstituted: 'h_{cl} = ${texNum(st.hcl[j])}\\ \\mathrm{m},\\ \\alpha_e = ${texNum(st.froth[j] > 0 ? st.hcl[j] / st.froth[j] : 1)},\\ L_j = ${texNum(L)}\\ \\mathrm{mol/s}',
+          texSymbolic:
+              r'q_w = L_w\,\alpha_e\left[\frac{h_{cl}/\alpha_e - h_w}{C}\right]^{1.5}',
+          texSubstituted:
+              'h_{cl} = ${texNum(st.hcl[j])}\\ \\mathrm{m},\\ \\alpha_e = ${texNum(st.froth[j] > 0 ? st.hcl[j] / st.froth[j] : 1)},\\ L_j = ${texNum(L)}\\ \\mathrm{mol/s}',
           value: st.hcl[j],
           quantity: Quantity.smallLength,
         ),
       ]));
     }
-    final notes = <String>[_noteCmo, _noteMixed, if (full) _noteBennett else _noteIdeal];
-    return ExplainResult(title: 'Tray $j ($section)', groups: groups, notes: notes, time: snapshot.time);
+    final notes = <String>[
+      _noteCmo,
+      _noteMixed,
+      if (full) _noteBennett else _noteIdeal
+    ];
+    return ExplainResult(
+        title: 'Tray $j ($section)',
+        groups: groups,
+        notes: notes,
+        time: snapshot.time);
   }
 
   // ------------------------------------------------------------------ drum, sump, feed, streams
@@ -252,10 +292,12 @@ class ExplainEngine {
             id: 'eq.drumBalance',
             physicsRef: 'PHYSICS.md (7.6, 12.2)',
             texSymbolic: r'\frac{dM_0}{dt} = V_1 + e_1 - L_0 - D',
-            texSubstituted: '\\frac{dM_0}{dt} = ${texNum(v1)} + ${texNum(e1)} - ${texNum(l0)} - ${texNum(d)} = ${texNum(net)}\\ \\mathrm{mol/s}',
+            texSubstituted:
+                '\\frac{dM_0}{dt} = ${texNum(v1)} + ${texNum(e1)} - ${texNum(l0)} - ${texNum(d)} = ${texNum(net)}\\ \\mathrm{mol/s}',
             value: net,
             quantity: Quantity.molarFlow,
-            note: 'Total condenser: all overhead vapour condenses (Tier 1 has no pressure or duty).',
+            note:
+                'Total condenser: all overhead vapour condenses (Tier 1 has no pressure or duty).',
           ),
           EquationLine(
             id: 'eq.drumLevel',
@@ -267,7 +309,9 @@ class ExplainEngine {
           ),
         ]),
       ],
-      notes: const ['The level controller LC-101 moves the distillate valve to hold the drum level (PI, Kc 2, Ti 1800 s).'],
+      notes: const [
+        'The level controller LC-101 moves the distillate valve to hold the drum level (PI, Kc 2, Ti 1800 s).'
+      ],
       time: snapshot.time,
     );
   }
@@ -286,15 +330,20 @@ class ExplainEngine {
           EquationLine(
             id: 'eq.boilup',
             physicsRef: 'PHYSICS.md (4.4, 8.1)',
-            texSymbolic: r'V_{N+1} = V_B\, s_{sump},\quad \frac{dM_{N+1}}{dt} = L_N - V_{N+1} - B',
-            texSubstituted: 'V_{N+1} = ${texNum(vB)},\\ \\frac{dM_{N+1}}{dt} = ${texNum(lN)} - ${texNum(vB)} - ${texNum(b)} = ${texNum(net)}\\ \\mathrm{mol/s}',
+            texSymbolic:
+                r'V_{N+1} = V_B\, s_{sump},\quad \frac{dM_{N+1}}{dt} = L_N - V_{N+1} - B',
+            texSubstituted:
+                'V_{N+1} = ${texNum(vB)},\\ \\frac{dM_{N+1}}{dt} = ${texNum(lN)} - ${texNum(vB)} - ${texNum(b)} = ${texNum(net)}\\ \\mathrm{mol/s}',
             value: vB,
             quantity: Quantity.molarFlow,
-            note: 'Tier 1: the boilup lever is used directly; heat transfer limits do not apply.',
+            note:
+                'Tier 1: the boilup lever is used directly; heat transfer limits do not apply.',
           ),
         ]),
       ],
-      notes: const ['The sump is an equilibrium stage (E = 1). Starvation factor s_sump drops below 1 only when the sump runs nearly dry.'],
+      notes: const [
+        'The sump is an equilibrium stage (E = 1). Starvation factor s_sump drops below 1 only when the sump runs nearly dry.'
+      ],
       time: snapshot.time,
     );
   }
@@ -310,10 +359,13 @@ class ExplainEngine {
           EquationLine(
             id: 'eq.qValue',
             physicsRef: 'PHYSICS.md (4.5)',
-            texSymbolic: r'q = \text{liquid fraction of the feed},\quad V_{j} - V_{j+1} = (1-q)F',
-            texSubstituted: 'q = ${texNum(q)},\\ (1-q)F = ${texNum((1 - q) * f.flow)}\\ \\mathrm{mol/s}',
+            texSymbolic:
+                r'q = \text{liquid fraction of the feed},\quad V_{j} - V_{j+1} = (1-q)F',
+            texSubstituted:
+                'q = ${texNum(q)},\\ (1-q)F = ${texNum((1 - q) * f.flow)}\\ \\mathrm{mol/s}',
             value: q,
-            note: 'q > 1 subcooled, q = 1 saturated liquid, q < 0 superheated vapour.',
+            note:
+                'q > 1 subcooled, q = 1 saturated liquid, q < 0 superheated vapour.',
           ),
         ]),
       ],
@@ -333,14 +385,16 @@ class ExplainEngine {
       texSubstituted:
           '${texNum(f.flow)}\\times${texNum(zF)} = ${texNum(k.d)}\\times${texNum(k.xD)} + ${texNum(k.b)}\\times${texNum(k.xB)}\\quad(\\text{residual }${texNum(k.balanceResidual)})',
       value: k.balanceResidual,
-      note: 'Live relative residual of the light-component balance; zero at steady state.',
+      note:
+          'Live relative residual of the light-component balance; zero at steady state.',
     );
     final s = snapshot.streams[id]!;
     final comp = EquationLine(
       id: 'eq.streamComposition',
       physicsRef: 'PHYSICS.md (12.3)',
       texSymbolic: r'x_{light} \text{ and flow}',
-      texSubstituted: 'x = ${texNum(s.composition[0])},\\ \\text{flow} = ${texNum(s.flow)}\\ \\mathrm{mol/s}',
+      texSubstituted:
+          'x = ${texNum(s.composition[0])},\\ \\text{flow} = ${texNum(s.flow)}\\ \\mathrm{mol/s}',
       value: s.flow,
       quantity: Quantity.molarFlow,
     );
@@ -358,7 +412,9 @@ class ExplainEngine {
         EquationGroup('Stream', [comp]),
         EquationGroup('Overall balance', [line]),
       ],
-      notes: const ['Product flows come from the level controllers, so the balance closes at steady state, not at every instant.'],
+      notes: const [
+        'Product flows come from the level controllers, so the balance closes at steady state, not at every instant.'
+      ],
       time: snapshot.time,
     );
   }
@@ -373,14 +429,18 @@ class ExplainEngine {
           EquationLine(
             id: 'eq.pid',
             physicsRef: 'PHYSICS.md (10.1)',
-            texSymbolic: r'\Delta OP_k = K_c\Big[(e_k-e_{k-1}) + \frac{\Delta t}{T_i}e_k\Big],\quad OP_k = \mathrm{clamp}(OP_{k-1}+\Delta OP_k,0,100)',
-            texSubstituted: 'K_c = ${texNum(l.params.kc)},\\ T_i = ${texNum(l.params.ti)}\\ \\mathrm{s},\\ e = ${texNum(e)}\\ \\%,\\ OP = ${texNum(l.op)}\\ \\%',
+            texSymbolic:
+                r'\Delta OP_k = K_c\Big[(e_k-e_{k-1}) + \frac{\Delta t}{T_i}e_k\Big],\quad OP_k = \mathrm{clamp}(OP_{k-1}+\Delta OP_k,0,100)',
+            texSubstituted:
+                'K_c = ${texNum(l.params.kc)},\\ T_i = ${texNum(l.params.ti)}\\ \\mathrm{s},\\ e = ${texNum(e)}\\ \\%,\\ OP = ${texNum(l.op)}\\ \\%',
             value: l.op,
             quantity: Quantity.percent,
           ),
         ]),
       ],
-      notes: const ['Level loops are tuned for averaging: they absorb flow upsets instead of passing them on.'],
+      notes: const [
+        'Level loops are tuned for averaging: they absorb flow upsets instead of passing them on.'
+      ],
       time: snapshot.time,
     );
   }
@@ -399,7 +459,8 @@ class ExplainEngine {
           id: 'eq.operatingLine',
           physicsRef: 'PHYSICS.md (14.1)',
           texSymbolic: r'y = \frac{L_0}{V_1}x + \frac{D x_D}{V_1}',
-          texSubstituted: 'y = ${texNum(slope)}\\,x + ${texNum(v1 > 0 ? d * k.xD / v1 : 0)}',
+          texSubstituted:
+              'y = ${texNum(slope)}\\,x + ${texNum(v1 > 0 ? d * k.xD / v1 : 0)}',
           value: slope,
         ));
       case McCabeElement.qLine:
@@ -407,17 +468,21 @@ class ExplainEngine {
           id: 'eq.qLine',
           physicsRef: 'PHYSICS.md (14.1)',
           texSymbolic: r'y = \frac{q}{q-1}\,x - \frac{z}{q-1}',
-          texSubstituted: q == 1 ? r'x = z\ (\text{vertical, saturated liquid})' : 'y = ${texNum(q / (q - 1))}\\,x',
+          texSubstituted: q == 1
+              ? r'x = z\ (\text{vertical, saturated liquid})'
+              : 'y = ${texNum(q / (q - 1))}\\,x',
           value: q,
         ));
       case McCabeElement.rmin:
         final z = snapshot.streams[StreamId.feed]!.composition[0];
         final a = thermo.alpha[0] / thermo.alpha[1];
-        final rm = (k.xD - (a * z / (1 + (a - 1) * z))) / ((a * z / (1 + (a - 1) * z)) - z);
+        final rm = (k.xD - (a * z / (1 + (a - 1) * z))) /
+            ((a * z / (1 + (a - 1) * z)) - z);
         lines.add(EquationLine(
           id: 'eq.rmin',
           physicsRef: 'PHYSICS.md (14.1)',
-          texSymbolic: r'\frac{R_{min}}{R_{min}+1} = \frac{x_D - y^*}{x_D - x^*}',
+          texSymbolic:
+              r'\frac{R_{min}}{R_{min}+1} = \frac{x_D - y^*}{x_D - x^*}',
           texSubstituted: 'R_{min} = ${texNum(rm)}',
           value: rm,
         ));
@@ -426,7 +491,8 @@ class ExplainEngine {
           id: 'eq.equilibrium.T1',
           physicsRef: 'PHYSICS.md (3.1)',
           texSymbolic: r'y^* = \frac{\alpha x}{1+(\alpha-1)x}',
-          texSubstituted: '\\alpha = ${texNum(thermo.alpha[0] / thermo.alpha[1])}',
+          texSubstituted:
+              '\\alpha = ${texNum(thermo.alpha[0] / thermo.alpha[1])}',
           value: thermo.alpha[0] / thermo.alpha[1],
         ));
     }

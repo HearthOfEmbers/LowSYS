@@ -23,7 +23,8 @@ abstract class SimRunner {
   Future<void> setLoopSp(LoopTag tag, double sp);
   Future<void> setLoopOp(LoopTag tag, double op);
   Future<SteadyStateResult> runToSteadyState(
-      {double maxSimSeconds = 172800, void Function(double progress)? onProgress});
+      {double maxSimSeconds = 172800,
+      void Function(double progress)? onProgress});
   Future<FaultId> injectFault(FaultSpec spec);
   Future<void> clearFault(FaultId id);
   Future<ExplainResult> explain(ExplainTarget target);
