@@ -42,9 +42,16 @@ abstract final class TrayCorrelations {
   static double weepFraction(double stability) =>
       ((0.75 - stability) / 0.55).clamp(0.0, 1.0);
 
-  /// PHYSICS.md (5.15) dump rate constant (1/s).
-  static double dumpRate(double stability) =>
-      stability < 0.2 ? ((0.2 - stability) / 0.2) / 8.0 : 0.0;
+  /// PHYSICS.md (5.15) orifice drainage constant kappa (mol^0.5/s): L_dump = kappa sqrt(M).
+  static double dumpKappa(
+          double stability, double aDrain, double aAct, double vL) =>
+      stability < 0.2
+          ? ((0.2 - stability) / 0.2) *
+              0.6 *
+              aDrain *
+              math.sqrt(2 * 9.80665 * vL / aAct) /
+              vL
+          : 0.0;
 }
 
 /// Evaluates the tray hydraulics of PHYSICS.md 5 for every tray from the current state. Pure function of
@@ -197,9 +204,11 @@ class HydraulicSolver {
       final scale = ep.holeScale[j];
       double dd;
       double ah;
+      double drainA;
       if (!valve) {
         ah = geom.holeFraction * aA * scale * (1 - sB) + sB * aA;
         ahEff[j] = ah;
+        drainA = ah;
         final u = qIn[j] / ah;
         uh[j] = u;
         dd = rhoV / 2 * (u / geom.orificeCoeff) * (u / geom.orificeCoeff);
@@ -211,6 +220,7 @@ class HydraulicSolver {
         final aMax = (geom.valveOpenFraction * aA * scale) * (1 - sB) + sB * aA;
         ah = aMax;
         ahEff[j] = ah;
+        drainA = aMin;
         final cv = geom.valveCoeff;
         final q = qIn[j];
         final dpc = rhoV / 2 * math.pow(q / (cv * aMin), 2).toDouble();
@@ -268,7 +278,7 @@ class HydraulicSolver {
       final w = weeping ? TrayCorrelations.weepFraction(st) : 0.0;
       weepW[j] = w;
       bypass[j] = math.min(1.0, w + sB);
-      kd[j] = weeping ? TrayCorrelations.dumpRate(st) : 0.0;
+      kd[j] = weeping ? TrayCorrelations.dumpKappa(st, drainA, aa, vl) : 0.0;
       // full-tray overflow (5.9)
       final mm = geom.traySpacing * ae * aa / vl;
       mMax[j] = mm;

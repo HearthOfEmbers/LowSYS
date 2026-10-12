@@ -15,7 +15,7 @@ const String g11Json = r'''
     "show": ["feedFlow", "refluxFlow", "boilup"]
   },
   "timeLimit": 28800,
-  "briefing": "A 20-tray benzene-toluene column runs at about 83 % of flood. Raise the load in steps of 10 % (feed, reflux and boilup together) and watch the column.\n\nWhat to look for: the pressure drop rises faster than the load, the liquid carried up the column (entrainment) steals separation, xD collapses and the drum level creeps up.\n\nGoal: find the load at which the column floods, then back off to a stable operating point at 80-92 % of flood where xD is still at least 0.95.",
+  "briefing": "A 20-tray benzene-toluene column runs at about 63 % of flood. Raise the load in steps of 10 % (feed, reflux and boilup together) and watch the column.\n\nWhat to look for: the pressure drop rises faster than the load, the liquid carried up the column (entrainment) steals separation, xD collapses and the drum level creeps up.\n\nGoal: find the load at which the column floods, then back off to a stable operating point at 80-92 % of flood where xD is still at least 0.95.",
   "objectives": [
     {"id": "o1", "text": "Push the column into flood (max flood at least 100 %).",
      "when": {"metric": "kpi.maxFloodPct", "op": ">=", "value": 100}, "holdFor": 30, "latch": true},

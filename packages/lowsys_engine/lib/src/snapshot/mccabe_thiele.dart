@@ -75,6 +75,9 @@ class McCabeThieleData {
   final List<RangeX> pinchZones;
   final bool transient;
 
+  /// False in plant view: the diagram needs compositions that a real plant does not have (PHYSICS.md 10.9).
+  final bool available;
+
   /// Intersection of the two CMO operating lines.
   final Point2 operatingIntersection;
 
@@ -99,7 +102,32 @@ class McCabeThieleData {
     required this.pinchZones,
     required this.transient,
     required this.operatingIntersection,
+    this.available = true,
   });
+
+  /// The empty diagram of plant view.
+  factory McCabeThieleData.unavailable() => const McCabeThieleData(
+        pseudoBinary: false,
+        lightLabel: '',
+        heavyLabel: '',
+        equilibriumTop: [],
+        localEquilibrium: [],
+        qLine: null,
+        cmoRectifying: [],
+        cmoStripping: [],
+        operatingLocus: [],
+        staircase: [],
+        corners: [],
+        pseudoEquilibrium: [],
+        xF: double.nan,
+        xD: double.nan,
+        xB: double.nan,
+        rmin: null,
+        pinchZones: [],
+        transient: false,
+        operatingIntersection: Point2(double.nan, double.nan),
+        available: false,
+      );
 }
 
 @immutable
@@ -279,6 +307,7 @@ class McCabeThieleBuilder {
 
   McCabeThieleData build(SimSnapshot s, ThermoModel thermo,
       {bool showRmin = false}) {
+    if (s.view == SimView.plant) return McCabeThieleData.unavailable();
     if (thermo is! ConstantAlphaThermo) {
       throw UnsupportedError(
           'Only Tier 1 McCabe-Thiele data is available in M1');

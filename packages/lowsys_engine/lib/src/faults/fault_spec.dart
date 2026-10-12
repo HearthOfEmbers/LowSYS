@@ -18,6 +18,7 @@ enum FaultType {
   tsInletRestriction,
   tsOutletRestriction,
   instrument,
+  transmitter,
   valve,
   packingMaldistribution,
   packingCrush,

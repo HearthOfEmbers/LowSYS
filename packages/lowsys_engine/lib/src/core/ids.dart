@@ -17,7 +17,7 @@ enum CondenserType { total, partial }
 
 enum ReboilerType { kettle, thermosyphon }
 
-enum LoopMode { man, auto, cas }
+enum LoopMode { man, auto, cas, iman }
 
 enum Action { direct, reverse }
 
