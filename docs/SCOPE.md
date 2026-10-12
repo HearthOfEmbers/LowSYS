@@ -161,6 +161,20 @@ Ranges are hard limits; defaults are for the benzene–toluene (B-T) preset unle
 | Reflux | 76.4 kmol/h (R = 1.70) | 66.1 kmol/h (R = 2.15) |
 | Boilup (T1) | 121.3 kmol/h | 96.9 kmol/h |
 
+### 4.3b Methanol–water preset `mw` (M4)
+
+Used by G7, and from M5 by G9 (Tier 3 NRTL).
+
+| Setting | Value |
+|---|---|
+| Column | 20 sieve trays, B-T geometry (TS 0.9 m), feed tray 12, P_top 1 atm |
+| Feed | F = 100 kmol/h, z_MeOH = 0.30, saturated liquid |
+| Tier 1 | α = 3.5; L₀ = 60, V_B = 90 kmol/h |
+| Tier 2 | L₀ = 60 kmol/h, duty 890.4 kW (D = 30 kmol/h) |
+| Utilities | condenser UA_clean 29.76 kW/K, reboiler UA_R,clean 30.65 kW/K |
+
+Reference steady states: VALIDATION.md VC-27.1.
+
 ### 4.4 Crude unit levers (M9)
 
 | Lever | Range | Default | SI / US |
@@ -233,7 +247,7 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G5 | Where to feed | B-T, T1, E = 0.7 | Move the feed tray from 4 to 16 | Find the feed tray that maximises xD at fixed L, V (answer: tray 11) | M3 |
 | G6 | Real trays (Murphree) | B-T, T1 | Lower E_MV from 1 to 0.5; add trays to recover | Restore xD ≥ 0.98 with E = 0.5 by adding trays; compare with the Lewis relation | M3 |
 | G7 | What CMO hides | B-T then methanol–water, switch T1 ↔ T2 | Compare V and L profiles and operating curves in T1 vs T2 | Explain why V_B < V_top in T2 (answer chosen from options); see the curved operating locus | M4 |
-| G8 | Pressure and volatility | B-T, T2 | Raise P_top from 0.5 to 3 bar | Observe α fall (2.71 → 2.20) and duty rise for the same purity; hold specs at 2 bar | M4 |
+| G8 | Pressure and volatility | B-T, T2, steam header 10 bar(g), CW 15 °C (VALIDATION.md VC-27.3) | Take P_top from 1 atm down to 0.7 bar, then up to 3 bar | Observe α fall (2.60 → 2.20 at x = 0.5) and, for the same purity, reflux and duty rise; hold the 1-atm specs at 2 bar | M4 |
 | G9 | The azeotrope wall | Ethanol–water, T3 then T1 | Try to exceed x = 0.90 in the distillate | Discover the azeotrope at about 0.896 / 78.1 °C; see Tier 1 "beat" it falsely; lower pressure moves the azeotrope | M5 |
 | G10 | The other azeotrope | Acetone–chloroform, T3 | Find where the azeotrope ends up | Identify that the maximum-boiling azeotrope (x ≈ 0.33) leaves in the bottoms | M5 |
 | G11 | Flooding | B-T, T2, full hydraulics | Push throughput up 10 % per step | The default column runs at 63 % of flood and floods at about 160 % throughput. Find the onset (ΔP slope change, xD collapse); back off to 80–92 % flood (≈ 130–140 %) with xD ≥ 0.95 | M2 (T1), upgraded in M4 |
@@ -279,7 +293,7 @@ Themes are pure data (`LowsysTheme`, ENGINE_API.md §13.4) plus a small set of p
 
 ### 7.1 Token set (all themes)
 
-Colour tokens: `bg`, `bgAlt`, `surface`, `surfaceAlt`, `ink`, `inkMuted`, `inkFaint`, `grid`, `gridMajor`, `accent`, `accent2`, `steel` (vessel outline), `liquidLight`, `liquidHeavy` (composition gradient ends), `froth`, `vapor`, `hot`, `cold`, `ok`, `warn`, `alarm`, `info`, `selection`, `eqCurve`, `opLine`, `opLineCmo`, `qLine`, `stepLine`, `diagonal`, `pseudoEq`, `marker`.
+Colour tokens: `bg`, `bgAlt`, `surface`, `surfaceAlt`, `ink`, `inkMuted`, `inkFaint`, `grid`, `gridMajor`, `accent`, `accent2`, `steel` (vessel outline), `liquidLight`, `liquidHeavy` (composition gradient ends), `froth`, `vapor`, `hot`, `cold`, `ok`, `warn`, `alarm`, `info`, `selection`, `eqCurve`, `opLine`, `opLineCmo`, `qLine`, `stepLine`, `diagonal`, `pseudoEq`, `marker`, and six series colours `series1`…`series6` (trends, profiles with several components, pinned variables). The series colours were added for the M3 Trends tab; if M3 already shipped its own colours, it moves them into these tokens. A theme without colour freedom (Phosphor) varies dash pattern and intensity instead. Every theme fills every token; a missing token is a build-time error, not a fallback.
 
 Typography tokens: `display`, `label`, `number` (tabular figures), `math` (font family, weight, letter spacing).
 
@@ -288,7 +302,7 @@ Style switches (enums): `vesselStyle` {outline, flat, bevel, vector}, `liquidSty
 ### 7.2 The five themes
 
 **T-1 Blueprint — "Drafting Table"** (ships in M1)
-- Palette: bg `#0E3A66`, bgAlt `#0B2F54`, surface `#12457A`, ink `#EAF4FF`, inkMuted `#A9C8E8`, inkFaint `#6F95BD`, grid `#2F6B9E`, gridMajor `#4C87BA`, accent `#FFD166` (yellow pencil), accent2 `#FF9F6E`, steel `#EAF4FF`, liquidLight `#9BE7FF`, liquidHeavy `#3FA7D6`, froth `#CFF3FF`, vapor `#FFFFFF` at 55 %, hot `#FF9F6E`, cold `#9BE7FF`, ok `#7CE0A3`, warn `#FFD166`, alarm `#FF6B6B`, eqCurve `#EAF4FF`, opLine `#FFD166`, opLineCmo `#FFD166` dashed, qLine `#FF9F6E`, stepLine `#9BE7FF`, diagonal `#6F95BD`, pseudoEq `#A9C8E8` dotted.
+- Palette (tokens the v1.0 list missed, added for completeness: surfaceAlt `#164F8A`, info `#9BE7FF`, selection `#FFD166`, marker `#FFFFFF`, series `#FFD166` `#9BE7FF` `#FF9F6E` `#EAF4FF` `#7CE0A3` `#C3A6FF`; if M1 shipped other values for these, keep them): bg `#0E3A66`, bgAlt `#0B2F54`, surface `#12457A`, ink `#EAF4FF`, inkMuted `#A9C8E8`, inkFaint `#6F95BD`, grid `#2F6B9E`, gridMajor `#4C87BA`, accent `#FFD166` (yellow pencil), accent2 `#FF9F6E`, steel `#EAF4FF`, liquidLight `#9BE7FF`, liquidHeavy `#3FA7D6`, froth `#CFF3FF`, vapor `#FFFFFF` at 55 %, hot `#FF9F6E`, cold `#9BE7FF`, ok `#7CE0A3`, warn `#FFD166`, alarm `#FF6B6B`, eqCurve `#EAF4FF`, opLine `#FFD166`, opLineCmo `#FFD166` dashed, qLine `#FF9F6E`, stepLine `#9BE7FF`, diagonal `#6F95BD`, pseudoEq `#A9C8E8` dotted.
 - Typography: labels "Architects Daughter"; numbers "Share Tech Mono"; math "STIX Two Math".
 - Column: line-art cross-section; trays as double lines; weirs and downcomers drawn; liquid as 45° hatching whose density follows holdup and whose colour lerps light→heavy with composition; vapour as small outlined circles rising at a speed proportional to the hole velocity. Dimension lines show tray spacing and diameter; leader callouts label feed, draws and instruments.
 - Charts: hand-ruled grid with major/minor lines; dashed CMO operating lines; arrowheads on staircase segments; a "title block" in the lower-right corner of the McCabe–Thiele panel (system, tier, sim time, P).
@@ -297,9 +311,29 @@ Style switches (enums): `vesselStyle` {outline, flat, bevel, vector}, `liquidSty
 **T-2 Control Room — "DCS Night Shift"** (M4)
 - Palette: bg `#0B0F14`, bgAlt `#0F151C`, surface `#121A22`, surfaceAlt `#18222C`, ink `#CFE3F1`, inkMuted `#7F93A3`, inkFaint `#3C4A57`, grid `#1C2733`, gridMajor `#263442`, accent `#31C4F3`, accent2 `#9B7BFF`, steel `#8A99A6`, liquidLight `#2BD9FE`, liquidHeavy `#1E6FD9`, froth `#7FE9FF`, vapor `#B4F1FF`, hot `#FF8A3D`, cold `#31C4F3`, ok `#34C759`, warn `#FFCC00`, alarm `#FF3B30`, eqCurve `#CFE3F1`, opLine `#31C4F3`, opLineCmo `#31C4F3` dashed, qLine `#FF8A3D`, stepLine `#2BD9FE`, diagonal `#3C4A57`, pseudoEq `#7F93A3`.
 - Typography: "Rajdhani" (labels), "JetBrains Mono" (numbers).
-- Column: P&ID / ISA-101 high-performance-HMI style — grey vessel and lines in normal state; colour only for abnormal values and live process variables. Tag bubbles (FIC-101 etc.) next to instruments; levels as vertical bar graphs with SP markers; values glow cyan.
-- Charts: dark trend grid; the main series has a soft glow (one blurred stroke under a sharp stroke); faceplates show PV/SP/OP bar graphs with mode badges.
-- Signature effects: alarm blink at 1 Hz until acknowledged; "ACK" button; glow uses `MaskFilter.blur(BlurStyle.normal, 3)` on at most 8 strokes per frame (Low quality: no glow).
+- Remaining tokens: info `#5AC8FA`, selection `#31C4F3` (drawn at 30 % alpha for fills), marker `#FFFFFF`; series `#31C4F3` `#E6E6E6` `#9B7BFF` `#FF8A3D` `#7FD4A8` `#F2C14E`. Red and pure yellow are reserved for alarms and are never series colours.
+- **ISA-101 rules** (the theme's point: colour means something is wrong):
+  - Vessels, pipes and normal values are grey (steel, inkMuted). Live values are ink, never coloured, and do not glow.
+  - Accent cyan is used only for what the operator can change (SP and OP handles, the selected item) and for trend PVs.
+  - Liquid is drawn in grey-blue tones (liquidHeavy at 40 % saturation); composition shading is a Settings option, off by default.
+  - Tag bubbles (FIC-101 …) sit next to instruments. Levels are vertical bar graphs with an SP marker and HI/LO ticks.
+- **Alarms** (PHYSICS.md §10.8), colour plus shape plus text:
+  - High: alarm red ◆; Medium: warn yellow ▲; Low: info blue ■.
+  - UNACK: the symbol and the value box blink at 1 Hz (alternating fill and outline). ACKED: steady fill. RTN-UNACK: outline only, blinking.
+  - The banner uses the same symbol; the alarm list shows priority symbol, tag, message, time and state.
+- **Signal quality** on values, faceplates and trends:
+  - BAD: violet accent2 `#9B7BFF` "BAD" badge with IOP−/IOP+, digits in inkMuted; the trend segment is dashed inkMuted.
+  - UNCERTAIN: dashed warn outline plus "OOR▲/▼".
+  - OOS: inkFaint digits plus "OOS".
+  - Stale analyser result: inkMuted plus "STALE" and its age.
+- **Faults.** Faults are never shown in drills or plant view. In the sandbox, an injected fault puts an info-blue ⚑ on the affected item (tray, valve, tag) with the Faults tab entry.
+- **Faceplates:** tag, mode badge (AUTO plain; MAN in a warn outline; CAS in accent; "MAN (shed)" in an alarm outline), PV digits, a PV bar with SP marker (accent) and HI/LO ticks, an OP bar (inkMuted), and the signal look and valve curve of M3.
+- **Charts:**
+  - Dark trend grid (grid / gridMajor). PV in its series colour, 1.5 px, with a soft glow (one blurred stroke under a sharp stroke). SP dashed ink; OP on a right-hand axis in inkMuted.
+  - Min/max envelope at 25 % alpha of the series colour; alarm limits dotted warn.
+  - McCabe–Thiele: eqCurve ink, operating lines accent (CMO reference dashed), staircase liquidLight, q-line hot.
+- **Signature effects:** alarm blink at 1 Hz until acknowledged; "ACK" button. Glow uses `MaskFilter.blur(BlurStyle.normal, 3)` on at most 8 strokes per frame (Low quality: no glow).
+- **Contrast** (VALIDATION.md U2) is checked with these values: info and selection on bg exceed 7:1; the series colours on the chart background exceed 3:1.
 
 **T-3 Phosphor — "Green Screen CRT"** (M7)
 - Palette: single hue. bg `#031A09`, bgAlt `#02140A`, surface `#06240F`, ink `#33FF66`, inkMuted `#1F9940`, inkFaint `#0E5223`, grid `#0B3D1A`, gridMajor `#12602A`, accent `#9CFFB5`, accent2 `#FFB000` (amber, used only for the selection cursor), steel `#33FF66`, liquidLight `#66FF99`, liquidHeavy `#1A8F3A`, froth `#9CFFB5`, vapor `#33FF66` at 40 %, hot/cold = ink at 100 %/60 %, ok `#33FF66`, warn `#FFB000`, alarm = inverse video (green block, black text) blinking, eqCurve `#33FF66`, opLine `#9CFFB5`, qLine `#9CFFB5` dotted, stepLine `#66FF99`, diagonal `#0E5223`, pseudoEq `#1F9940`.
@@ -399,10 +433,24 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 
 ### M4 — Tier 2: ideal thermodynamics, energy balances, pressure
 
-- Engine: component database (PHYSICS.md §3.1), vapour pressure models (Antoine, DIPPR-101, Lee–Kesler), Raoult K, bubble/dew/flash, enthalpy model, quasi-steady energy balance (vapour profile), overhead vapour inventory and pressure dynamics, condenser UA + cooling water, PC-101, kettle reboiler with steam-side heat-transfer limit, partial condenser, reflux subcooling, feed temperature input, runtime tier switching, TC-101 option; faults F08–F15.
+- Engine:
+  - Component database (PHYSICS.md §2.1); vapour pressure models (Antoine, DIPPR-101, Lee–Kesler); Raoult K; bubble/dew/flash; enthalpy model.
+  - Quasi-steady energy balance (vapour profile) with the **implicit** pressure-driven storage term (PHYSICS.md (4.6), a v1.1 change).
+  - Overhead vapour inventory tracked per component, and pressure dynamics. The pressure solve runs *before* the hydraulic step (§12.4 step 6, also v1.1).
+  - Condenser UA + cooling water at the 50 % CW design (§7.2: UA_clean 29.9 kW/K for B-T); PC-101 (Kc 10, Ti 120 s).
+  - Kettle reboiler with steam-side heat-transfer limit; partial condenser (vapour header P_design − 30 kPa); inert vent to a 0.5 bar(a) vent system; relief capacity.
+  - Reflux subcooling, feed temperature input.
+  - Runtime tier switching with the top-vapour rule (§13.5); TC-101 option.
+  - Faults F08–F15; preset `mw` (Tiers 1/2).
 - McCabe–Thiele upgrades: non-CMO actual operating locus, q from feed enthalpy, local-equilibrium band (top-to-bottom pressure), temperature profile chart.
-- App: Control Room theme; energy panel (Q_C, Q_R, CW, steam); scenarios G7, G8; G11 upgraded to Tier 2.
-- Acceptance: VC-10 (thermo spot values), VC-11 (Tier-2 MESH reference), VC-8 Tier-2 directions pass; energy closure ≤ 1×10⁻⁶ relative at steady state; switching T1 ↔ T2 at steady state causes no NaN and no step larger than 5 % in any flow.
+- App: Control Room theme (§7.2, completed in v1.1); scenarios G7, G8; G11 upgraded to Tier 2.
+- Energy panel (Equipment tab), three cards:
+  - Condenser: Q_C, UA_eff vs UA_clean, T_cw in/out, CW OP, condensing T, reflux subcooling, inert fraction y_I.
+  - Reboiler: Q_R delivered vs Q_max, UA_eff, steam header pressure and T_st, steam valve OP, "duty limited" flag.
+  - Column energy balance: F h_F + Q_R in, Q_C + D h_D + B h_B out, and the residual (`Kpis.energyResidual`).
+
+  In plant view the cards show readings only (FT-201, TI-201/202, PT-201, FT-103) and the C3a/C3b checks.
+- Acceptance: VC-10 (thermo spot values), VC-11 (Tier-2 MESH reference, duty 1301.477 kW), VC-8 Tier-2 directions (8.7 with 10 bar(g) steam), VC-5.2 (1×10⁻¹⁰) and VC-5.4 pass; energy closure ≤ 1×10⁻⁶ relative at steady state (prototype 5×10⁻⁹); VC-16.6 (pressure loop, flash stability), VC-18.3 and VC-27 (mw preset, pressure sweep, utility limits) pass; switching T1 ↔ T2 at steady state meets VC-8.9: no NaN, top vapour and D continuous, the stripping-section vapour steps by the physical −4 … −6 %. v1.0's "no step > 5 % in any flow" is not physical. Identical steady states at dt = 0.5, 2 and 30 s.
 
 ### M5 — Tier 3 (NRTL) and azeotropic binaries
 
@@ -456,6 +504,9 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 | Time step | Fixed 0.5 s (deterministic); fast-forward uses 2.0 s | Stable and accurate per the prototype study in PHYSICS.md §12 |
 | State management | Plain `ChangeNotifier`s + `InheritedNotifier`, no third-party package | Fewest concepts for the implementer; hot path uses `ValueListenable` |
 | Fonts | Bundled OFL fonts (offline) | Works on phones without network |
+| Tier-2 storage term | Implicit in the overhead pressure (PHYSICS.md (4.6)) | The v1.0 lagged form ran away in the M4 prototype at every dt |
+| Tier switch | Keep the top vapour and D, not the boilup | Keeping the boilup collapsed x_D 0.981 → 0.883 on a B-T switch (PHYSICS.md §13.5) |
+| Condenser design | 50 % CW at the design point | At 70 % the CW valve had 3 % authority and the pressure floated on every duty change (PHYSICS.md §7.2) |
 | Default tray spacing (B-T and its variants) | 0.90 m (was 0.60 m): the default runs at 63 % of jet flood | Raising reflux and boilup then improves xD as the textbook says; flooding needs about +60 % load. Spacing changes nothing in ideal hydraulics or in weeping (PHYSICS.md §5.1) |
 | Flow control | Real PI flow loops (Kc 0.6, Ti 2 s) on measured flow, sub-stepped at 0.1 s; closed-loop 63 % in 3 s | Instrument and valve faults need a controller that acts on a reading and owns an OP; the sub-step keeps it identical at every dt (PHYSICS.md §10.4) |
 | VC-7.2 | Tray lag timed from the delivered reflux, not the lever | That is what the case was written to test; holds for any flow-loop speed (VALIDATION.md VC-7.2) |

@@ -102,7 +102,7 @@ Tolerance: |Δx| ≤ 1×10⁻⁵ for every entry (the prototype matched to 1×10
 
 **VC-5.1 Tier 1, exact.** For any run, per component i: |(inventory_i(t₁) − inventory_i(t₀)) − ∫(F z_i) dt + ∫(D x_D,i + B x_B,i + other product flows) dt| / ∫F z_i dt ≤ 1×10⁻¹⁰ over 10 h of sim time. Inventory = Σ_stages m_ij. Outflows must be integrated with the exact values the solver used in each step (`StepDebug`: D · m₀/M̂₀ etc.), not recomputed from the end-of-step state. Run it on: B-T default; B-T full hydraulics at +30 % load (entrainment); 35 % turndown (weeping); tray 5 missing (F04, s = 1); a reflux step mid-run. Prototype: ≤ 1×10⁻¹¹ (default), ≤ 1×10⁻⁹ (fault cases).
 
-**VC-5.2 Tiers 2/3.** Same, with the overhead vapour inventory n_V y₁ included in the inventory; tolerance 1×10⁻⁸ (the vapour inventory composition is quasi-steady).
+**VC-5.2 Tiers 2/3.** Same, with the overhead vapour inventory Σ_i n_V,i included in the inventory. The tolerance is 1×10⁻¹⁰, exact by construction since M4 tracks the inventory per component (PHYSICS.md §7.1). v1.0 counted n_V y₁ and allowed 1×10⁻⁸, which transients would exceed (up to ≈ 2×10⁻⁶).
 
 **VC-5.3 Crude.** Water (steam) in = water out of the drum boot + inventory change, 1×10⁻⁸; each pseudo-component, 1×10⁻⁸.
 
@@ -167,9 +167,9 @@ Each check: start at a steady state, make the change, run to the new steady stat
 | 8.4 | Lower E_MV 0.7 → 0.5 | x_D down, x_B up (VC-4.3) | T1 |
 | 8.5 | Move feed tray away from optimum | x_D down (VC-4.14) | T1 |
 | 8.6 | Feed lighter (z 0.5 → 0.6) at fixed L₀, V_B | x_D up, x_B up a lot (0.2075) | T1 |
-| 8.7 | Raise P_top 1.013 → 2 bar(a) at fixed L₀, D | α down (2.492 → 2.304 at x = 0.5), all T up (bottom T ≈ +26 K), separation worse, Q_R up | T2 |
+| 8.7 | Raise P_top 1.013 → 2 bar(a) at fixed L₀ = 100 and D = 50 kmol/h, **with the steam header at 10 bar(g)** (at the default 3.5 bar(g), T_st = 148.1 °C gives only Q_max ≈ 880 kW at 2 bar, so the reboiler duty-limits) | α down (2.492 → 2.304 at x = 0.5); all T up (bottom 108.49 → 132.79 °C, +24.3 K); separation worse (x_D 0.97662 → 0.96080, x_B 0.02331 → 0.03800); **Q_R slightly down** (1306.9 → 1253.5 kW; latent heats fall with T). v1.0 said "Q_R up", which holds only at constant purity (G8). [P] E = 0.7 | T2 |
 | 8.8 | Subcool reflux by 20 K | V₁ < V₂ (extra condensation on tray 1), x_D up, Q_C up | T2 |
-| 8.9 | Switch T1 → T2 at steady state | V profile no longer flat: V at the bottom < V at the top (B-T: toluene has the larger latent heat); no step > 5 % in any flow at the switch | T1→T2 |
+| 8.9 | Switch T1 → T2 at the B-T default steady state (PHYSICS.md §13.5, top-vapour rule) | No NaN; V₁ within 0.5 % and D within 0.2 kmol/h of their T1 values at the first T2 step; V profile no longer flat: the stripping section steps by −4 … −6 % (V_B 150 → ≈ 141.9 kmol/h; toluene has the larger latent heat); individual tray liquid flows may step ≤ 15 % in the first step (the liquid profile redistributes; v1.0's "no step > 5 % in any flow" is not physical); P within ± 0.5 kPa of SP; new steady state x_D 0.97838 ± 0.0005 (T1 0.98118), D 49.96 ± 0.05. Back to T1 (V_B = V₁): x_D returns to within 5×10⁻⁴ of its original value (prototype 0.981411 against 0.981183; V_B becomes 149.96 rather than 150 because the Tier-2 V₁ settled 0.04 kmol/h lower). [P] at dt = 0.5, 2 and 30 s | T1↔T2 |
 | 8.10 | Ethanol–water, Tier 3, N = 40, E = 1, R large | x_D never exceeds the azeotrope x = 0.8956 (+0.002); Tier 1 with α = 2.4 on the same column exceeds 0.95 | T3, T1 |
 | 8.11 | Acetone–chloroform, Tier 3, feed x = 0.6 | bottoms approach the azeotrope (x ≈ 0.33), distillate approaches pure acetone | T3 |
 | 8.12 | Debutanizer: raise R at fixed D | LK recovery up, HK in distillate down | T1, T3 |
@@ -271,7 +271,7 @@ Tolerances: against the model values T ± 0.01 K, y ± 1×10⁻⁴; against expe
 
 **Independent method.** Newton solve of the full steady MESH equations (component and total balances, bubble-point equilibrium, energy balances per tray; E = 1; total condenser with saturated reflux; constant pressure 101 325 Pa; no ΔP; feed saturated liquid at its bubble point 92.112 °C) with unknowns x_j, T_j, V_j, L_j; enthalpies per PHYSICS.md §3.3 with the §2.1 data; specs L₀ = 100 kmol/h and D = 50 kmol/h. One total balance is redundant and is dropped.
 
-**Simulator test.** B-T, Tier 2, E = 1, ideal hydraulics (so ΔP = 0), PC-101 holding 101 325 Pa, FC-103 duty SP = 1301.5 kW (the reference Q_R), L₀ = 100 kmol/h; run to steady state. D settles at 50 ± 0.05 kmol/h.
+**Simulator test.** B-T, Tier 2, E = 1, ideal hydraulics (so ΔP = 0), PC-101 holding 101 325 Pa, FC-103 duty SP = **1301.477 kW**, L₀ = 100 kmol/h; run to steady state. D settles at 50 ± 0.001 kmol/h. The table's 1301.5 kW is the reference Q_R rounded; used as the SP it moves D by 0.002 kmol/h and the mid-column x by 4×10⁻⁴, outside the profile tolerance. **Cross-check [P]:** a JS prototype of the M4 dynamic algorithm (PHYSICS.md §4.5 with the implicit storage term, §7, §12.4 order) reached this steady state from a cold start in 6.1 h. Run at dt = 0.5, 2 and 30 s with SP 1301.477 kW, it matched every row below to ≤ 1×10⁻⁵ in x and ≤ 0.001 K, with energy closure 5×10⁻⁹.
 
 | Quantity | Reference | Tolerance |
 |---|---|---|
@@ -348,7 +348,7 @@ Terms:
 | Load +20 % (L₀ 130, V_B 180 kmol/h) | ΔP 18.93 kPa, max φ 0.75, x_D 0.9840 | ΔP 19.29, x_D 0.9768, x_B 0.0039, max flood 75 % | ΔP ≥ 1.25 × base; x_B(4 h) < x_B(base); no flooding alarm |
 | Same, entrainment off | ΔP 18.69 | x_D 0.9886, x_B 0.0114 | x_D(4 h) = 0.9886 ± 0.001 (the ideal-hydraulics value), so the gap to the row above is carryover |
 | Load +30 % | ΔP 21.56, max φ 0.81 | ΔP 22.25, x_D 0.9668, x_B 0.0020, max flood 82 % | ΔP ≥ 1.45 × base; x_D(4 h) < x_D(4 h) of +20 % |
-| Load +45 % | ΔP 26.22, max φ 0.91 | ΔP 27.29, x_D 0.9356, D 53.4 | ΔP ≥ 1.8 × base; x_D(4 h) ≤ 0.95; flooding alarm (max flood > 90 %) |
+| Load +45 % | ΔP 26.22, max φ 0.91 | ΔP 27.29, x_D 0.9356, D 53.4 | ΔP ≥ 1.7 × base (engine 1.81, static model 1.77); x_D(4 h) ≤ 0.95; flooding alarm (max flood > 90 %) |
 | Load +60 % (flood onset) | ΔP 32.09, max φ 1.01 | ΔP 33.07, x_D 0.8703, D 57.4, max flood 101 % | max flood ≥ 100 %; x_D(4 h) ≤ 0.90 |
 | Load +75 % | ΔP 38.99, max φ 1.13 | ΔP 39.67, x_D 0.7323, D 68.3 | ΔP ≥ 2.5 × base; x_D(4 h) ≤ 0.80 |
 | Turndown to 50 % (F, L₀, V_B × 0.5) | w 0.09 | x_D 0.9788, x_B 0.0192 (no-weep: 0.9804, 0.0174) | weeping starts (0 < w < 0.2); x_B with weeping > x_B without |
@@ -364,18 +364,18 @@ Terms:
 | Broken tray F04, tray 15, s = 1 | column ΔP 13.73 | x_D 0.9753, x_B 0.0176 | as above |
 | Broken tray F04, tray 5, s = 0.5 | | x_D 0.9743, x_B 0.0186; tray-5 weeping fraction 0.68 | tray-5 weeping fraction ≥ 0.5 |
 
-**Dumping law (M3).** The three F04 rows were recomputed with a prototype of the orifice-drainage law of PHYSICS.md (5.15) on the M2 engine. They are identical to 4 decimals to the v1.0 law: a broken tray at normal load has Φ ≈ 0.25 and never dumps. They stay [P] until the M3 engine reproduces them.
+**Dumping law (M3).** The three F04 rows were recomputed with a prototype of PHYSICS.md (5.15) (orifice drainage, implicit threshold, safeguarded u-Newton) on the M2 engine. They are identical to 4 decimals to the v1.0 law. A fully broken tray settles at Φ = 0.208 (tester's value; an earlier note said ≈ 0.25) and does not dump at any dt. They stay [P] until the M3 engine reproduces them.
 
 Robustness assertion for every case: no NaN, no negative holdup, solver fatal flag never set, over 4 h.
 
 **VC-12.5 Valve trays [P/I].** Same column with valve trays (f_v = 0.14, r_min = 0.25, ΔP_lift = 190 Pa, C_v = 0.65): at the design load the valves are fully open and ΔP_dry ≈ 357 Pa (sieve: 472–641 Pa); at 35 % load the valves balance (ΔP_dry = 190 Pa) and w = 0 (sieve: w ≈ 0.5); weeping starts below about 18 % load.
 
-**VC-12.6 Dumping [P]** (M3, PHYSICS.md (5.15)). Design steady state (TS 0.9 m), then boilup cut to 0 with the feed on; after 600 s:
-- every tray with `dumping` set holds ≤ 2 mol (sieve; prototype 1.1–1.4 mol, h_cl 0.14–0.17 mm). In a valve-tray column, ≤ 15 mol (prototype h_cl 1.4–1.7 mm);
-- no tray holds more than 20 mol except trays that are not dumping;
-- the same run at dt = 2 s and 30 s gives the same holdups within ± 0.5 mol, with no negative holdup and no NaN;
-- the holdup Newton needs ≤ 10 iterations per tray and step (prototype ≤ 7);
-- fully broken tray 5: the steady states at dt = 0.5, 2 and 30 s agree within 1×10⁻⁶ in x_D (prototype 0.974315 at all three).
+**VC-12.6 Dumping [P]** (M3, PHYSICS.md (5.15), implicit threshold). Design steady state (TS 0.9 m), then boilup cut to 0 with the feed on; after 600 s, at each of dt = 0.5, 2 and 30 s:
+- every tray with `dumping` set holds ≤ 2 mol (sieve; prototype ≤ 1.35 mol, h_cl ≤ 0.17 mm at every dt). In a valve-tray column, ≤ 15 mol (prototype h_cl 1.4–1.7 mm);
+- the total holdup of trays 10–20 is ≤ 15 mol at every dt (prototype 6.1 / 7.8 / 7.6 mol at dt 0.5 / 2 / 30; normally about 2100 mol). Which alternate trays carry the ≈ 1 mol depends on dt — the bypass checkerboard of PHYSICS.md §5.8 — so per-tray values are not compared across dt;
+- no negative holdup and no NaN; the safeguarded Newton converges within 100 iterations (prototype ≤ 47 right after a break at dt = 30 s, ≤ 8 otherwise).
+
+Fully broken tray 5 at TS 0.6 m and 0.9 m: the steady states at dt = 0.5, 2 and 30 s agree within 1×10⁻⁶ in x_D (prototype 0.964776 and 0.974315 at all three), with the tray at Φ = 0.208 ± 0.01 and not dumping.
 
 ## VC-13 Packed sections [I]
 
@@ -497,10 +497,15 @@ The PID unit tests drive a bare `ControlLoop` with scripted PVs. Unless stated: 
   - Tier 2 duty loop (gain 0.722): 63 % in 4.2 ± 0.2 s.
   - With noise off, every M1 steady state (VC-4, VC-6) is reproduced to its stated tolerance with the real flow loops.
 - **16.5 Level loops.** VC-7.3, unchanged; the M3 flow loops keep it within its bands.
-- **16.6 Pressure loop** (B-T Tier 2, total condenser).
-  - PC-101 SP step +10 kPa: P_top within ± 1 kPa of the new SP within 10 min, overshoot ≤ 30 % of the step, and no sustained oscillation (decay ratio ≤ 0.3).
-  - Loss of cooling F09 mode flow, s = 0.5: CW valve to 100 % within 2 min, and P_top rises to a new steady value.
-  - s = 1.0: P rises until the relief valve lifts (alarm, event).
+- **16.6 Pressure loop** (B-T Tier 2, total condenser, PC-101 Kc 10, Ti 120 s; PHYSICS.md §10.7). [P] values from the M4 prototype at the VC-11 steady state:
+  - Condenser design point (UA 29.9 kW/K, PHYSICS.md §7.2): CW OP 50 ± 1 % at steady state; CW outlet 44.7 ± 0.3 °C.
+  - Open loop (PC-101 in MAN), CW OP 50 → 40 %: P_top rises 5.8 ± 0.6 kPa; 63 % of that is reached in 150–230 s (prototype 190 s; the column's heat storage sets the time constant).
+  - PC-101 SP step ±10 kPa (no proportional kick, spKick false): P_top within ± 1 kPa of the new SP within 10 min (prototype 297 s for +10 kPa, 438 s for −10 kPa), overshoot ≤ 30 % (prototype 0 %), and no sustained oscillation (decay ratio ≤ 0.3). With v1.0's 2 / 60 s at the v1.0 design point the +10 kPa step took 695 s and the −10 kPa step never settled (CW saturated).
+  - L₀ and boilup +10 kmol/h (VC-8.1 in Tier 2): P_top held at SP ± 0.2 kPa with CW below 95 % (prototype 89.5 %).
+  - Loss of cooling F09 mode flow, s = 0.7: CW valve to 100 % within 2 min (prototype 72 s), and P_top rises to a new steady value (prototype 1.167 bar(a)). At s = 0.5 the loss is absorbed: P stays at SP with the valve near 100 %.
+  - s = 1.0: P rises until the relief valve lifts (alarm, event; prototype reaches the 3.5 bar(a) set point at 471 s).
+  - **16.6b** Partial condenser (PV-102, Kc 1.0, Ti 30 s): the same SP-step criteria; tuning **[impl-tunable]** (not prototyped).
+  - **16.6c Flash stability.** From the VC-11 steady state, step the CW OP 70 → 100 % (PC in MAN) at dt = 0.5, 2 and 30 s: P_top falls to 0.966 ± 0.005 bar(a) within 1 h at every dt (prototype 0.9660–0.9662); there is no runaway or step-to-step oscillation, and V₁ stays ≤ 1.1 × its steady value in every step (prototype 1.025–1.029). This is the implicit storage term of PHYSICS.md (4.6); v1.0's lagged term made this case run away.
 - **16.7 Cascade.** TC-101 enabled on tray 14 (Tier 2; Kc 4.0 on the 0–200 °C span): feed composition +0.1 → TC-101 holds the TI-114 reading within ± 0.5 K after 60 min by moving FC-103's SP, which stays inside the 20–65 % OP limits.
 - **16.8 BAD PV handling [I].**
   - (a) `badPvShed` = 1, LT-101 `signalLossLow`: at the next execution LC-101 is in MAN with OP unchanged (|ΔOP| < 1×10⁻¹²), `LT-101.BAD` (high) and `LC-101.SHED` are raised, and `setMode(AUTO)` throws StateError while the PV is BAD.
@@ -530,7 +535,7 @@ Round trip toSI(fromSI(v)) = v: linear quantities (every conversion that is a pu
 
 - **18.1** Tier 1, E = 1, steady state (VC-4.2): every operating-locus point (x_j, y_{j+1}) lies on the CMO rectifying line (j above the feed) or stripping line (below) within 1×10⁻⁸; every staircase corner (x_j, y_j) lies on the equilibrium curve within 1×10⁻⁸; the two CMO lines intersect on the q-line within 1×10⁻⁸.
 - **18.2** Tier 1, E = 0.7 (VC-4.1): corners lie on the pseudo-equilibrium curve y_op + 0.7(y* − y_op) within 1×10⁻⁶; for every tray (y_j − y_{j+1})/(y*_j − y_{j+1}) = 0.7 within 1×10⁻⁸.
-- **18.3** Tier 2 steady state (VC-11): the operating locus deviates from the dashed CMO lines by more than 0.002 somewhere in the rectifying section (non-CMO is visible); the equilibrium band between P_top and P_bottom has non-zero width when ΔP > 0.
+- **18.3** Tier 2 steady state (VC-11): the operating locus deviates from the dashed CMO lines by more than 0.002 somewhere in the rectifying section, so non-CMO is visible ([P] max 0.0064 in the rectifying section, 0.0025 in the stripping section). The equilibrium band between P_top and P_bottom has non-zero width when ΔP > 0.
 - **18.4** R_min construction: for the VC-1 configuration the builder's R_min = 1.1000 ± 1×10⁻⁴; for ethanol–water at x_D = 0.80, z = 0.10, q = 1, Tier 3, the R_min line touches the equilibrium curve above the feed pinch (tangent pinch), i.e. the touching point has x > the q-line intersection.
 - **18.5** Transient flag: true for the first minute after any lever change, false at steady state.
 - **18.6** Multicomponent pseudo-binary: at the VC-9.3 steady state the primed compositions are within [0, 1] and the staircase has N + 1 corners.
@@ -619,8 +624,8 @@ Unit tests drive a bare `Instrument` with a scripted true value (PHYSICS.md §10
   | drift | FT-101, sign +1, s = 0.6 | Reading − true = 15.0 ± 0.1 kmol/h after 3600 s (0.6 × 0.1 × 250), and 7.5 ± 0.1 after 1800 s |
   | stuck | any tag | Every reading after t₀ bitwise equal to the last pre-onset reading; σ_5min = 0 exactly; `digitsAge` ≥ t − t₀ |
   | signal loss | as 22.1 | BAD from the first update after t₀; `<tag>.BAD` raised with 0 on-delay |
-  | plugged [P] | FT-102, s = 1, 0.9, 0.75, 0.5, ramp 0, noise off; true value steps +10 % of span 60 s after t₀ | Fraction of the step shown after 600 s = 0.058, 0.140, 0.451, 0.998 (± 0.01). With noise on and a constant true value, σ_5min/σ_disp ≤ 0.08 for s = 1 (prototype 0.049) |
-  | spiking [P] | FT-102 at 33 % of span, 3600 s | s = 1: 180 ± 40 spikes (prototype 186), \|a\| in 10–50 % of span, σ_5min/σ_disp ≥ 10 (prototype 17.8). s = 0.5: 90 ± 28 spikes, ratio ≥ 4 (prototype 6.1). TI-107 at s = 0.5: ratio ≥ 20 (prototype 38). At 33 % of span no spike reaches BAD; a reading at 90 % of span with a spike of +20 % reaches 21.6 mA → BAD for that update |
+  | plugged [P] | FT-102, s = 1, 0.9, 0.75, 0.5, ramp 0, noise off; true value steps +10 % of span 60 s after t₀ | Fraction of the step shown 600 s after the step (t = t₀ + 660 s; with t₀ = 600 s, t = 1260 s) = 0.058, 0.140, 0.451, 0.998 (± 0.01). With noise on and a constant true value, σ_5min/σ_disp ≤ 0.08 for s = 1 (prototype 0.049) |
+  | spiking [P] | FT-102 at 33 % of span, 3600 s | s = 1: 180 ± 40 spikes (prototype 186), \|a\| in 10–50 % of span, σ_5min/σ_disp ≥ 10 (prototype 17.8). s = 0.5: 90 ± 28 spikes, ratio ≥ 4 (prototype 6.1). TI-107 at s = 0.5: ratio ≥ 20 (prototype 38). At 33 % of span (I₀ = 9.33 mA) positive spikes never reach BAD; negative spikes larger than 35.8 % of span drive the current below 3.6 mA → BAD for that update (about 35 % of negative spikes at s = 1). A reading at 90 % of span with a spike of +20 % reaches 21.6 mA → BAD |
   | coated | TI, s = 1, h = 0.5 s; true step +10 K | Reading 63 % at 100.5 ± 1 s (healthy 10.5 ± 0.5 s); σ_disp ratio coated/healthy 0.52 ± 0.05 |
   | analyser | AT-101 (phase 100 s), noise off; true value 0.0200 → 0.0700 at the step ending at t = 1000 s | Shown 0.0200 up to 1299.5 s; 0.0204 from 1300 s (0.826 % of the step through the 60-s lag); 0.0697 from 1600 s; 0.0700 from 1900 s. Result age 300–600 s at all times after the first publication. Signal loss: no new result, quality BAD; STALE after 600 s without a result |
   | AT bias | AT-102, sign +1, s = 0.5 | Published results = lagged true + 0.005 ± 1×10⁻⁴ (rounding) |
@@ -631,7 +636,7 @@ Unit tests drive a bare `Instrument` with a scripted true value (PHYSICS.md §10
 ## VC-23 Cross-checks (M3: C1, C3, C4, C5; M4: C2, C3a, C3b, C6, C7) [I] / [P]
 
 - **23.1 Exact closure [I].** B-T Tier 1 default steady state, noise off, window 600 s: r1, r3, r4 (every pair) and r5 (drum and sump) are each below 1×10⁻⁶ of their band; status `ok`. C2 (after 1800 s steady): \|r2\| ≤ 0.02 kmol/h (analyser rounding). The Tier 2 VC-11 steady state with noise off: \|r3a\|, \|r3b\| ≤ 0.1 band; C7 \|r7\| ≤ 0.05 K.
-- **23.2 No false alarms [P].** B-T Tier 1 (and Tier 2 from M4), steady, noise on, 2 h, every window size: no check ever `fail`; `check` on < 2 % of evaluations; the standard deviation of r4 for FV-102 at W = 600 s ≤ 0.25 band.
+- **23.2 No false alarms [P].** B-T Tier 1 (and Tier 2 from M4), steady, noise on, 2 h, every window size (300–3600 s) with the band scaling max(1, 600/W) of C1/C3 (PHYSICS.md §14.6): no check ever `fail`; `check` on < 2 % of evaluations (tester's estimate ≈ 1.2 %); the standard deviation of r4 for FV-102 at W = 600 s ≤ 0.25 band.
 - **23.3 Detection [P]** (noise on, B-T, default window; Tier 1 rows in M3, Tier 2 rows in M4):
 
   | Fault (t₀ = 600 s) | Must happen | Must not happen |
@@ -642,7 +647,7 @@ Unit tests drive a bare `Instrument` with a scripted true value (PHYSICS.md §10
   | FT-101 drift +, s = 0.6 | C1 `fail` within 25 min; C4:FV-101 `fail` within 30 min | C3 `fail` (Tier 1, q = 1) |
   | LT-101 bias +, s = 0.8 | C5:drum `fail` within 10 min; FT-104 excursion ≥ 10 kmol/h; an LG-101 check differs from LT-101 by 8 ± 3 % | C4 any `fail` |
   | LT-102 stuck | σ_5min = 0 within 5 min; C5:sump `fail` within 20 min of a feed SP step of +5 kmol/h | – |
-  | PT-101 bias +, s = 0.3 (6.1 kPa) [T2] | r7a and r7b both ≥ 1.6 K with the same sign within 15 min | C6 flags any TI |
+  | PT-101 bias +, s = 0.5 (10.1 kPa) [T2] | r7a and r7b both ≥ 2.7 K (band 1 K) with the same sign within 15 min | C6 flags any TI |
   | TI-114 bias +, s = 0.25 (5 K), TC-101 on [T2] | C6 flags TI-114 within 20 min | C6 flags any other TI |
   | F07 feed +0.08 benzene, ramp 900 s [T1, T2] | – | Any C1, C3, C4, C5 `fail`; C6 flags any TI (if C6 does, widen its factor 0.5 → 0.75 and record it in DEVIATIONS.md) |
 
@@ -704,6 +709,58 @@ B-T Tier 1, view = 1, noise on, a 1-h run with a reflux step:
   G11 and G12 run as in M2 (DEVIATIONS.md A9).
 - **26.5 Drill draws.** For the H9 JSON and seed s, the candidate, s, t₀ and sign are a pure function of s (two runs agree). Over seeds 1…10 000, each candidate's frequency is within 3σ of weight/Σweights. t₀ is always a multiple of dt inside the onset window. During the drill, no snapshot field and no event names the fault before `finish()`.
 
+## VC-27 Tier-2 references and utility limits (M4) [P]
+
+Computed with the JS prototype of the M4 dynamic algorithm, which reproduces VC-11 to 1×10⁻⁵ (see there). Ideal hydraulics, E = 0.7 unless stated, feeds at their bubble point.
+
+**27.1 Methanol–water preset `mw`, Tier 2 (Raoult; NRTL arrives in M5).**
+- Setup: 20 sieve trays, B-T geometry (TS 0.9 m), feed on tray 12, F = 100 kmol/h, z_MeOH = 0.30, P_top = 1 atm, L₀ = 60 kmol/h, FC-103 duty 890.4 kW.
+- Steady state (tolerances x ± 1×10⁻⁴, T ± 0.05 K, flows ± 0.2 %):
+
+  | Quantity | Value |
+  |---|---|
+  | D | 30.00 kmol/h |
+  | x_D / x_B | 0.98873 / 0.00481 |
+  | T_D / T_B | 64.72 / 99.68 °C |
+  | V₁ (top) / V_B (boilup) | 90.00 / 78.95 kmol/h — boilup 12 % below the top: water's latent heat is 15 % larger, the G7 point |
+  | L₁ / L₁₉ | 59.83 / 149.06 kmol/h |
+  | Q_C | 882.1 kW |
+- Utility design values (procedure of PHYSICS.md §7.2, §8.2): condenser UA_clean = 29.76 kW/K at 50 % CW; reboiler UA_R,clean = 30.65 kW/K (60 % of Q_max with 3.5 bar(g) steam).
+- Tier 1 on the same column (α = 3.5, V_B = 90 kmol/h): x_D 0.99046, x_B 0.00407.
+
+**27.2 B-T pressure sweep at fixed L₀ = 100 and D = 50 kmol/h** (utilities unconstrained; this is VC-8.7's definition and G8's starting point):
+
+| P_top (bar a) | Q_R (kW) | x_D | x_B | T_D (°C) | T_B (°C) | α on the feed tray |
+|---|---|---|---|---|---|---|
+| 0.50 | 1352.5 | 0.98617 | 0.01290 | 58.38 | 86.19 | 2.714 |
+| 0.70 | 1331.9 | 0.98219 | 0.01720 | 68.11 | 96.46 | 2.607 |
+| 1.013 | 1306.9 | 0.97662 | 0.02331 | 79.60 | 108.49 | 2.498 |
+| 2.00 | 1253.5 | 0.96080 | 0.03800 | 103.10 | 132.79 | 2.315 |
+| 3.00 | 1213.7 | 0.94914 | 0.05113 | 119.19 | 149.18 | 2.211 |
+
+Tolerances: Q_R ± 0.3 %, x ± 2×10⁻⁴, T ± 0.05 K, α ± 0.002.
+
+**27.3 What the default utilities can deliver** (analytic from 27.2, PHYSICS.md (7.3) and (8.2)). Reboiler Q_max = UA_R,clean (T_st − T_B); condenser at 100 % CW = UA_eff(m_cw,max) (T_D − T_cw,in) with UA_clean 29.9 kW/K:
+
+| P_top | Reboiler Q_max, steam 3.5 bar(g) (148.1 °C) | Reboiler Q_max, steam 10 bar(g) (184.2 °C) | Condenser max, CW 30 °C | Condenser max, CW 15 °C |
+|---|---|---|---|---|
+| 0.50 | 3559 | 5636 | 781 | 1194 |
+| 0.70 | 2969 | 5046 | 1049 | 1462 |
+| 1.013 | 2277 | 4354 | 1365 | 1778 |
+| 2.00 | **880** | 2957 | 2012 | 2425 |
+| 3.00 | **none** (T_B > T_st) | 2015 | 2455 | 2868 |
+
+All values are in kW. Needed duties are about Q_R from 27.2 (condenser ≈ Q_R − 20 kW).
+- **At 0.5 bar(a)** the condenser cannot condense with any CW the levers allow (≥ 5 °C). G8 therefore starts its sweep at 0.7 bar(a) with CW at 15 °C.
+- **At 2–3 bar(a)** the reboiler needs the 10 bar(g) header, which is why G8 and VC-8.7 set it.
+
+These limits are physics, not bugs. A scenario that ignores them leaves the learner with a column that cannot do what the briefing asks.
+
+**27.4 Fault severity floors at the B-T design point** (PHYSICS.md §11):
+- F15 starts to limit the duty at s ≈ 0.58 (header 2.95 bar(a), 133.0 °C).
+- F09 flow mode starts to raise the pressure at s ≈ 0.5 (a fully open valve then delivers exactly the design CW flow).
+- H2 and H4 severity ranges must start above these values: F09 [0.6, 1.0], F15 [0.7, 1.0].
+
 ---
 
 ## H. Hidden-fault drill symptom tests
@@ -714,7 +771,7 @@ For each drill candidate the test injects the fault (fixed seed, onset at 600 s,
 |---|---|---|
 | H1 | F05 fouling, stripping trays 12–18, holes | ΔP across trays 12–18 up ≥ 10 % at constant flows; ΔP of trays 1–11 up < 3 %; x_D change < 0.003 in the first hour |
 | H1 | F07 feed lighter (Δz = +0.1 benzene, −0.1 toluene; PHYSICS.md §11 sum-zero convention) | ΔP change < 3 %; T profile shifts (Tier 2: tray 10 T down ≥ 1 K); Tier 2: D rises by ≥ 0.3 kmol/h via LC-101, because the lighter bottoms have the smaller molar latent heat, so the same duty boils more moles. Under Tier-1 LV control D would not move (D = V₁ + e₁ − L₀ is fixed by the flows) and the extra benzene would leave in the bottoms (x_B up). H1 runs in Tier 2 |
-| H2 | F09 CW temperature +15 K | P_top up; CW valve to 100 %; reflux subcooling down |
+| H2 | F09 CW temperature +15 K (s = 1; drill range [0.6, 1.0]) | P_top up (prototype 1.18–1.39 bar(a) for s = 0.6–1); CW valve to 100 % within 2 min; reflux subcooling down |
 | H2 | F10 condenser fouling | P_top creeps up over ≥ 30 min; CW valve creeps up; subcooling down |
 | H2 | F11 non-condensables | P_top up while CW valve is not saturated at first; reflux subcooling **up** (≥ 5 K); opening the vent restores P within 10 min |
 | H3 | F04 broken tray, rectifying (tray 5) | column ΔP down; tray-5 ΔP ≤ 15 % of neighbours; x_D down at constant L/D |
@@ -742,7 +799,7 @@ Unlike the rows above, these run with **noise on**, plant view and the drill's o
 
 | Id | Candidate | Key evidence to assert (default window 600 s) | Also assert |
 |---|---|---|---|
-| H9.0 | **No fault** (healthy run, 2 h, the feed event included) | No check `fail`; no BAD alarm; the off-spec predicate is never true | Signal-look ratios of every tag in 0.5–2 |
+| H9.0 | **No fault** (healthy run, 2 h, the feed event included) | No check `fail`; no BAD alarm; the off-spec predicate is never true | Signal-look ratios σ_5min/typicalSigma of every tag in 0.5–2, where FT-104/FT-105 use the level-loop typical σ of PHYSICS.md §10.5 (0.94 % / 1.60 % of span; against plain σ_disp they would read ≈ 2.4) |
 | H9.1 | FT-102 bias, s = 0.4 | C3 or C3a `fail` within 10 min; C4:FV-102 `fail` within 10 min | C1 `ok`; off-spec reached within 2 h (so the protect bonus means something) |
 | H9.2 | FT-102 plugged, s = 0.9 | Signal-look ratio of FT-102 ≤ 0.2 within 15 min | C3/C3a `fail` within 30 min |
 | H9.3 | FT-101 drift, s = 0.6 | C1 `fail` within 20 min | C4:FV-101 `fail` within 30 min |
@@ -750,7 +807,7 @@ Unlike the rows above, these run with **noise on**, plant view and the drill's o
 | H9.5 | LT-101 bias, s = 0.8 | C5:drum `fail` within 10 min; LG-101 vs LT-101 ≥ 5 % at any time after 15 min | – |
 | H9.6 | LT-102 signal loss low | `LT-102.BAD` at once | With no action, true sump > 95 % within 30 min (safety at stake) |
 | H9.7 | LT-102 stuck | σ_5min of LT-102 = 0 within 5 min | C5:sump `fail` within 20 min after the feed event |
-| H9.8 | PT-101 bias, s = 0.3 | r7a and r7b ≥ 1.6 K, same sign, within 15 min | – |
+| H9.8 | PT-101 bias, s = 0.5 | r7a and r7b ≥ 2.7 K, same sign, within 15 min | – |
 | H9.9 | TI-114 bias, s = 0.25 | C6 flags TI-114 within 20 min | Off-spec reached within 2 h |
 | H9.10 | TI-114 coated, s = 0.8 | Within 30 min after the feed event, either C6 flags TI-114, or TC-101's OP oscillates with peak-to-peak ≥ 5 %, or TI-114's signal-look ratio ≤ 0.6 | **Weakest candidate**; drop it per the rule above if none of the three holds |
 | H9.11 | TI-107 spiking, s = 0.5 | Signal-look ratio of TI-107 ≥ 5 within 5 min | – |

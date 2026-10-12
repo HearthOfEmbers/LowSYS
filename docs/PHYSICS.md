@@ -447,22 +447,27 @@ Subtract h_j × (total material balance). The unknown L_j cancels, which is why 
 V_j = [ L_{j−1}(h_{j−1} − h_j) + V_{j+1}(H_{j+1} − h_j) + F_j (h_F,j − h_j)
       + e_{j+1}(h_{j+1} − h_j) + f_{j−1} L_{j−2}(h_{j−2} − h_j) − f_j L_{j−1}(h_{j−1} − h_j)
       + Σ R_j (h_R − h_j) + Q_j
-      − C_j (T_j^n − T_j^(n−1)) / dt ] / (H_j − h_j)                                     (4.6)
+      − C_j τ_j (P_top^(n+1) − P_top^n) / dt ] / (H_j − h_j)                              (4.6)
 
 C_j = M_j · Cp_L,j + m_metal,j · 500 J/(kg·K)            (sensible heat of liquid + tray metal)
 m_metal,j = 75 kg/m² × A_T  (tray, shell share and supports)
+τ_j = (∂T_j/∂P)|_x = S_j / (P_j Σ_i K_ij x_ij (d ln K_ij/dT))    (bubble-point sensitivity at state n, S_j = Σ_i K_ij x_ij;
+      the bubble-point Newton of §3.6.1 already computes the denominator; B-T near 1 atm ≈ 3.3×10⁻⁴ K/Pa)
 ```
 
 - Evaluated bottom-up (j = N … 1) with all enthalpies and T at the start of the step, L_{j−1} and the other liquid flows from the previous step, and V_{j+1} just computed. One sweep, no iteration.
 - H_j uses the vapour actually leaving (y_j at T_j). The two bypass terms come from the bypass split of §4.1: tray j receives (1 − f_j) L_{j−1} from above plus the liquid f_{j−1} L_{j−2} that fell through tray j−1.
-- The storage term makes the column absorb heat when it warms (pressure rise, start-up) and flash when it cools (pressure drop). It is bounded: |C_j ΔT/dt| ≤ 0.5 · (numerator without the storage term) when that numerator is positive, to stop a large pressure step from reversing vapour flow in one step **[safeguard]**.
+- **The storage term** makes the column flash when the pressure falls and absorb vapour when it rises. It is written for the temperature change caused by the pressure change *within this step*, and it is **implicit**: P_top^(n+1) is the unknown of the overhead pressure solve (§7.4), which re-runs this bottom-up sweep for every trial pressure. Pressure is uniform up to the tray ΔP, which does not change within a step, so P_j^(n+1) − P_j^n = P_top^(n+1) − P_top^n.
+- **Why implicit (M4 prototype finding).** v1.0 used the lagged change C_j (T_j^n − T_j^(n−1))/dt with a bound of 0.5 × numerator per tray. In the prototype that coupling was unstable from the first step at dt = 0.5 s: a 4 kPa dip flashed about 135 mol/s the next step, the pressure jumped 60 kPa, and the column ran away to 15 bar with V_B = 0. The 0.5 bound does not help, because it compounds up 20 trays. The column's liquid and metal act as a vapour capacitance Σ C_j τ_j/λ ≈ 0.016 mol/Pa, about 16 times the overhead gas volume (≈ 0.001 mol/Pa). Coupled explicitly to an implicit pressure solve, that has a loop gain far above 1. Made implicit, the same physics gives the right result: a pressure time constant of about 2.5 min (open-loop CW step), and identical steady states at dt = 0.5, 2 and 30 s.
+- Composition-driven temperature changes are not in the storage term. They are slow (a few K over 10 min, under 1 kW per tray against about 1300 kW through the column), and leaving them out keeps the sweep a pure function of P^(n+1). At steady state the term is zero in either form.
 - V_j is clamped to ≥ 0.
 - At steady state the storage term is zero and (4.6) is the exact steady energy balance, so energy closure at steady state is exact (VALIDATION.md VC-11).
 
 Sump/reboiler (j = N+1):
 
 ```
-V_{N+1} = s_sump · [ L_N (h_N − h_B) + f_N L_{N−1} (h_{N−1} − h_B) + Q_R,delivered − C_B ΔT_B/dt ] / (H_B − h_B)     (4.7)
+V_{N+1} = s_sump · [ L_N (h_N − h_B) + f_N L_{N−1} (h_{N−1} − h_B) + Q_R,delivered − C_B τ_{N+1} (P^(n+1) − P^n)/dt ] / (H_B − h_B)   (4.7)
+C_B = M_{N+1} Cp_L,B          (sump liquid only; reboiler and sump metal neglected)
 ```
 
 Why quasi-steady energy: the energy states are fast compared with composition (seconds), and treating V as algebraic removes the stiffest part of the system while keeping the physically important non-CMO effects (latent-heat differences, subcooled reflux, feed enthalpy) and the heat storage that matters for pressure transients.
@@ -668,29 +673,26 @@ W_j = f_j · L_{j−1}                                                          
 
 Φ_j and hence w_j are evaluated at the start of the step; W_j uses the current step's L_{j−1} (known in the top-down sweep, §12.2). W_j is the inlet liquid that falls through the holes to tray j+1 without crossing the deck, keeping its arrival composition (§4.1). From the bottom tray it falls into the sump. Feed liquid is assumed to reach the deck (it does not bypass).
 
-**Dumping** (revised v1.1, M3). When the vapour can no longer hold liquid on the deck (Φ < 0.2, e.g. boilup lost), the tray drains through its open area like an orifice. In terms of the tray's holdup M:
+**Dumping** (revised v1.1, M3; threshold made implicit 2026-10-12). When the vapour can no longer hold liquid on the deck (Φ < 0.2, e.g. boilup lost), the tray drains through its open area like an orifice. Φ itself depends on the holdup, Φ = √(h_dry/h_cl) with h_cl = M v_L/A_a,eff, so Φ is evaluated at the **end-of-step** holdup. The drain then becomes a continuous, threshold-free function of M:
 
 ```
-L_dump,j(M) = κ_j √M                                                                       (5.15)
-κ_j = ((0.2 − Φ_j)/0.2) · C_dump · A_drain,j · √(2 g v_L,j / A_a,eff,j) / v_L,j      if Φ_j < 0.2, else 0
-      (because h_cl = M v_L/A_a,eff, √(2 g h_cl) = √(2 g v_L/A_a,eff) · √M)
-C_dump = 0.6 (sharp-edged orifice)
-A_drain,j = sieve: A_h,eff,j = f_h A_a · holeScale_j · (1 − s_broken) + s_broken A_a   (the same area as (5.3) and §11)
-            valve: A_min,eff,j = r_min f_v A_a · holeScale_j · (1 − s_broken) + s_broken A_a   (valves closed)
-Φ_j, A_drain,j, A_a,eff,j and v_L,j are start-of-step values (§12.4 step 4); only M is implicit.
+L_dump,j(M) = κ_j · max(0, √M − √M_c,j)                                                   (5.15)
+κ_j   = C_dump · A_drain,j · √(2 g v_L,j / A_a,eff,j) / v_L,j          C_dump = 0.6
+M_c,j = 25 · h_dry,j · A_a,eff,j / v_L,j        (the holdup at which Φ = 0.2, i.e. h_cl = 25 h_dry; h_dry at state n)
+A_drain,j = sieve: f_h A_a · holeScale_j · (1 − s_broken) + s_broken A_a          (the area of (5.3) and §11)
+            valve: r_min f_v A_a · holeScale_j · (1 − s_broken) + s_broken A_a    (valves closed)
 ```
 
-- **Solve.** κ_j enters the top-down implicit holdup sweep of §12.2, solved for u = √M (see there).
-- **Flags.** The tray's `dumping` flag (bit 2) is set when κ_j > 0. The `eq.weeping` overlay line shows κ_j, √M̂ and L_dump.
-- **What it gives** (engine prototype, B-T, TS 0.9 m, boilup cut to 0 with feed on, after 10 min):
-  - sieve trays receiving liquid hold 1.1–1.4 mol, h_cl 0.14–0.17 mm;
-  - valve trays hold 1.4–1.7 mm;
-  - trays that receive nothing are dry.
+- This is exactly ((0.2 − Φ)/0.2) · C_dump A_drain √(2 g h_cl)/v_L with Φ at M^(n+1), rewritten.
+- Every tray in full hydraulics carries the term. On a normal tray M_c is thousands of mol (B-T design: M_c ≈ 13 000 mol against M ≈ 190), so it is zero. The `dumping` flag (bit 2) is set when M̂ > M_c.
+- **Why implicit** (tester finding, VALIDATION.md VC-12.6). A fully broken tray sits at Φ = 0.208, almost on the threshold. With Φ taken from the start-of-step holdup (the first v1.1 text), draining raised Φ, which stopped the drain, and trays flipped between bypass and dumping. The result depended on dt: one tray held 1.65 mol at dt = 2 s against about 0 at 0.5 s, and a dumping tray reached 52 mol at coarse dt. With Φ implicit there is nothing to flip.
+- **What it gives** (scratch prototype on the M2 engine, B-T):
+  - a fully broken tray 5 gives the same steady state at dt = 0.5, 2 and 30 s, both at TS 0.6 m (x_D 0.964776, x_B 0.010936) and at TS 0.9 m (0.974315, 0.018575). The tray holds 2.42 mol at Φ = 0.208 and does not dump;
+  - after boilup is cut to 0 with the feed on, no dumping tray holds more than 1.35 mol (sieve, h_cl ≈ 0.15 mm) at any dt. Valve trays hold about 1.4–1.7 mm.
 
-  Real dumping trays look like this: nearly empty, with liquid raining through. The Murphree factor min(1, h_cl/5 mm) of §4.2 then removes almost all contact.
-- **Broken trays.** A fully broken tray (F04, s = 1) does **not** dump at normal load. Its bypass sends all arriving liquid through the opening, so it holds only the few mol entrained from below (2.4 mol) on its 2 % residual area. That gives an apparent h_cl ≈ 14 mm and Φ ≈ 0.25 > 0.2. Its behaviour, and the VC-12.4 F04 rows, are therefore the same under both dumping laws (checked to 4 decimals).
-
-v1.0 used L_dump = k_d M with k_d = ((0.2 − Φ)/0.2)/8 s. Any tray still receiving inlet liquid then kept about 8 s of inflow (≈ 220 mol, h_cl ≈ 28 mm, more than a normal tray), which contradicted the "near-zero holdup" a dumping tray should show (tester finding, DEVIATIONS.md T2). The change affects only trays with Φ < 0.2, mainly loss or near-loss of boilup. Normal operation, weeping (0.2 ≤ Φ < 0.75), broken trays at normal load and every ideal-hydraulics number are unaffected (prototype: design point and the three VC-12.4 F04 rows identical).
+  Real dumping trays look like this: nearly empty, with liquid raining through. The Murphree factor min(1, h_cl/5 mm) of §4.2 removes almost all contact.
+- **Checkerboard.** Which alternate trays hold the ≈ 1 mol in that test depends on dt. It is an artifact of the bypass model in this regime: a dumping tray passes its downcomer inflow straight to the tray below. Every tray is nearly empty in either phase, so the tests assert totals, not per-tray values.
+- v1.0 used L_dump = k_d M with k_d = ((0.2 − Φ)/0.2)/8 s. A tray still receiving inlet liquid then kept about 220 mol (h_cl ≈ 28 mm), more than a normal tray.
 
 Valve trays reach low Φ only when the valves are closed (§5.4), which is why they turn down further (about 5:1 versus 2:1 for sieve trays with the defaults).
 
@@ -814,6 +816,28 @@ dn_I/dt = ε_I F − (N_vent + N_relief) y_I                                    
 
 T_0 is the drum temperature: the bubble point of the drum liquid x_0 at the condensable partial pressure P_top (1 − y_I), minus any reflux subcooling (§7.3). ε_I = 0 normally; the non-condensables fault sets ε_I = 1×10⁻⁴ s (mol inert per mol feed).
 
+**Component inventory of the vapour (exact conservation, M4).** The condensable inventory is tracked per component, n_V,i, with Σ n_V,i = n_V. After the component step (§12.3):
+
+```
+n_V,i^(n+1) = n_V,i^n + dt [ V_1 y_c,i − N_cond y_c,i − (D_V + N_vent(1 − y_I) + N_relief(1 − y_I)) y_V,i^n ]
+y_c,i = (1 − E_1) ŷ_i2 + E_1 K̃_i1 m_i1^(n+1)/M̂_1       (the vapour leaving tray 1 exactly as the final Murphree pass used it)
+y_V,i^n = n_V,i^n / n_V^n                                (composition of the inventory, for anything leaving it)
+clamp n_V,i ≥ 0 (count in solverHealth.negativeClamps)
+```
+
+With a partial condenser the drum is an equilibrium stage (§12.3 drum row), and the vapour it does not condense leaves the drum at y_0 = K̃_0 x_0. There, replace y_c by y_0,i = K̃_i0 m_i0^(n+1)/M̂_0 in the V_1 − N_cond term. The condensate is given the composition y_c, as v1.0 did. The overhead residence time is n_V/V_1 ≈ 2.5 s, so the condensate is in effect the tray-1 vapour. Tracking n_V,i makes conservation exact, so VC-5.2 can use the Tier-1 tolerance. v1.0 counted the inventory as n_V · y_1 with the *current* y_1, which leaks n_V Δy_1 (up to about 2×10⁻⁶ relative in transients).
+
+**Inert vent.** Lever `inertVent` (0–100 %) opens a line to a vent header:
+
+```
+N_vent = (OP_vent/100) · N_vent,max · √( max(P_top − P_vent, 0) / 50 kPa )        N_vent,max = 2 mol/s (at 50 kPa)
+P_vent = 0.5 bar(a) (vacuum vent system) for presets with P_design < 3 bar; 1.01325 bar(a) otherwise
+```
+
+Venting therefore works at the B-T operating pressure (there is no driving force to atmosphere at 1 atm). The vent removes inerts and condensables in proportion to the overhead composition.
+
+**Relief valve capacity:** N_rel,max = 2 × the design top vapour V_1 (B-T: 83.3 mol/s); see §7.4.
+
 ### 7.2 Condenser duty
 
 Cooling water flow m_cw = (OP_cw/100) m_cw,max (kg/s), inlet temperature T_cw,in, c_p,w = 4180 J/(kg·K). Using the mean water temperature T_cw,in + Q/(2 m_cw c_p,w):
@@ -833,7 +857,9 @@ N_cond = [ V_1 (H_V(y_1, T_0,sat) − H_1) + Q_C ] / ( H_V(y_1, T_0,sat) − h_L
 
 The first term is the (usually small) desuperheating of the incoming vapour.
 
-Design values (stored in the preset): UA_clean is chosen so that at the design point the condenser uses 70 % of the CW valve. For B-T: Q_C ≈ 1.281 MW, T_0 ≈ 80.2 °C, T_cw,in = 30 °C, m_cw,max = 150 m³/h (41.5 kg/s; 70 % → 29.1 kg/s) → UA_clean = 28.5 kW/K. For a new preset, the value is found once, offline: run the Tier-2 preset to steady state with the pressure held at P_top (a "perfect condenser" debug option), read Q_C and T_0,sat, solve (7.3) for UA at OP_cw = 70 %, and store the result in the preset JSON.
+Design values (stored in the preset): UA_clean is chosen so that at the design point the condenser uses **50 %** of the CW valve. For B-T: Q_C ≈ 1.281 MW, T_0 ≈ 80.2 °C, T_cw,in = 30 °C, m_cw,max = 150 m³/h (41.5 kg/s; 50 % → 20.8 kg/s, outlet 44.7 °C) → UA_clean = 29.9 kW/K. For a new preset, the value is found once, offline: run the Tier-2 preset to steady state with the pressure held at P_top (a "perfect condenser" debug option), read Q_C and T_0,sat, solve (7.3) for UA at OP_cw = 50 %, and store the result in the preset JSON (mw: 29.76 kW/K, VALIDATION.md VC-27.1).
+
+**Why 50 %, not v1.0's 70 %** (M4 prototype finding). This condenser is limited by its UA, so CW flow only acts through the water's temperature rise. At 70 % (UA 28.5 kW/K, outlet 40.5 °C) a fully open valve added only **3.2 %** duty. PC-101 then saturated on any duty increase above about 3 % (VC-8.1 in Tier 2 let P float to 1.066 bar), and a −10 kPa SP step could never be reached. At 50 % the valve covers −13 % … +7.9 % of the design duty (25 % → 100 % OP): the same steps hold P at 1.013 bar with CW at 89.5 %, and ±10 kPa SP steps settle in 5–7 min.
 
 Total condenser: D_V = 0. Partial condenser: vapour product through the pressure-control valve
 
@@ -841,7 +867,7 @@ Total condenser: D_V = 0. Partial condenser: vapour product through the pressure
 D_V = (OP_DV/100) D_V,max √( max(P_top − P_down, 0) / (P_design − P_down) )                 (7.5)
 ```
 
-P_down = 1.01325 bar (vapour header).
+P_down = P_design − 30 kPa (vapour-product header; B-T 0.713 bar(a)). v1.0 had 1.01325 bar, which gives no flow at all at the B-T design pressure. D_V,max = the design distillate rate (B-T 50 kmol/h). PC-101 then manipulates PV-102 (§10.7); the CW flow comes from its own lever (`cwOP`, 0–100 %, default 70 %).
 
 ### 7.3 Reflux drum
 
@@ -862,13 +888,15 @@ The reflux pump cannot take more than the drum holds: L_0 ≤ (M_0 + dt(N_cond +
 
 ### 7.4 Pressure solve
 
-P_top^(n+1) comes from an implicit scalar solve each step (the condenser is fast: τ_P ≈ 2–10 s):
+P_top^(n+1) comes from an implicit scalar solve each step. The condenser on its own is fast (τ ≈ 2–10 s). Coupled to the column's heat storage (4.6), the overall pressure time constant is about 2–3 min (B-T prototype: 150 s for a CW-valve step). The solve runs at step 6 of §12.4, *before* the hydraulic and component steps, because both need N_cond.
 
 ```
-Unknown P. For a trial P:  T_0,sat(P) = bubble T of x_0 at P(1 − y_I);  Q_C(P) from (7.3);  N_cond(P) from (7.4);  D_V(P) from (7.5)
-Residual:  r(P) = n_V(P) − n_V^n − dt [ V_1 − N_cond(P) − D_V(P) − N_vent − N_relief(P) ] · (1 − y_I)
+Unknown P. For a trial P:  V_1(P) from the vapour sweep (4.6)/(4.7) with the storage term at P;  T_0,sat(P) = bubble T of x_0^n at P(1 − y_I);
+           Q_C(P) from (7.3);  N_cond(P) from (7.4) with V_1(P);  D_V(P) from (7.5)
+Residual:  r(P) = n_V(P) − n_V^n − dt [ V_1(P) − N_cond(P) − D_V(P) − N_vent(P)(1 − y_I) − N_relief(P)(1 − y_I) ]
            with n_V(P) = P V_ovh (1 − y_I) / (R T_0,sat(P))
-Secant iteration from P^n and 1.001 P^n; stop at |ΔP| < 0.1 Pa; max 12 iterations; fallback: keep P^n and flag.
+Secant iteration from P^n and 1.001 P^n, keeping P ≥ 1 kPa; stop at |ΔP| < 0.1 Pa; max 12 iterations (prototype: ≤ 5 at dt = 0.5 s, ≤ 3 at 30 s); fallback: keep P^n and flag.
+After convergence the sweep is run once more at P^(n+1); its V_j are this step's vapour flows.
 ```
 
 Relief valve: set pressure P_set (preset; B-T 3.5 bar(a)), N_relief = N_rel,max · clamp((P − P_set)/(0.1 P_set), 0, 1). Venting composition y_1. Alarm and scenario safety penalty.
@@ -1291,6 +1319,7 @@ Every transmitter runs the same pipeline on its true value v (SI) at each update
   ```
   n ← a n + σ √(1 − a²) ξ,      a = exp(−h/τ),   ξ ~ N(0, 1) from the instrument's own stream (§12.9)
   ```
+- **Typical σ of flows set by a level loop.** FT-104 and FT-105 measure flows that LC-101 and LC-102 move in response to level noise (P action: σ_OP = Kc σ_disp,LT). Their healthy σ — `typicalSigma` in the snapshot and the "typical" of the signal look — is therefore σ_typ = √(σ_disp² + (Kc_LC · σ_disp,LT · F_max/span)²). B-T: FT-104 √(0.409² + (2 × 0.423)²) = 0.94 % of span; FT-105 √(0.409² + (2 × 0.775)²) = 1.60 % (tester measured ≈ 2.4 × σ_disp for FT-104). Every other tag uses σ_disp.
 - **Displayed noise.** For a healthy transmitter (continuous-time value):
 
   ```
@@ -1374,7 +1403,7 @@ A fault acts on one tag. s is the current severity (11.1) and σ = ±1 the fault
 | stuck | Perfectly flat line: the same digits for minutes, 5-min σ = 0 | Integrates the frozen error, so its OP ramps while nothing responds | GOOD; nothing |
 | signal loss | Jumps to −2.5 % or 106.25 % of span | Shed to MAN (`badPvShed` = 1) or driven to a valve limit (= 0) | BAD: PV digits grey; red "BAD" badge with "IOP−" (low) or "IOP+" (high); BAD segments dashed in trends; alarm `<tag>.BAD` (high) |
 | plugged | Stops following the process; the fuzz collapses from σ_disp to σ_e, 20× smaller ("too steady"); fast 0.5-s differences fall from 0.71 to 0.09 kmol/h on FT-102 | A flow loop keeps integrating the small offset between SP and the trapped value. Prototype (FC-102, s = 1, noise on): the true reflux swung between ≈ 50 and 150 kmol/h over 30 min while the reading stayed at SP | GOOD; nothing |
-| spiking | Spikes of up to 50 % of span; intermittent BAD or out-of-range flicker | Proportional action kicks the valve at each spike | Intermittent BAD / OOR alarms (they latch, §10.8) |
+| spiking | Spikes of up to 50 % of span; a spike reaches BAD when it carries the current past 3.6 or 21.0 mA, i.e. a negative spike larger than (I₀ − 3.6 mA)/0.16 % of span or a positive one larger than (21.0 mA − I₀)/0.16 (I₀ the pre-spike current; at 33 % of span: negative spikes > 35.8 %, positive never). Intermittent BAD or out-of-range flicker | Proportional action kicks the valve at each spike | Intermittent BAD / OOR alarms (they latch, §10.8) |
 | coated | Lags its neighbours after any change (t63 82–100 s instead of 10 s); fuzz about halved (0.033 vs 0.062 % of span at s = 1) | A TC loop on it becomes sluggish and may cycle | GOOD; nothing |
 
 **Valve faults (F20).** Location is a valve id; `params.kind` is one of:
@@ -1398,10 +1427,12 @@ The DCS shows no valve fault (there is no position feedback). The only signs are
 | FC-103 | FT-103 (T1 0–300 kmol/h; T2/3 0–3000 kW) | FV-103 | reverse | AUTO (CAS when TC-101 is enabled) | 0.6 | 2.0 | 0 | yes | 0–100 | δ_c | all |
 | LC-101 | LT-101 (0–100 %) | LV-101 | direct | AUTO | 2.0 | 1800 | 0 | no | 0–100 | dt | all |
 | LC-102 | LT-102 (0–100 %) | LV-102 | direct | AUTO | 2.0 | 1800 | 0 | no | 0–100 | dt | all |
-| PC-101 | PT-101 (0–2 P_design) | PV-101 (total condenser) / PV-102 (partial) | direct | AUTO | 2.0 / 1.0 | 60 / 30 | 0 | no | 0–100 | dt | T2/3 |
+| PC-101 | PT-101 (0–2 P_design) | PV-101 (total condenser) / PV-102 (partial) | direct | AUTO | 10 / 1.0 | 120 / 30 | 0 | no | 0–100 | dt | T2/3 |
 | TC-101 | TI on the chosen tray (0–200 °C) | FC-103 SP (cascade) | reverse | disabled (MAN) | 4.0 | 900 | 0 | no | 20–65 | dt | T2/3 |
 
 TC-101's Kc = 4.0 on the 200 K TI span equals v1.0's 1.0 on the old 50 K span (T_top − 10 K … T_bottom + 10 K): 30 kW per 0.5 K.
+
+**PC-101, total condenser: Kc 10, Ti 120 s** (M4 prototype; v1.0: 2 / 60 s). Even at the 50 % design point (§7.2) the CW valve is a weak handle: about 580 Pa per % OP (0.29 % of span per % OP), with an open-loop time constant of about 190 s set by the column's heat storage. With v1.0's tuning a +10 kPa SP step took 695 s to settle within ±1 kPa (VC-16.6 asks for 10 min). With 10 / 120 it settles in 297 s (+10 kPa) and 438 s (−10 kPa) without overshoot. PV-102 for the partial condenser acts directly on the vapour flow, and v1.0's 1.0 / 30 s stays **[impl-tunable]** (VC-16.6b).
 
 Crude (M9): TC-201 top temperature → FC reflux (direct, Kc 1.0 on a 50 K span, Ti 300 s); LC-201 drum → naphtha; LC-202 sump → residue; FC-201…203 side draws; FC-204 PA duty; TC-202 COT (ideal first-order, τ = 60 s: the furnace is not modelled); FC-205…208 steam. Every FC uses the flow-loop settings of §10.4.
 
@@ -1468,18 +1499,18 @@ Faults act only by changing physical parameters or adding physical flows. No fau
 
 | ID | Location | Parameter changes (applied every step from s(t)) | Default τ_r |
 |---|---|---|---|
-| F04 Broken / missing tray | tray j | Opening fraction s of the deck: liquid bypass s_broken,j = s added to the bypass fraction f_j (5.14) (the arriving liquid falls through with its inlet composition, like weeping); vapour bypass b_V,j = s in (4.2); hole area A_h,eff = A_h (1 − s) + s · A_a (the opening is a large hole, so ΔP_dry falls); active area A_a,eff = A_a · max(1 − s, 0.02), used for h_cl, the weir relation and M_max; liquid head in ΔP × (1 − s) (5.5); the opening also counts in the dumping drain area A_drain (5.15), although at normal load a broken tray stays above Φ = 0.2 and does not dump | 0 (sudden damage) |
+| F04 Broken / missing tray | tray j | Opening fraction s of the deck: liquid bypass s_broken,j = s added to the bypass fraction f_j (5.14) (the arriving liquid falls through with its inlet composition, like weeping); vapour bypass b_V,j = s in (4.2); hole area A_h,eff = A_h (1 − s) + s · A_a (the opening is a large hole, so ΔP_dry falls); active area A_a,eff = A_a · max(1 − s, 0.02), used for h_cl, the weir relation and M_max; liquid head in ΔP × (1 − s) (5.5); the opening also counts in the dumping drain area A_drain (5.15). At the B-T design load a fully broken tray sits at Φ = 0.208, just above the dumping threshold; with the implicit threshold of (5.15) that is harmless | 0 (sudden damage) |
 | F05 Fouled / plugged trays | trays j₁…j₂; mode holes / downcomer / both | holes: A_h,eff = A_h (1 − 0.8 s) (valve trays: A_min and A_max × (1 − 0.8 s)); downcomer: h_ap,eff = h_ap (1 − 0.9 s) | 4 h of sim time (represents weeks) |
 | F06 Foaming | section or whole column | SF = SF_froth = 1 − 0.45 s; φ_dc = 0.5 − 0.2 s. Antifoam on: after 300 s dead time s decays with τ = 600 s | 600 s |
 | F07 Feed composition upset | feed | z ← z + σ s Δz with **Σ Δz = 0**. Components listed in `params.dz` get their value; unlisted components share −Σ(listed) in proportion to their current z (for a binary, the other component gets exactly −Δz). Any negative z_i is clamped to 0 and the result renormalised (only then does normalisation act). Default Δz: light component +0.15, so B-T z = 0.50 → 0.65. v1.0 added +0.15 to one component and then normalised, which gave 0.565 | 0 or ramp |
 | F08 Feed thermal upset | feed | T_F += s ΔT (Tier 2/3, default −40 K) or q += s Δq (Tier 1, default +0.3) | 0 |
-| F09 Loss of cooling | condenser | mode flow: m_cw,max × (1 − s); mode temperature: T_cw,in + 15 s K | 0 (pump trip) / 1800 s |
+| F09 Loss of cooling | condenser | mode flow: m_cw,max × (1 − s); mode temperature: T_cw,in + 15 s K. B-T prototype (UA 29.9 kW/K at 50 % CW, PC-101 at 10/120): flow s = 0.5 is absorbed (the valve opens towards 100 %, P stays at SP); s = 0.6 → CW 100 % after 125 s, P → 1.070 bar(a); s = 0.7 → 72 s, 1.167 bar(a); s = 1 → relief set point 3.5 bar(a) reached after 471 s. Temperature mode: s = 0.6 → P 1.180 bar(a); s = 1 → 1.389 bar(a). Drill ranges therefore start at s = 0.6 | 0 (pump trip) / 1800 s |
 | F10 Condenser fouling | condenser | R_f = s · 1.5/UA_clean (at s = 1, UA_eff = 0.4 UA_clean) | 6 h |
-| F11 Non-condensables | overhead | ε_I = 1×10⁻⁴ s (mol inert per mol feed), §7.1 | 0 |
+| F11 Non-condensables | overhead | ε_I = 1×10⁻⁴ s (mol inert per mol feed), §7.1. At s = 1 about 10 mol of inert per hour accumulates in a 104 mol overhead (B-T), so y_I ≈ 0.09 and f_blanket ≈ 0.27 after 1 h; extra subcooling 20 f_blanket ≈ 5 K. Opening the vent (§7.1) removes it | 0 |
 | F12 Reflux pump trip | reflux | L_0 ≤ (1 − s) L_0,max | 0 |
 | F13 Reboiler fouling | reboiler | R_f,R = s · 1.5/UA_R,clean | 6 h |
 | F14 Condensate backup (failed trap) | reboiler | f_flooded = 0.8 s. "Open trap bypass" action: s → 0 over 300 s | 60 s |
-| F15 Steam header pressure loss | steam | P_hdr × (1 − 0.6 s) → lower T_st | 120 s |
+| F15 Steam header pressure loss | steam | P_hdr (absolute) × (1 − 0.6 s) → lower T_st (water saturation, DIPPR-101 inverse). B-T: s = 0.5 → 3.16 bar(a), 135.4 °C, Q_max 1437 kW, which still covers the 1300 kW design duty; the duty limit starts at s ≈ 0.58. Drill ranges therefore start at s = 0.7 (2.62 bar(a), 129.0 °C, Q_max ≈ 1070 kW; s = 1: 1.81 bar(a), 117.1 °C, 384 kW) | 120 s |
 | F17 Thermosyphon inlet restriction | loop | K_in += 300 s | 1800 s |
 | F18 Thermosyphon outlet restriction | loop | K_out += 40 s | 1800 s |
 | F19 Instrument calibration fault | instrument tag | `bias`: b = σ s · 10 % of span; `drift`: σ s · 10 % of span per hour; `stuck`: outputs frozen at t₀ (§10.6) | 0 |
@@ -1555,29 +1586,23 @@ M̂_j = M,   L_j^(n+1) = L_j(M̂_j)
 
 L_j(M) is the downflow function of §5.9 for trays (weir capped by L_max, plus the dump drain L_dump(M) of (5.15); dL/dM = dL_weir/dM when the weir is below the cap, 0 when capped) or (6.4) for packed segments. L_j is monotone non-decreasing in M, so R is monotone and the Newton iteration converges.
 
-**Dumping trays (κ_j > 0): solve for u = √M instead.** L_dump = κ√M has an infinite slope at M = 0, and the residual R(M) is then concave. Newton in M overshoots below zero (about 8 halvings in the prototype). In u the residual is convex and increasing, so Newton converges monotonically and never leaves u ≥ 0:
+**Full hydraulics: solve every tray for u = √M with a safeguarded Newton.** L_dump has an infinite slope at M = 0, and the downcomer cap smin(L_weir, L_max) puts a concave kink into the residual. In tests, plain Newton cycled at dt = 30 s and halted the simulator. In u the residual is monotone increasing, so a bracketed Newton always converges:
 
 ```
-G(u)  = u² − M_j^n − dt [ In_j − Out_j − L_w,cap(u²) − κ_j u ] = 0          (L_w,cap = smin(L_weir, L_max))
-G'(u) = 2u + dt [ 2u · dL_w,cap/dM |_(u²) + κ_j ]                             (> 0 for κ_j > 0, also at u = 0)
-start u = √(M_j^n);   u ← max(0, u − G/G');   stop when |Δu| < 1×10⁻¹² · max(1, u);  at most 60 iterations
-M̂_j = u²,   L_j^(n+1) = L_w,cap(M̂_j) + κ_j u          (the same u in both terms, so the material balance closes exactly)
+G(u)  = u² − M_j^n − dt [ In_j − Out_j − L_w,cap(u²) − κ_j max(0, u − √M_c,j) ]
+G'(u) = 2u + dt [ 2u · dL_w,cap/dM |_(u²) + (u > √M_c ? κ_j : 0) ]           (dL_w,cap/dM = 0 when capped)
+if G(0) ≥ 0: u = 0 (the tray empties within the step)
+else: lo = 0; hi = √(M_j^n) + 1, doubled (hi ← 2 hi + 1) until G(hi) > 0; u = √(M_j^n)
+      repeat (max 100): if G(u) > 0 then hi = u else lo = u
+                        u_new = u − G(u)/G'(u); if u_new ∉ (lo, hi) then u_new = (lo + hi)/2      (bisection fallback)
+                        stop when |u_new − u| < 1×10⁻¹² max(1, u) or hi − lo < 1×10⁻¹³ max(1, u)
+M̂_j = u²,   L_j^(n+1) = L_w,cap(M̂_j) + κ_j max(0, u − √M_c,j)       (the same u in both: the balance closes exactly)
 ```
 
-Clamping at u = 0 means the tray empties within the step: In_j − Out_j ≤ 0 with nothing left to drain. Trays with κ_j = 0 keep the M-Newton above. The prototype on the M2 engine needed at most 7 iterations.
+- In the prototype this needed ≤ 8 iterations in normal operation and ≤ 47 (with bisections) right after a tray broke at dt = 30 s.
+- Ideal hydraulics (no dump term, no cap) may keep the M-Newton above.
 
-**Stability at large dt.** The step is implicit Euler in M with the drain evaluated at the end of the step, so it is stable for any dt. In the prototype, a fully broken tray 5 gave the identical steady state at dt = 0.5, 2 and 30 s (x_D 0.974315, x_B 0.018575). After 10 min without boilup, the dumping trays held 1.1–1.4 mol at every dt, with no negative holdups, no NaN and ≤ 7 iterations.
-
-The component step (§12.3) then sees M̂ of about 1 mol with throughputs of about 30 mol/s. That is very stiff, but the banded implicit solve handles it as it handles any small holdup, and the existing floor M̂ ≥ 1×10⁻⁹ mol stays.
-
-Drum and sump totals follow from their flows, each pump limited so that the holdup stays ≥ 0:
-
-```
-M̂_0     = M_0^n + dt (N_cond + e_1 − L_0 − D_L)                (Tier 1: N_cond = V_1)
-M̂_{N+1} = M_{N+1}^n + dt (L_N + f_N L_{N−1} − V_{N+1} − B)
-```
-
-These M̂_j are the denominators of the component step.
+**Stability at large dt.** The step is implicit Euler with the drain and the threshold at the end of the step, so it is stable for any dt (results above). The component step (§12.3) then sees M̂ of about 1 mol on dumping trays, with throughputs of about 30 mol/s. That is very stiff, but the banded implicit solve handles it as it handles any small holdup, and the existing floor M̂ ≥ 1×10⁻⁹ mol stays.
 
 ### 12.3 Component step (banded: tridiagonal plus one sub-diagonal)
 
@@ -1660,11 +1685,13 @@ After the solve the new state is m_ij^(n+1); M_j = Σ_i m_ij (not M̂_j); x = m/
  4. Hydraulic coefficients at state n: Bennett α_e, ΔP_j, P_j profile, φ_j, ψ filter update, e_j,
     bypass fractions f_j, L_max,j, the dumping factor (0.2 − Φ_j)/0.2, M_max; packing φ_p, ΔP, holdup factor, HETP, E.
  5. Reboiler: kettle Q (8.2) or thermosyphon sub-steps (8.3) → Q_R,delivered.
- 6. Vapour profile bottom-up: (4.4) Tier 1 or (4.6)/(4.7) Tiers 2/3; sump-starvation factor.
+ 6. Vapour profile bottom-up: (4.4) Tier 1; Tiers 2/3: the overhead pressure solve (§7.4), which calls the
+    sweep (4.6)/(4.7) for each trial P → P_top^(n+1), n_V^(n+1), N_cond, Q_C and the final V_j; sump-starvation factor.
  7. Side strippers (crude): hydraulic + component step for each stripper chain.
  8. Main hydraulic step (§12.2) → M̂_j, L_j; drum and sump M̂.
  9. Component step (§12.3), two Murphree passes → m_ij^(n+1).
-10. Overhead pressure solve (§7.4) → P_top, n_V, n_I, N_cond, Q_C (Tier 2/3).
+10. Overhead inventory update (§7.1): n_V,i^(n+1) per component, n_I^(n+1) (Tier 2/3). [v1.0 had the pressure solve
+    here, after steps 8–9 had already used N_cond; it moved to step 6.]
 11. Thermo update at n+1: bubble points (§3.6.1) at P_j, enthalpies, densities, K̃ for the next step, y via (4.2).
 12. Control main layer (§10.1): non-flow instruments (LT, PT, PDT, TI, AT, field checks) from the end-of-step
     state; loops LC-101, LC-102, PC-101, TC-101 (10.1) → OPs and the FC-103 cascade SP for the next step's
@@ -1812,8 +1839,10 @@ The state X is the same in every tier. On a switch:
 
 | From → To | Actions |
 |---|---|
-| T1 → T2/T3 | Compute bubble points and enthalpies from the current x and P_top (= preset P). Set FC-103 SP (duty) = current V_B × (H − h)_sump so the boilup is continuous. Initialise n_V from P_top. PC-101 SP = P_top. |
-| T2/T3 → T1 | Set the boilup lever V_B = current V_{N+1}. Vapour flows become CMO at the next step; the learner sees the vapour profile flatten (the teaching point). |
+| T1 → T2/T3 | Compute bubble points and enthalpies from the current x and P_top (= preset P); T^(n−1) := T. Set FC-103 SP (duty) so that the **top vapour V_1 (and hence D) is continuous**: Q_R = V_1 (H_V(y_1, T_1) − h_L(x_0, T_0)) + D h_D + B h_B − F h_F, the steady energy balance evaluated with Tier-2 enthalpies on the current state. Initialise n_V and n_V,i = n_V y_1 from P_top. PC-101 SP = P_top, OP as initialised (70 %). |
+| T2/T3 → T1 | Set the boilup lever V_B = current V_1 − (1 − q)F (top vapour continuous). Vapour flows become CMO at the next step, so the learner sees the profile flatten (the teaching point), while D and the product split stay put. |
+
+**Why the top vapour, not the boilup** (M4 prototype finding). Keeping V_B continuous (v1.0) lets the non-CMO top vapour grow, by +4.3 % for B-T. Under LV control D jumps by the same kmol/h: B-T default went from D 50 → 56.4 and xD 0.981 → 0.883 at the new Tier-2 steady state, a collapse caused by the switch alone. Keeping V_1 gives D 49.96, xD 0.9784 and P within 0.25 kPa of SP; the stripping-section vapour steps by up to −6 %, which is the non-CMO profile appearing. Liquid flows on individual trays step by up to 13 % at dt = 0.5 s as the liquid profile redistributes (VALIDATION.md VC-8.9).
 | T2 ↔ T3 | Only the K model changes; temperatures re-converge in the next bubble-point solve. |
 
 Switching never resets compositions or holdups.
@@ -1898,10 +1927,10 @@ The engine computes these checks from **readings only** (instrument values and q
 
 | Id | Check | Residual (B-T notation) | Band | What the learner sees |
 |---|---|---|---|---|
-| C1 | **Total material balance** (all tiers) | r1 = F̄ − D̄ − B̄ − (ΔN_0 + ΔN_S)/W with F = FT-101, D = FT-104, B = FT-105 | max(2.0 kmol/h, 0.02 F̄) | Row "In F 100.2 · Out D + B 99.9 · Accumulating +0.1 · Unaccounted +0.2 kmol/h (band ±2.0)" |
+| C1 | **Total material balance** (all tiers) | r1 = F̄ − D̄ − B̄ − (ΔN_0 + ΔN_S)/W with F = FT-101, D = FT-104, B = FT-105 | max(2.0 kmol/h, 0.02 F̄) · max(1, 600 s/W). The level term's noise scales as 1/W (fixed end-point averages divided by W): ≈ 0.83 kmol/h at W = 600 s. Scaling the band keeps band/noise ≈ 2.4 at every window ≤ 600 s; without it, W = 300 s gave 18 % `check` and 1.2 % `fail` on a healthy column (tester) | Row "In F 100.2 · Out D + B 99.9 · Accumulating +0.1 · Unaccounted +0.2 kmol/h (band ±2.0)" |
 | C2 | **Component balance** (light component; LK for multicomponent); steady only, W ≥ 1800 s | r2 = F̄ z̄ − D̄ x̄_D − B̄ x̄_B, with z = AT-100, x_D = 1 − AT-101, x_B = AT-102 (B-T). Also D/F from meters, D̄/F̄, against D/F from analysers, (z − x_B)/(x_D − x_B) | 0.01 F̄ z̄; D/F ± 0.01 | "Benzene in 50.1, out 49.6 kmol/h; D/F: meters 0.502, analysers 0.499" |
-| C3 | **Top vapour, Tier 1**: boilup vs reflux + distillate (CMO) | V_boil = V̄_B + (1 − q) F̄ (V_B = FT-103, q = feed lever); V_refl = L̄_0 + D̄ + ΔN_0/W (L_0 = FT-102); r3 = V_boil − V_refl | max(2.0 kmol/h, 0.015 V_refl) | Three numbers: "Vapour to the top: from boilup 150.1 · from reflux + distillate 149.8 · difference +0.3 (band ±2.3)" |
-| C3a | **Top vapour, Tiers 2/3**: condenser duty vs reflux + distillate | Q_C,cw = ρ_w FT-201 c_p,w (TI-202 − TI-201) (windowed means; ρ_w 995 kg/m³, c_p,w 4180 J/kg/K); λ_top = H_V(x_D, T_cond) − h_L(x_D, T̄_100), T_cond = T_bub(x_D, P̄_101); V_cw = Q_C,cw/λ_top; r3a = V_cw − V_refl | max(2.0 kmol/h, 0.02 V_refl) | "Condenser 1282 kW ≈ 150.3 kmol/h of vapour · reflux + distillate 149.9" |
+| C3 | **Top vapour, Tier 1**: boilup vs reflux + distillate (CMO) | V_boil = V̄_B + (1 − q) F̄ (V_B = FT-103, q = feed lever); V_refl = L̄_0 + D̄ + ΔN_0/W (L_0 = FT-102); r3 = V_boil − V_refl | max(2.0 kmol/h, 0.015 V_refl) · max(1, 600 s/W) (same reason as C1) | Three numbers: "Vapour to the top: from boilup 150.1 · from reflux + distillate 149.8 · difference +0.3 (band ±2.3)" |
+| C3a | **Top vapour, Tiers 2/3**: condenser duty vs reflux + distillate | Q_C,cw = ρ_w FT-201 c_p,w (TI-202 − TI-201) (windowed means; ρ_w 995 kg/m³, c_p,w 4180 J/kg/K); λ_top = H_V(x_D, T_cond) − h_L(x_D, T̄_100), T_cond = T_bub(x_D, P̄_101); V_cw = Q_C,cw/λ_top; r3a = V_cw − V_refl | max(2.0 kmol/h, 0.02 V_refl) · max(1, 600 s/W) | "Condenser 1282 kW ≈ 150.3 kmol/h of vapour · reflux + distillate 149.9" |
 | C3b | **Column energy balance**, Tiers 2/3 | r3b = Q̄_R + F̄ h_F − Q_C,cw − D̄ h_D − B̄ h_B; Q_R = FT-103; h_F from the feed lever (T_F) and z = AT-100 with the simulator's own feed-enthalpy function; h_D = h_L(x_D, T̄_100); h_B = h_L(x_B, T̄_121) | 0.02 Q̄_R | "Reboiler 1301 kW + feed −12 kW = condenser 1282 kW + products 4 kW · unaccounted +3 kW (band ±26)" |
 | C4 | **Valve characteristic**, one per valve–meter pair: FV-101/FT-101, FV-102/FT-102, FV-103/FT-103, LV-101/FT-104, LV-102/FT-105, PV-101/FT-201 | F_exp = F_max g(OP̄); for FV-103 in Tiers 2/3, Q_exp = Q_max,0 g(OP̄) with Q_max,0 = UA_R,clean (T_st(P̄_201) − T̄_121); r4 = F̄_meas − F_exp | 0.015 F_max (10-min noise of r4 from d: ≈ 0.32 % of the flow) | On each faceplate, a small plot of flow vs OP with the straight characteristic, a band and the window-mean operating point. Panel row: "FV-102: OP 30.3 % → expects 90.9 kmol/h; meter says 100.0 (−9.1, band ±4.5)" |
 | C5 | **Level vs integrated flows** (drum, sump) | Drum: Δ_pred = ∫(V̂ − L_0 − D) dt / N_0,1%; sump: Δ_pred = ∫(F + L_0 − V̂ − B) dt / N_S,1% (tray holdups taken constant). V̂ = V_boil (T1) or V_cw (T2/3); Δ_meas = LT_end − LT_start; r5 = Δ_meas − Δ_pred (in % level) | 1.0 % + 0.5 % per 600 s of window | A mini-trend over the window: measured level (solid) and "level predicted from the flows" (dashed, starting at the same point). The gap at the end is r5 |
