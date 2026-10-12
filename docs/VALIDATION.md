@@ -128,7 +128,26 @@ B-T default, ideal hydraulics, Tier 1: run to steady state with dt = 0.25, 0.5, 
 
 Tolerances: x_D ± 0.002, x_B ± 0.01, D ± 1.0 kmol/h at the finite times (they depend on holdups and level tuning); the final state as VC-4. Direction checks (strict): x_D rises monotonically after 60 s; x_B rises; D falls below 40 and recovers (level-loop overshoot).
 
-**VC-7.2 Hydraulic lag.** Same steady state, L₀ +10 kmol/h. Liquid flow leaving tray 1 reaches 63 % of the step within 1–4 s; leaving tray 20, within 20–45 s (prototype: 24 % at 20 s, 67 % at 30 s). Checks that the weir hydraulics produce a realistic lag of about 1–2 s per tray.
+**VC-7.2 Hydraulic lag** (amended 2026-10-12). Same steady state, reflux SP +10 kmol/h at t = 0.
+
+Definitions:
+- t63(X) is the first time the change in X reaches 63 % of its final change, measured from the lever change, sampling every step.
+- X = L₀, the **delivered** reflux: `streams[reflux].flow`, the flow the solver used (DEVIATIONS.md E5).
+- X = L₁ and L₂₀: `stages.liquidDown[1]` and `[20]`.
+
+Pass:
+- t63(L₁) − t63(L₀) ∈ [1, 4] s
+- t63(L₂₀) − t63(L₀) ∈ [20, 45] s
+
+This checks that the weir hydraulics produce a realistic lag of about 1–2 s per tray.
+
+Reference values:
+- [P] M1 engine (1 s ideal flow lag, DEVIATIONS.md E2): t63(L₀) = 2.0 s, t63(L₁) = 3.5 s, t63(L₂₀) = 31.0 s, so the differences are 1.5 s and 29.0 s. A −10 kmol/h step gives 1.5 s and 30.0 s.
+- The v1.0 prototype stepped the delivered reflux directly: tray 20 was at 24 % after 20 s and 67 % after 30 s.
+
+Not asserted (information): lever to L₁ 63 % is 3.5 s in M1. With the M3 flow loop (true flow 63 % at 3.0 s, VC-16.4) it is about 4.5–5 s.
+
+*Why amended.* v1.0 timed tray 1 from the lever change (1–4 s). The window came from a prototype with no flow-controller lag, so it silently required an instantaneous flow loop. That conflicts with PHYSICS.md §10.4's ≈ 3 s loop. The tester found it and the M1 coder worked around it with a 1 s lag (DEVIATIONS.md E2/E18). Timing from the delivered flow tests what the case was written for, and holds for every flow-loop speed between 0 and about 5 s: for two first-order lags, the tray's 63 % delay changes by under 0.3 s.
 
 **VC-7.3 Level loop.** Same reflux step: drum level maximum deviation 2–6 points (prototype 3.58 at 17 min), back within ±1 point of SP within 90 min (prototype 56 min), final 50.00 ± 0.01 %. Feed +10 %: sump maximum deviation 2–6 points (prototype 3.53), final 50.00 ± 0.01 %.
 
@@ -419,16 +438,51 @@ Ideal 5–95 gaps (D86): kerosene–naphtha +36.9 K, diesel–kerosene +36.0 K, 
 - Every main-column tray between 35 % and 85 % jet flood, no weeping, column ΔP 15–60 kPa. If not, the implementer adjusts the preset diameter/geometry (not the physics) and records it.
 - Direction checks: kero draw +2 % of crude → kero D86 95 % up, diesel D86 5 % down, kero–naphtha gap unchanged ± 3 K, diesel–kero gap down; PA trip (F25) → top temperature and overhead duty up within 10 min; stripping steam loss (F24) → residue yield up, diesel/AGO yield down, bottom temperature up.
 
-## VC-16 Controllers [I]
+## VC-16 Controllers [I] / [P]
 
-- **16.1 PID arithmetic.** Velocity form, dt = 1 s, Kc = 2, Ti = 10 s, Td = 0, direct action, span 0–100. A constant error of +1 % for 10 steps from OP = 50 % → OP = 50 + 2·(1 [first-step proportional kick]) + 10·2·(1/10)·1 = 54.0 %. Then error → 0: OP drops by the proportional term only → 52.0 %.
-- **16.2 Anti-windup.** Same loop, error +50 % for 100 steps: OP sticks at 100 %; when the error becomes −1 % the OP leaves 100 % on the first step.
-- **16.3 Bumpless transfer.** MAN at OP = 37.2 % with PV ≠ SP; switch to AUTO (SP is set to the current PV and the stored previous error to 0); with the PV held constant the OP stays at 37.2 % (|ΔOP| < 1×10⁻⁹ per step).
-- **16.4 Ideal flow controller.** SP step 100 → 120 kmol/h, τ_FC = 3 s, dt = 0.5 s: flow after 3 s = 120 − 20·(1 + 0.5/3)^−6 = 112.07 kmol/h (implicit lag); after 15 s = 119.80 kmol/h.
-- **16.5 Level loops** (B-T, Tier 1): see VC-7.3.
-- **16.6 Pressure loop** (B-T, Tier 2, total condenser): PC-101 SP step +10 kPa → P_top within ± 1 kPa of the new SP within 10 min; overshoot ≤ 30 % of the step; no sustained oscillation (decay ratio ≤ 0.3). Loss of cooling F09 mode flow, s = 0.5 → CW valve to 100 % within 2 min and P_top rises to a new steady value; s = 1.0 → P rises until the relief valve lifts (alarm, event).
-- **16.7 Cascade.** TC-101 enabled on tray 14 (Tier 2): feed composition +0.1 → TC-101 holds tray-14 T within ± 0.5 K after 60 min by moving FC-103 SP.
-- **16.8 Instrument and valve faults.** Drum level transmitter bias −15 % (F19) → true drum level settles 15 points above the displayed level; reflux valve stuck (F20) → FC-102 output moves, reflux flow does not.
+The PID unit tests drive a bare `ControlLoop` with scripted PVs. Unless stated: h = 1 s, span 0–100, Td = 0, OPLO/OPHI 0/100, noise off.
+
+- **16.1 PID arithmetic [I].** Kc = 2, Ti = 10 s, direct action, OP₀ = 50 %, SP = 50.
+  - PV steps 50 → 51 at the first execution and holds. OP = 52.2 after 1 execution and 54.0 after 10. PV back to 50: OP = 52.0.
+  - Same loop, but the error is made by an SP step 50 → 49 with PV = 50: with `spKick` true, OP = 52.2 after 1 execution and 54.0 after 10. With `spKick` false (re-based), OP = 50.2 after 1 and 52.0 after 10.
+  - Tolerance 1×10⁻¹².
+- **16.1b Derivative sign [I].** Kc = 1, Ti = ∞, Td = 8 s (τ_f = 1 s), SP 50, PV = 50 + k at execution k, OP₀ = 50.
+  - Direct action: OP = 55, 58, 60, 61.5, 62.75, 63.875 after executions 1–6.
+  - Reverse action: 45, 42, 40, 38.5, 37.25, 36.125.
+  - This pins the corrected sign of (10.1): with v1.0's sign the first value would be 47.
+- **16.2 Anti-windup [I].** Kc = 2, Ti = 10 s, direct, OP₀ = 50, PV = 55 and SP = 50 for 100 executions: OP = 61 after 1 execution, 99 after 39, and 100 from execution 40 on. PV then drops to 49.5: OP = 88.9, then 88.8. A positional PI without anti-windup would stay at 100 % for about 490 executions.
+- **16.3 Bumpless transfer [I].**
+  - (a) MAN with OP = 37.2 %, PV = 62.0 %, SP = 50 %; switch to AUTO: SP becomes 62.0, and with PV constant |ΔOP| < 1×10⁻⁹ per execution for 100 executions.
+  - (b) AUTO → MAN: OP unchanged.
+  - (c) [P, M4] Enabling TC-101 at a Tier 2 steady state: TC-101 SP = the TI-114 reading at the switch, and FC-103's SP moves < 0.1 kW in the first 60 s. Disabling it holds FC-103's SP.
+  - (d) With FC-103 in AUTO, TC-101 is in IMAN and its OP equals 100 (SP_FC-103 − lo)/(hi − lo) to 1×10⁻⁹.
+- **16.4 Flow loop [P]** (PHYSICS.md §10.4 settings; prototype of the exact algorithm). FC-102, B-T Tier 1, noise off, steady at 100 kmol/h (OP 33.333 %). The SP steps to 110 kmol/h at t = 0.
+  - Sub-step values, read through the `@visibleForTesting` fast-layer trace, ± 0.01 kmol/h:
+
+    | t (s) | 0.5 | 1 | 2 | 3 | 5 | 10 | 20 |
+    |---|---|---|---|---|---|---|---|
+    | True flow (kmol/h) | 101.186 | 102.566 | 104.820 | 106.432 | 108.323 | 109.748 | 109.994 |
+
+    Measured PV at 3 s: 105.615. OP at 1 s: 35.986 %; final 36.667 %.
+  - Main-step means used by the solver (`StepDebug`, ± 0.01): at dt = 0.5 s, 100.596, 102.026, 103.308, 104.418, 105.359, 106.149, 106.808, 107.357; at dt = 2 s, 102.587, 106.418, 108.315, 109.210.
+  - The sub-step sequences at dt = 0.5 s and 2 s are bit-identical.
+  - 63 % times: true flow 3.0 s, measured 3.5 s. Overshoot ≤ 0.05 %.
+  - Tier 2 duty loop (gain 0.722): 63 % in 4.2 ± 0.2 s.
+  - With noise off, every M1 steady state (VC-4, VC-6) is reproduced to its stated tolerance with the real flow loops.
+- **16.5 Level loops.** VC-7.3, unchanged; the M3 flow loops keep it within its bands.
+- **16.6 Pressure loop** (B-T Tier 2, total condenser).
+  - PC-101 SP step +10 kPa: P_top within ± 1 kPa of the new SP within 10 min, overshoot ≤ 30 % of the step, and no sustained oscillation (decay ratio ≤ 0.3).
+  - Loss of cooling F09 mode flow, s = 0.5: CW valve to 100 % within 2 min, and P_top rises to a new steady value.
+  - s = 1.0: P rises until the relief valve lifts (alarm, event).
+- **16.7 Cascade.** TC-101 enabled on tray 14 (Tier 2; Kc 4.0 on the 0–200 °C span): feed composition +0.1 → TC-101 holds the TI-114 reading within ± 0.5 K after 60 min by moving FC-103's SP, which stays inside the 20–65 % OP limits.
+- **16.8 BAD PV handling [I].**
+  - (a) `badPvShed` = 1, LT-101 `signalLossLow`: at the next execution LC-101 is in MAN with OP unchanged (|ΔOP| < 1×10⁻¹²), `LT-101.BAD` (high) and `LC-101.SHED` are raised, and `setMode(AUTO)` throws StateError while the PV is BAD.
+  - (b) `badPvShed` = 0, same fault: LC-101 stays in AUTO and its OP is 0 % after the first execution, because e = −52.5 % gives ΔOP = −105. LT-102 `signalLossHigh` drives LC-102's OP to 100 %.
+  - (c) Ratio mode with FT-104 BAD: FC-102's SP stays at its last GOOD value.
+- **16.9 Valve faults and bypass [I/P].** FC-102 at steady state, noise off.
+  - (a) FV-102 `stuck`, then SP +10 kmol/h: the true flow changes by < 1×10⁻⁹. OP rises 2.1 % at the first sub-step (P kick), then 1 %/s, reaches 100 % at 64.7 ± 0.5 s, and `FC-102.OPSAT` is raised 60 s later.
+  - (b) `failOpen`: true flow 63 % of the way to 300 kmol/h after 2.1 ± 0.1 s, and OP is driven to 0.
+  - (c) `bypass.FV-102` = 33.3: the opening ramps at 2 %/s and the flow settles at 99.9 kmol/h. FC-102 is forced to MAN, and FT-102 reads the bypass flow.
 
 ## VC-17 Units [I]
 
@@ -469,11 +523,159 @@ Round trip toSI(fromSI(v)) = v to 1×10⁻¹² relative for every quantity.
 
 ## VC-20 Determinism
 
-Same build and platform: two runs of 10 000 steps with the same config, lever script and seed give bit-identical `saveState()` JSON. Across platforms (Windows x64 vs Android arm64): every state variable agrees to 1×10⁻⁹ relative after 1 h of sim time. Drills: the same seed draws the same fault and onset.
+- **20.1** Same build and platform: two runs of 10 000 steps with the same config, lever script and seed give bit-identical `saveState()` JSON.
+- **20.2** Across platforms (Windows x64 vs Android arm64), noise off: every state variable agrees to 1×10⁻⁹ relative after 1 h of sim time.
+- **20.3 PRNG vectors [I]** (PHYSICS.md §12.9), on native and on the web build (M10):
+  - FNV-1a-32("") = 2166136261, ("a") = 3826002220, ("FT-102") = 1498766031.
+  - Stream (seed 1, "FT-102") after the warm-up: next32 = 3793846675, 4233283444, 1026389867, 4162901922.
+  - A fresh stream with the same seed and key: uniform() = 0.883323766184137, then normal() = −0.6076328127833632 and −0.42066679512424215 (1×10⁻¹⁵ abs).
+  - Stream (seed 42, "drill"): uniform() = 0.041090393331688735, 0.8835882459215075.
+  - 10⁶ normals from (7, "stats"): mean within ± 0.003, variance within 1 ± 0.005.
+- **20.4 Save/restore.** Noise on, a fault active (FT-102 plugged, ramping) and an alarm unacknowledged. Run 1800 s, save, restore into a new simulator, and run both 1800 s more: bit-identical. This covers instrument, valve, PRNG, alarm and scenario state.
+- **20.5 Noise-on reproducibility and stream independence.**
+  - Same seed: bit-identical. Seeds 1 and 2: the FT-102 readings differ.
+  - Injecting a fault on FT-101, or switching TI-107 to spiking, leaves the FT-102 reading series bit-identical.
+  - Drills: the same seed draws the same candidate, severity, onset and sign (VC-26.5).
+- **20.6 Steady indicator with noise on [P-type]** (PHYSICS.md §13.3, noise-on monitor). B-T Tier 1 default, started steady, noise on:
+  - the indicator turns green within 60 min and stays green ≥ 95 % of the time over the next 2 h;
+  - after a reflux SP step of +10 % it turns false within 10 min;
+  - "Run to steady state" with noise on returns the noise-off steady state (VC-4.1 to 1×10⁻⁵) and leaves the `noise` lever on.
+
+  If the thresholds of §13.3 need tuning to pass, record the values in DEVIATIONS.md.
 
 ## VC-21 Explain consistency
 
 For every stage of the B-T default (Tier 1, Tier 2, full hydraulics) and every equation line returned by `explain()`: `line.value` equals the corresponding snapshot value (same state) within 1×10⁻¹² relative; every line has a non-empty `texSymbolic` and `texSubstituted`; every id exists in PHYSICS.md §15's catalogue.
+
+## VC-22 Instruments (M3) [I] / [P]
+
+Unit tests drive a bare `Instrument` with a scripted true value (PHYSICS.md §10.5). Seeds and stream keys are as stated. Values are in % of span unless a unit is given. The statistical tolerances cover sampling error and the discrete-versus-continuous difference (≤ 4 % in the prototype).
+
+- **22.1 4–20 mA and quality [I]**, FT-102 (0–300 kmol/h), noise off:
+
+  | True value (kmol/h) | Current I (mA) | v_meas (kmol/h) | Quality |
+  |---|---|---|---|
+  | 100 | 9.33333 | 100.000 | GOOD |
+  | 300 | 20.0 | 300.000 | GOOD |
+  | 305 | 20.2667 | 305.000 | UNCERTAIN, "OOR▲" |
+  | 320 | 20.5 (saturated) | 309.375 | UNCERTAIN |
+  | −20 | 3.8 | −3.750 | UNCERTAIN, "OOR▼" |
+  | `signalLossLow` | 3.6 | −7.500 | BAD, "IOP−" |
+  | `signalLossHigh` | 21.0 | 318.750 | BAD, "IOP+" |
+
+  Tolerance 1×10⁻⁹. With noise on, I_q is a multiple of 1/4096 mA.
+- **22.2 Noise statistics [P].** Constant true value, noise on, 200 000 s, seed 11, stream keys `inst:<tag>:s` and `:e`. Measured standard deviation within ± 6 % of σ_disp, mean within ± 0.02 % of span, and lag-τ_s autocorrelation in 0.45–0.70:
+
+  | Type | σ_disp | Prototype h = 0.5 s | Prototype h = 2 s |
+  |---|---|---|---|
+  | FT (h = 0.1 s) | 0.409 | 0.404 | – |
+  | LT drum | 0.423 | 0.418 | 0.408 |
+  | LT sump | 0.775 | 0.761 | 0.748 |
+  | PT | 0.046 | 0.0445 | 0.0446 |
+  | PDT | 0.845 | 0.835 | 0.815 |
+  | TI | 0.062 | 0.0624 | 0.0610 |
+
+  - The valve disturbance d has standard deviation 0.0100 ± 0.0006 and autocorrelation at 30 s of e⁻¹ ± 0.05.
+  - **dt independence:** for every type tested at both h, the two standard deviations agree within ± 6 %.
+- **22.3 Noise in a closed flow loop [P].** FC-102 at 100 kmol/h, noise on, seed 3, 1800 s after a 600 s warm-up. Prototype values:
+  - reading standard deviation 1.18 kmol/h (pass 1.0–1.4);
+  - standard deviation of 0.5-s differences 0.71 (pass 0.6–0.85);
+  - true-flow standard deviation 0.88 (pass 0.6–1.2);
+  - OP standard deviation 0.47 % (pass 0.3–0.7);
+  - every 5-min mean of the true flow within ± 0.4 kmol/h of the SP.
+- **22.4 Determinism.** See VC-20.3 to 20.5.
+- **22.5 Failure-mode signatures [I unless marked].** Faults are injected at t₀ = 600 s; noise on unless stated.
+
+  | Mode | Setup | Assertion |
+  |---|---|---|
+  | bias | FT-102, sign +1, s = 0.3 | Mean (reading − true) over 600 s = 9.00 ± 0.1 kmol/h; quality GOOD; noise unchanged (± 6 %) |
+  | drift | FT-101, sign +1, s = 0.6 | Reading − true = 15.0 ± 0.1 kmol/h after 3600 s (0.6 × 0.1 × 250), and 7.5 ± 0.1 after 1800 s |
+  | stuck | any tag | Every reading after t₀ bitwise equal to the last pre-onset reading; σ_5min = 0 exactly; `digitsAge` ≥ t − t₀ |
+  | signal loss | as 22.1 | BAD from the first update after t₀; `<tag>.BAD` raised with 0 on-delay |
+  | plugged [P] | FT-102, s = 1, 0.9, 0.75, 0.5, ramp 0, noise off; true value steps +10 % of span 60 s after t₀ | Fraction of the step shown after 600 s = 0.058, 0.140, 0.451, 0.998 (± 0.01). With noise on and a constant true value, σ_5min/σ_disp ≤ 0.08 for s = 1 (prototype 0.049) |
+  | spiking [P] | FT-102 at 33 % of span, 3600 s | s = 1: 180 ± 40 spikes (prototype 186), \|a\| in 10–50 % of span, σ_5min/σ_disp ≥ 10 (prototype 17.8). s = 0.5: 90 ± 28 spikes, ratio ≥ 4 (prototype 6.1). TI-107 at s = 0.5: ratio ≥ 20 (prototype 38). At 33 % of span no spike reaches BAD; a reading at 90 % of span with a spike of +20 % reaches 21.6 mA → BAD for that update |
+  | coated | TI, s = 1, h = 0.5 s; true step +10 K | Reading 63 % at 100.5 ± 1 s (healthy 10.5 ± 0.5 s); σ_disp ratio coated/healthy 0.52 ± 0.05 |
+  | analyser | AT-101 (phase 100 s), noise off; true value 0.0200 → 0.0700 at the step ending at t = 1000 s | Shown 0.0200 up to 1299.5 s; 0.0204 from 1300 s (0.826 % of the step through the 60-s lag); 0.0697 from 1600 s; 0.0700 from 1900 s. Result age 300–600 s at all times after the first publication. Signal loss: no new result, quality BAD; STALE after 600 s without a result |
+  | AT bias | AT-102, sign +1, s = 0.5 | Published results = lagged true + 0.005 ± 1×10⁻⁴ (rounding) |
+
+- **22.6 Field gauges [P].** 1000 requests of LG-101 against a constant true level of 50.0 %: results ready exactly at the first step end ≥ request + 180 s; mean error within ± 0.15 %; standard deviation 1.15 ± 0.1 % (N(0, 1 %) plus 2 % graduation rounding). One pending request per gauge: a second request is ignored until the first returns.
+- **22.7 Maintenance.** `requestMaintenance("FT-102")` with a bias active: quality OOS for 1800 s, FC-102 shed to MAN regardless of `badPvShed`, then GOOD with the bias cleared. In a drill it throws StateError.
+
+## VC-23 Cross-checks (M3: C1, C3, C4, C5; M4: C2, C3a, C3b, C6, C7) [I] / [P]
+
+- **23.1 Exact closure [I].** B-T Tier 1 default steady state, noise off, window 600 s: r1, r3, r4 (every pair) and r5 (drum and sump) are each below 1×10⁻⁶ of their band; status `ok`. C2 (after 1800 s steady): \|r2\| ≤ 0.02 kmol/h (analyser rounding). The Tier 2 VC-11 steady state with noise off: \|r3a\|, \|r3b\| ≤ 0.1 band; C7 \|r7\| ≤ 0.05 K.
+- **23.2 No false alarms [P].** B-T Tier 1 (and Tier 2 from M4), steady, noise on, 2 h, every window size: no check ever `fail`; `check` on < 2 % of evaluations; the standard deviation of r4 for FV-102 at W = 600 s ≤ 0.25 band.
+- **23.3 Detection [P]** (noise on, B-T, default window; Tier 1 rows in M3, Tier 2 rows in M4):
+
+  | Fault (t₀ = 600 s) | Must happen | Must not happen |
+  |---|---|---|
+  | FT-102 bias +, s = 0.4 (12 kmol/h) | C4:FV-102 and C3 `fail` within 10 min | C1 leaves `ok` |
+  | FV-102 `stuck` | C4:FV-102 `fail` within 15 min | C3 or C1 `fail` (≥ 95 % of evaluations `ok`) |
+  | FT-102 plugged, s = 1, ramp 300 s | Signal-look ratio ≤ 0.2 within 10 min; C3 `fail` within 20 min | – |
+  | FT-101 drift +, s = 0.6 | C1 `fail` within 25 min; C4:FV-101 `fail` within 30 min | C3 `fail` (Tier 1, q = 1) |
+  | LT-101 bias +, s = 0.8 | C5:drum `fail` within 10 min; FT-104 excursion ≥ 10 kmol/h; an LG-101 check differs from LT-101 by 8 ± 3 % | C4 any `fail` |
+  | LT-102 stuck | σ_5min = 0 within 5 min; C5:sump `fail` within 20 min of a feed SP step of +5 kmol/h | – |
+  | PT-101 bias +, s = 0.3 (6.1 kPa) [T2] | r7a and r7b both ≥ 1.6 K with the same sign within 15 min | C6 flags any TI |
+  | TI-114 bias +, s = 0.25 (5 K), TC-101 on [T2] | C6 flags TI-114 within 20 min | C6 flags any other TI |
+  | F07 feed +0.08 benzene, ramp 900 s [T1, T2] | – | Any C1, C3, C4, C5 `fail`; C6 flags any TI (if C6 does, widen its factor 0.5 → 0.75 and record it in DEVIATIONS.md) |
+
+## VC-24 Plant view (M3)
+
+B-T Tier 1, view = 1, noise on, a 1-h run with a reflux step:
+- In every snapshot, `stages.x/y/yStar/liquidDown/vaporUp/entrain/weep/dp/jetFlood/dcFlood/frothFill/stability/weepFrac/efficiency` are all NaN.
+- `stages.t` is NaN (Tier 1) or, in Tier 2, NaN except at instrumented trays, where it equals the TI reading.
+- `holdup[0]` and `holdup[N+1]` equal level/100 · V/v_L,design from the LT readings.
+- `kpis.d/b/boilup/drumLevelPct/sumpLevelPct` equal the readings.
+- `kpis.xD` = 1 − AT-101's shown result; `maxFloodPct`, `balanceResidual` and `energyResidual` are NaN.
+- `valves[*].position` is NaN, and `visibleFaults` is empty.
+- `McCabeThieleBuilder.build` returns `available == false`.
+- `explain(ExplainStage(5))` returns the single "Not observable on a real plant" note.
+- No `model.*` alarm except `model.relief` appears.
+- In the same run, `MetricContext.read('kpi.xD')` returns the **true** value (it differs from the masked one by the analyser lag).
+
+## VC-25 Alarms (M3) [P]
+
+- **25.1 Chatter.** LT-101 true level held at exactly 85.0 % (the HI limit), noise on, 1 h, 5 seeds: `LT-101.HI` raised ≤ 4 times per hour per seed (prototype 1–2). With delays and deadband removed it would chatter about 200 times per hour. At 84.5 % (inside the deadband): ≤ 15 raises per hour (prototype 5–9).
+- **25.2 States.**
+  - Raise → UNACK; acknowledge → ACKED; clear → removed.
+  - Raise, then clear before acknowledgement → RTN-UNACK; acknowledge → removed.
+  - `acknowledgeAll` acknowledges every alarm, and the journal holds each transition with its sim time.
+- **25.3 Delays and conditions.**
+  - DEV is raised only for loops in AUTO/CAS, after 30 s beyond the limit; switching to MAN clears it.
+  - OPSAT is raised after 60 s at a limit with |e| > 2 %.
+  - BAD has no on-delay.
+  - Ordering: priority, then newest first.
+- **25.4 Readings, not truth.** LT-101 bias −10 %: `LT-101.HI` does not fire although the true level reaches 87 %. The safety accumulator (true level) still records any time above 95 %.
+
+## VC-26 Scenario engine (M3) [I]
+
+- **26.1 Schema.** `ScenarioDef.validate()` returns no problems for every shipped scenario and drill. Copies with an unknown metric path, an unknown lever, a candidate with weight 0 only, a template variable that does not exist, or `onsetWindow[1] + 3600 > timeLimit` each return a problem.
+- **26.2 Predicates.**
+  - `all`/`any`/`not`, `between`, and the numeric `==` tolerance of 1×10⁻⁹.
+  - String compares for `mode` and `quality`.
+  - `from: "start"` (a metric 0.97 at t = 0 and 0.955 now gives −0.015).
+  - NaN → false, except `!=`.
+  - `holdFor` resets on a single false evaluation.
+  - `latch` true keeps an objective achieved, while `latch` false lets it revert.
+- **26.3 Scoring arithmetic** (§11.4 of ENGINE_API.md).
+  - **Guided:** weights 0.6/0.2/0.1/0.1, three objectives of weight 1 with two achieved, t_end = 30 000 s, parTime = 10 800 s, timeLimit = 43 200 s, no relief, level violation 0, qualitySpec true 90 % of the time, no hints. Then O = 0.4, T = 0.2 × (2/3) × 0.40741 = 0.054321, S = 0.1, Q = 0.09, so the score is **64**.
+  - **Drill** (H9 weights): t₀ = 1200 s. Attempt 1 at 2100 s has the category right and the location wrong; attempt 2 at 2700 s is fully correct with the mode right. Protect is met at 1500 s, t_os = 2000 s, one hint is taken, there is no safety issue. Then C = 0.5, L = 0.2, T = 0.2 × (1 − 900/3000) = 0.14, S = 0.1, B = 0.1 + 0.05, P = 0.1, H = 0.03, so the score is **96**.
+  - **Same drill, never diagnosed:** C = L = T = 0, S = 0.1, B = 0.1 (protect met), giving **20**.
+- **26.4 Guided scenarios are completable [P].** An automated player applies each M3 scenario's hint values and must achieve every objective within the time limit, using fast-forward. Its checkpoints, against ENGINE_API.md §11.8 (Tier 1, ideal hydraulics, ± 1×10⁻⁴):
+
+  | Scenario | Setting | Expected |
+  |---|---|---|
+  | G2 | R = 1.30 | xD = 0.99279 |
+  | G2 | R = 1.20 | xD = 0.97142 |
+  | G2 | R = 1.15 | xD = 0.96071 |
+  | G2 | R = 1.12 | xD = 0.95429 |
+  | G4 | q = 1.2 / 1.0 / 0.5 / 0 at V_B = 1.02 × V_min (D = 50) | xD ≥ 0.95 and xB ≤ 0.05 at each |
+  | G4 | V_B = 0.98 × V_min | xD < 0.95 at each |
+  | G6 | N = 28 | xD = 0.98056 |
+  | G6 | N = 27 | xD = 0.97761 |
+
+  G11 and G12 run as in M2 (DEVIATIONS.md A9).
+- **26.5 Drill draws.** For the H9 JSON and seed s, the candidate, s, t₀ and sign are a pure function of s (two runs agree). Over seeds 1…10 000, each candidate's frequency is within 3σ of weight/Σweights. t₀ is always a multiple of dt inside the onset window. During the drill, no snapshot field and no event names the fault before `finish()`.
 
 ---
 
@@ -490,11 +692,11 @@ For each drill candidate the test injects the fault (fixed seed, onset at 600 s,
 | H2 | F11 non-condensables | P_top up while CW valve is not saturated at first; reflux subcooling **up** (≥ 5 K); opening the vent restores P within 10 min |
 | H3 | F04 broken tray, rectifying (tray 5) | column ΔP down; tray-5 ΔP ≤ 15 % of neighbours; x_D down at constant L/D |
 | H3 | F06 foaming s = 0.5 | ΔP up or erratic (std over 5 min ≥ 3× base); x_D down; antifoam restores within 40 min |
-| H3 | F19 reflux flow meter bias +15 % | displayed reflux = SP, true reflux 13 % lower; heat balance mismatch: V₁ from Q_C/λ disagrees with displayed L + D by ≥ 10 % |
+| H3 | F19 FT-102 bias, sign +1, s = 0.5 (+15 kmol/h; F19 biases are additive in % of span, PHYSICS.md §10.6) | displayed reflux = SP, true reflux 15 kmol/h lower; C3a: V₁ from the condenser duty disagrees with displayed L + D by ≥ 8 %; C4:FV-102 `fail` |
 | H4 | F13 reboiler fouling | steam valve rises over ≥ 30 min then saturates; duty falls below SP after saturation |
 | H4 | F14 condensate backup | duty falls below SP within 5 min with the steam valve at 100 % |
 | H4 | F15 steam header loss | header pressure reading down; duty limited; T_st down |
-| H5 | F19 sump level transmitter drift −20 %/h | displayed sump level steady at SP, true level falling; thermosyphon I_s rising; oscillation appears when the true level is < 25 % |
+| H5 | F19 LT-102 drift, sign +1 (reads high), s = 1 (10 %/h, the F19 maximum) | displayed sump level steady at SP, true level falling 10 %/h; thermosyphon I_s rising; oscillation appears once the true level is < 25 % (≈ 2.5 h after onset — this case runs 3 h) |
 | H5 | F17 inlet restriction | circulation W down ≥ 20 %; x_e up; no oscillation unless the duty is raised |
 | H5 | F18 outlet restriction | I_s > 1; boilup oscillation with period 5–15 s |
 | H6 | F07 feed upset (debutanizer, +0.05 nC4, −0.05 iC5) | feed analyser trend changes (dead time 300 s); LK recovery changes with reflux unchanged |
@@ -506,6 +708,37 @@ For each drill candidate the test injects the fault (fixed seed, onset at 600 s,
 | H8 | F24 stripping steam loss | bottom T up; residue yield up; flash-zone T slightly up |
 | H8 | F25 pumparound trip | top T and Q_C up within 10 min; diesel D86 95 % up |
 | H8 | F26 COT −15 K | residue yield up; overflash down; AGO yield down |
+
+### H9 and H10: evidence must be detectable with noise on (ENGINE_API.md §11.5)
+
+Unlike the rows above, these run with **noise on**, plant view and the drill's own settings. Each candidate is tested at the **minimum** severity of its range, with sign +1 and with sign −1, onset 600 s, seeds 1–3. "Within" counts from t₀; for drifts, from t₀ + 10 min. All are [P-type] checks for M6. A candidate that fails on the M6 engine gets weight 0 and an entry in DEVIATIONS.md; the drill is not tuned to pass.
+
+| Id | Candidate | Key evidence to assert (default window 600 s) | Also assert |
+|---|---|---|---|
+| H9.0 | **No fault** (healthy run, 2 h, the feed event included) | No check `fail`; no BAD alarm; the off-spec predicate is never true | Signal-look ratios of every tag in 0.5–2 |
+| H9.1 | FT-102 bias, s = 0.4 | C3 or C3a `fail` within 10 min; C4:FV-102 `fail` within 10 min | C1 `ok`; off-spec reached within 2 h (so the protect bonus means something) |
+| H9.2 | FT-102 plugged, s = 0.9 | Signal-look ratio of FT-102 ≤ 0.2 within 15 min | C3/C3a `fail` within 30 min |
+| H9.3 | FT-101 drift, s = 0.6 | C1 `fail` within 20 min | C4:FV-101 `fail` within 30 min |
+| H9.4 | FT-103 bias, s = 0.4 | C3b `fail` within 15 min; C4:FV-103 `fail` within 15 min | \|ΔxB\| < 0.01 (the cascade compensates) |
+| H9.5 | LT-101 bias, s = 0.8 | C5:drum `fail` within 10 min; LG-101 vs LT-101 ≥ 5 % at any time after 15 min | – |
+| H9.6 | LT-102 signal loss low | `LT-102.BAD` at once | With no action, true sump > 95 % within 30 min (safety at stake) |
+| H9.7 | LT-102 stuck | σ_5min of LT-102 = 0 within 5 min | C5:sump `fail` within 20 min after the feed event |
+| H9.8 | PT-101 bias, s = 0.3 | r7a and r7b ≥ 1.6 K, same sign, within 15 min | – |
+| H9.9 | TI-114 bias, s = 0.25 | C6 flags TI-114 within 20 min | Off-spec reached within 2 h |
+| H9.10 | TI-114 coated, s = 0.8 | Within 30 min after the feed event, either C6 flags TI-114, or TC-101's OP oscillates with peak-to-peak ≥ 5 %, or TI-114's signal-look ratio ≤ 0.6 | **Weakest candidate**; drop it per the rule above if none of the three holds |
+| H9.11 | TI-107 spiking, s = 0.5 | Signal-look ratio of TI-107 ≥ 5 within 5 min | – |
+| H9.12 | FT-104 stuck | σ_5min of FT-104 = 0 within 5 min | C1 or C3 `fail` within 20 min after the feed event |
+| H9.13 | F07 ± 0.08 benzene | AT-100 shows the change within 15 min | No check `fail` in 2 h; C6 flags nothing |
+| H10.0 | **No fault** (healthy run, 2 h, the planning event included) | As H9.0 | – |
+| H10.1 | FV-102 stuck | C4:FV-102 `fail` within 20 min, or within 5 min of the planning event | C3/C3a and C1 `ok` ≥ 95 % of evaluations; FT-102 signal-look ratio in 0.5–2 |
+| H10.2 | FV-103 stuck | C4:FV-103 `fail` as above | C3b `ok` ≥ 95 %; FT-103 signal look normal |
+| H10.3 | FT-102 bias, s = 0.4 | C4:FV-102 **and** C3/C3a `fail` within 10 min | – |
+| H10.4 | FT-102 plugged, s = 0.9 | FT-102 signal-look ratio ≤ 0.2 within 15 min | C3/C3a `fail` within 30 min (separates it from H10.1) |
+| H10.5 | FT-103 drift, s = 0.6 | C3b `fail` within 25 min | C4:FV-103 `fail` within 30 min |
+| H10.6 | FT-103 plugged, s = 0.9 | FT-103 signal-look ratio ≤ 0.2 within 15 min | – |
+| H10.7 | F07 ± 0.10 benzene | AT-100 shows the change within 15 min | No C4 `fail`; no C3 `fail` in 2 h |
+
+A healthy run with the drill's scripted event (H9.0, H10.0) must never meet the off-spec predicate, so the protect bonus measures the fault and not the event (ENGINE_API.md §11.5 rule 7). If H9.0 fails, reduce the feed event from +5 to +3 kmol/h and record it.
 
 ---
 
