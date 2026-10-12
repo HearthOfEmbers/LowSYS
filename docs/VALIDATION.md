@@ -364,11 +364,18 @@ Terms:
 | Broken tray F04, tray 15, s = 1 | column ΔP 13.73 | x_D 0.9753, x_B 0.0176 | as above |
 | Broken tray F04, tray 5, s = 0.5 | | x_D 0.9743, x_B 0.0186; tray-5 weeping fraction 0.68 | tray-5 weeping fraction ≥ 0.5 |
 
-The three F04 rows were computed with the v1.0 dumping law (k_d = (0.2 − Φ)/0.2/8 s). With the orifice-drainage law of PHYSICS.md (5.15) (M3), the broken tray holds almost no liquid. Its numbers move a little and are to be re-pinned when that law lands. The must-hold assertions stay.
+**Dumping law (M3).** The three F04 rows were recomputed with a prototype of the orifice-drainage law of PHYSICS.md (5.15) on the M2 engine. They are identical to 4 decimals to the v1.0 law: a broken tray at normal load has Φ ≈ 0.25 and never dumps. They stay [P] until the M3 engine reproduces them.
 
 Robustness assertion for every case: no NaN, no negative holdup, solver fatal flag never set, over 4 h.
 
 **VC-12.5 Valve trays [P/I].** Same column with valve trays (f_v = 0.14, r_min = 0.25, ΔP_lift = 190 Pa, C_v = 0.65): at the design load the valves are fully open and ΔP_dry ≈ 357 Pa (sieve: 472–641 Pa); at 35 % load the valves balance (ΔP_dry = 190 Pa) and w = 0 (sieve: w ≈ 0.5); weeping starts below about 18 % load.
+
+**VC-12.6 Dumping [P]** (M3, PHYSICS.md (5.15)). Design steady state (TS 0.9 m), then boilup cut to 0 with the feed on; after 600 s:
+- every tray with `dumping` set holds ≤ 2 mol (sieve; prototype 1.1–1.4 mol, h_cl 0.14–0.17 mm). In a valve-tray column, ≤ 15 mol (prototype h_cl 1.4–1.7 mm);
+- no tray holds more than 20 mol except trays that are not dumping;
+- the same run at dt = 2 s and 30 s gives the same holdups within ± 0.5 mol, with no negative holdup and no NaN;
+- the holdup Newton needs ≤ 10 iterations per tray and step (prototype ≤ 7);
+- fully broken tray 5: the steady states at dt = 0.5, 2 and 30 s agree within 1×10⁻⁶ in x_D (prototype 0.974315 at all three).
 
 ## VC-13 Packed sections [I]
 

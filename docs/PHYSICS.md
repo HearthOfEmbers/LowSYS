@@ -668,18 +668,29 @@ W_j = f_j · L_{j−1}                                                          
 
 Φ_j and hence w_j are evaluated at the start of the step; W_j uses the current step's L_{j−1} (known in the top-down sweep, §12.2). W_j is the inlet liquid that falls through the holes to tray j+1 without crossing the deck, keeping its arrival composition (§4.1). From the bottom tray it falls into the sump. Feed liquid is assumed to reach the deck (it does not bypass).
 
-**Dumping** (revised v1.1, M3). When the vapour can no longer hold liquid on the deck (Φ < 0.2, e.g. boilup lost), the tray drains through its open area like an orifice:
+**Dumping** (revised v1.1, M3). When the vapour can no longer hold liquid on the deck (Φ < 0.2, e.g. boilup lost), the tray drains through its open area like an orifice. In terms of the tray's holdup M:
 
 ```
-L_dump,j = ((0.2 − Φ_j)/0.2) · C_dump A_h,eff √(2 g h_cl,j) / v_L        (only when Φ_j < 0.2)
-           C_dump = 0.6 ;  A_h,eff = A_h (sieve, fouled/broken as §11) or A_min (valve, closed) ;
-           h_cl,j = M_j v_L / A_a,eff
-dL_dump/dM = L_dump / (2 max(M_j, 10⁻⁹ mol))           (implicit, part of the downflow with tray composition)   (5.15)
+L_dump,j(M) = κ_j √M                                                                       (5.15)
+κ_j = ((0.2 − Φ_j)/0.2) · C_dump · A_drain,j · √(2 g v_L,j / A_a,eff,j) / v_L,j      if Φ_j < 0.2, else 0
+      (because h_cl = M v_L/A_a,eff, √(2 g h_cl) = √(2 g v_L/A_a,eff) · √M)
+C_dump = 0.6 (sharp-edged orifice)
+A_drain,j = sieve: A_h,eff,j = f_h A_a · holeScale_j · (1 − s_broken) + s_broken A_a   (the same area as (5.3) and §11)
+            valve: A_min,eff,j = r_min f_v A_a · holeScale_j · (1 − s_broken) + s_broken A_a   (valves closed)
+Φ_j, A_drain,j, A_a,eff,j and v_L,j are start-of-step values (§12.4 step 4); only M is implicit.
 ```
 
-A fully dumping sieve deck fed 100 kmol/h therefore holds about 0.15 mm of clear liquid (≈ 1 mol), and a closed valve deck about 1.2 mm. Real dumping trays look like this: nearly empty, liquid raining through. The Murphree factor min(1, h_cl/5 mm) of §4.2 then removes almost all contact.
+- **Solve.** κ_j enters the top-down implicit holdup sweep of §12.2, solved for u = √M (see there).
+- **Flags.** The tray's `dumping` flag (bit 2) is set when κ_j > 0. The `eq.weeping` overlay line shows κ_j, √M̂ and L_dump.
+- **What it gives** (engine prototype, B-T, TS 0.9 m, boilup cut to 0 with feed on, after 10 min):
+  - sieve trays receiving liquid hold 1.1–1.4 mol, h_cl 0.14–0.17 mm;
+  - valve trays hold 1.4–1.7 mm;
+  - trays that receive nothing are dry.
 
-v1.0 used L_dump = k_d M with k_d = ((0.2 − Φ)/0.2)/8 s. Any tray still receiving inlet liquid then kept about 8 s of inflow (≈ 220 mol, h_cl ≈ 28 mm, more than a normal tray), which contradicted the "near-zero holdup" a dumping tray should show (tester finding, DEVIATIONS.md T2). The change affects only trays with Φ < 0.2: broken trays (F04, s ≥ 0.5) and loss of boilup. Normal operation, weeping (0.2 ≤ Φ < 0.75) and every ideal-hydraulics number are unaffected. VALIDATION.md marks the F04 rows of VC-12.4 for re-pinning.
+  Real dumping trays look like this: nearly empty, with liquid raining through. The Murphree factor min(1, h_cl/5 mm) of §4.2 then removes almost all contact.
+- **Broken trays.** A fully broken tray (F04, s = 1) does **not** dump at normal load. Its bypass sends all arriving liquid through the opening, so it holds only the few mol entrained from below (2.4 mol) on its 2 % residual area. That gives an apparent h_cl ≈ 14 mm and Φ ≈ 0.25 > 0.2. Its behaviour, and the VC-12.4 F04 rows, are therefore the same under both dumping laws (checked to 4 decimals).
+
+v1.0 used L_dump = k_d M with k_d = ((0.2 − Φ)/0.2)/8 s. Any tray still receiving inlet liquid then kept about 8 s of inflow (≈ 220 mol, h_cl ≈ 28 mm, more than a normal tray), which contradicted the "near-zero holdup" a dumping tray should show (tester finding, DEVIATIONS.md T2). The change affects only trays with Φ < 0.2, mainly loss or near-loss of boilup. Normal operation, weeping (0.2 ≤ Φ < 0.75), broken trays at normal load and every ideal-hydraulics number are unaffected (prototype: design point and the three VC-12.4 F04 rows identical).
 
 Valve trays reach low Φ only when the valves are closed (§5.4), which is why they turn down further (about 5:1 versus 2:1 for sieve trays with the defaults).
 
@@ -1457,7 +1468,7 @@ Faults act only by changing physical parameters or adding physical flows. No fau
 
 | ID | Location | Parameter changes (applied every step from s(t)) | Default τ_r |
 |---|---|---|---|
-| F04 Broken / missing tray | tray j | Opening fraction s of the deck: liquid bypass s_broken,j = s added to the bypass fraction f_j (5.14) (the arriving liquid falls through with its inlet composition, like weeping); vapour bypass b_V,j = s in (4.2); hole area A_h,eff = A_h (1 − s) + s · A_a (the opening is a large hole, so ΔP_dry falls); active area A_a,eff = A_a · max(1 − s, 0.02), used for h_cl, the weir relation and M_max; liquid head in ΔP × (1 − s) (5.5) | 0 (sudden damage) |
+| F04 Broken / missing tray | tray j | Opening fraction s of the deck: liquid bypass s_broken,j = s added to the bypass fraction f_j (5.14) (the arriving liquid falls through with its inlet composition, like weeping); vapour bypass b_V,j = s in (4.2); hole area A_h,eff = A_h (1 − s) + s · A_a (the opening is a large hole, so ΔP_dry falls); active area A_a,eff = A_a · max(1 − s, 0.02), used for h_cl, the weir relation and M_max; liquid head in ΔP × (1 − s) (5.5); the opening also counts in the dumping drain area A_drain (5.15), although at normal load a broken tray stays above Φ = 0.2 and does not dump | 0 (sudden damage) |
 | F05 Fouled / plugged trays | trays j₁…j₂; mode holes / downcomer / both | holes: A_h,eff = A_h (1 − 0.8 s) (valve trays: A_min and A_max × (1 − 0.8 s)); downcomer: h_ap,eff = h_ap (1 − 0.9 s) | 4 h of sim time (represents weeks) |
 | F06 Foaming | section or whole column | SF = SF_froth = 1 − 0.45 s; φ_dc = 0.5 − 0.2 s. Antifoam on: after 300 s dead time s decays with τ = 600 s | 600 s |
 | F07 Feed composition upset | feed | z ← z + σ s Δz with **Σ Δz = 0**. Components listed in `params.dz` get their value; unlisted components share −Σ(listed) in proportion to their current z (for a binary, the other component gets exactly −Δz). Any negative z_i is clamped to 0 and the result renormalised (only then does normalisation act). Default Δz: light component +0.15, so B-T z = 0.50 → 0.65. v1.0 added +0.15 to one component and then normalised, which gave 0.565 | 0 or ramp |
@@ -1542,7 +1553,22 @@ Solve R(M) = M − M_j^n − dt [ In_j − Out_j − L_j(M) ] = 0
 M̂_j = M,   L_j^(n+1) = L_j(M̂_j)
 ```
 
-L_j(M) is the downflow function of §5.9 for trays (weir capped by L_max, plus the dump drain L_dump(M) of (5.15); dL/dM = dL_weir/dM when the weir is below the cap, 0 when capped, plus dL_dump/dM) or (6.4) for packed segments. L_j is monotone non-decreasing in M, so R is monotone and the Newton iteration converges.
+L_j(M) is the downflow function of §5.9 for trays (weir capped by L_max, plus the dump drain L_dump(M) of (5.15); dL/dM = dL_weir/dM when the weir is below the cap, 0 when capped) or (6.4) for packed segments. L_j is monotone non-decreasing in M, so R is monotone and the Newton iteration converges.
+
+**Dumping trays (κ_j > 0): solve for u = √M instead.** L_dump = κ√M has an infinite slope at M = 0, and the residual R(M) is then concave. Newton in M overshoots below zero (about 8 halvings in the prototype). In u the residual is convex and increasing, so Newton converges monotonically and never leaves u ≥ 0:
+
+```
+G(u)  = u² − M_j^n − dt [ In_j − Out_j − L_w,cap(u²) − κ_j u ] = 0          (L_w,cap = smin(L_weir, L_max))
+G'(u) = 2u + dt [ 2u · dL_w,cap/dM |_(u²) + κ_j ]                             (> 0 for κ_j > 0, also at u = 0)
+start u = √(M_j^n);   u ← max(0, u − G/G');   stop when |Δu| < 1×10⁻¹² · max(1, u);  at most 60 iterations
+M̂_j = u²,   L_j^(n+1) = L_w,cap(M̂_j) + κ_j u          (the same u in both terms, so the material balance closes exactly)
+```
+
+Clamping at u = 0 means the tray empties within the step: In_j − Out_j ≤ 0 with nothing left to drain. Trays with κ_j = 0 keep the M-Newton above. The prototype on the M2 engine needed at most 7 iterations.
+
+**Stability at large dt.** The step is implicit Euler in M with the drain evaluated at the end of the step, so it is stable for any dt. In the prototype, a fully broken tray 5 gave the identical steady state at dt = 0.5, 2 and 30 s (x_D 0.974315, x_B 0.018575). After 10 min without boilup, the dumping trays held 1.1–1.4 mol at every dt, with no negative holdups, no NaN and ≤ 7 iterations.
+
+The component step (§12.3) then sees M̂ of about 1 mol with throughputs of about 30 mol/s. That is very stiff, but the banded implicit solve handles it as it handles any small holdup, and the existing floor M̂ ≥ 1×10⁻⁹ mol stays.
 
 Drum and sump totals follow from their flows, each pump limited so that the holdup stays ≥ 0:
 
