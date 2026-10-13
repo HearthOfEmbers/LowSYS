@@ -71,6 +71,24 @@ class KpiStrip extends StatelessWidget {
         target: const ExplainReboiler(),
       ),
       _Item(
+        'P',
+        (k, u) => k.pTop.isNaN ? '—' : Fmt.value(Quantity.pressure, k.pTop, u),
+        (u) => u.symbol(Quantity.pressure),
+        target: const ExplainCondenser(),
+      ),
+      _Item(
+        'Q_C',
+        (k, u) => k.qc.isNaN ? '—' : u.fromSI(Quantity.energyRate, k.qc).toStringAsFixed(0),
+        (u) => u.symbol(Quantity.energyRate),
+        target: const ExplainCondenser(),
+      ),
+      _Item(
+        'Q_R',
+        (k, u) => k.qr.isNaN ? '—' : u.fromSI(Quantity.energyRate, k.qr).toStringAsFixed(0),
+        (u) => u.symbol(Quantity.energyRate),
+        target: const ExplainReboiler(),
+      ),
+      _Item(
         'dP',
         (k, u) => k.columnDp.isNaN || k.columnDp <= 0
             ? '—'
@@ -104,8 +122,10 @@ class KpiStrip extends StatelessWidget {
           final k = s?.kpis;
           final kids = [
             for (final it in items)
-              if (!(it.label == 'dP' || it.label == 'Flood') ||
-                  (s != null && s.hydraulics == HydraulicsMode.full))
+              if ((!(it.label == 'dP' || it.label == 'Flood') ||
+                      (s != null && s.hydraulics == HydraulicsMode.full)) &&
+                  (!(it.label == 'P' || it.label == 'Q_C' || it.label == 'Q_R') ||
+                      (s != null && s.tier != ThermoTier.t1)))
                 InkWell(
                   onTap: it.target == null
                       ? null
@@ -174,7 +194,7 @@ class _Kpi extends StatelessWidget {
                 value,
                 style: t.type.number.style(
                   16,
-                  color ?? p.accent,
+                  color ?? (t.column.gaugeStyle == GaugeStyle.bargraph ? p.ink : p.accent),
                   weight: FontWeight.w700,
                 ),
               ),

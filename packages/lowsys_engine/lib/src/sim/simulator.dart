@@ -413,7 +413,7 @@ class Simulator {
     if (cached != null) {
       _loadDynamic(cached);
     } else {
-      runToSteadyState();
+      runToSteadyState(maxSimSeconds: 172800);
       _warmCache[key] = _dumpDynamic(includeTrends: false);
     }
     _state.time = 0;
@@ -827,10 +827,10 @@ class Simulator {
       LeverSpec(
           id: 'cwMaxFlow',
           label: 'Cooling water capacity',
-          quantity: Quantity.massFlow,
-          min: 50 * 995 / 3600,
-          max: 500 * 995 / 3600,
-          defaultValue: _config.condenser.cwMaxFlow,
+          quantity: Quantity.volumeFlowLiquid,
+          min: 50 / 3600,
+          max: 500 / 3600,
+          defaultValue: _config.condenser.cwMaxFlow / ControlSystem.rhoWater,
           tiers: const {ThermoTier.t2, ThermoTier.t3},
           group: 'advanced'),
       LeverSpec(
@@ -1070,7 +1070,7 @@ class Simulator {
       case 'cwInletT':
         return inp.cwInT;
       case 'cwMaxFlow':
-        return inp.cwMaxFlow;
+        return inp.cwMaxFlow / ControlSystem.rhoWater;
       case 'steamHeaderP':
         return inp.steamHeaderP;
       case 'inertVent':
@@ -1193,7 +1193,7 @@ class Simulator {
       case 'cwInletT':
         inp.cwInT = v;
       case 'cwMaxFlow':
-        inp.cwMaxFlow = v;
+        inp.cwMaxFlow = v * ControlSystem.rhoWater;
       case 'steamHeaderP':
         inp.steamHeaderP = v;
       case 'inertVent':
@@ -1416,7 +1416,7 @@ class Simulator {
       if (cached != null) {
         _loadDynamic(cached);
       } else {
-        runToSteadyState();
+        runToSteadyState(maxSimSeconds: 172800);
         _scenarioCache[key] = _dumpDynamic(includeTrends: false);
       }
       _state.time = 0;
@@ -1473,7 +1473,7 @@ class Simulator {
     if (cached != null) {
       _loadDynamic(cached);
     } else {
-      runToSteadyState();
+      runToSteadyState(maxSimSeconds: 172800);
       _scenarioCache[key] = _dumpDynamic(includeTrends: false);
     }
     _state.time = keepTime;
@@ -1828,6 +1828,7 @@ class Simulator {
       hyd: _hyd,
       ep: _ep,
       thermo: _thermo,
+      t2: _tier == ThermoTier.t1 ? null : _t2,
       control: _control,
       full: _stepper.full,
     ).explain(target);
@@ -2286,8 +2287,10 @@ class Simulator {
     final valveSnaps = <ValveSnapshot>[];
     for (final v in _control.visibleValves) {
       final loop = _control.loops.firstWhere((l) => l.mvRef == v.id);
+      // PV-101 passes kg/s but its meter FT-201 reads m3/s: the valve curve is drawn in meter units
+      final k = v.id == 'PV-101' ? 1 / ControlSystem.rhoWater : 1.0;
       valveSnaps.add(ValveSnapshot(v.id, loop.op, plant ? nan : v.position,
-          v.fMax, v.expectedFlow(loop.op), v.bypassActive ? v.bypassPos : -1));
+          v.fMax * k, v.expectedFlow(loop.op) * k, v.bypassActive ? v.bypassPos : -1));
     }
     return SimSnapshot(
       serial: ++_serial,
@@ -2318,11 +2321,32 @@ class Simulator {
           FieldCheck(f.tag, f.requestedAt, f.readyAt, f.value)
       ],
       scenario: _scenario?.snapshot(),
+      energy: !t2
+          ? null
+          : (plant
+              ? EnergySnapshot(nan, rd('FT-103').value, kpisOut.qc, nan, nan, nan)
+              : EnergySnapshot(
+                  f * _stepper.feedH,
+                  _stepper.qDelivered,
+                  s.qC,
+                  dFlow * s.hLiq[0],
+                  bFlow * s.hLiq[N + 1],
+                  f * _stepper.feedH +
+                      _stepper.qDelivered -
+                      s.qC -
+                      dFlow * s.hLiq[0] -
+                      bFlow * s.hLiq[N + 1])),
     );
   }
 
-  /// The Tier 1 thermo model for diagram builders.
-  ConstantAlphaThermo get thermo => _thermo;
+  /// The thermo model of the active tier for diagram builders.
+  ThermoModel get thermo => _tier == ThermoTier.t1 ? _thermo : _t2;
+
+  /// The Tier 1 model (relative volatilities).
+  ConstantAlphaThermo get tier1Thermo => _thermo;
+
+  /// The Tier 2 Raoult model.
+  Tier2Raoult get tier2Thermo => _t2;
 
   /// Component data for the configured components.
   List<Component> get componentData {

@@ -74,6 +74,9 @@ void _arrowHead(Canvas c, Offset tip, Offset dir, double size, Paint p) {
   c.drawPath(path, p..style = PaintingStyle.fill);
 }
 
+/// ISA-101 themes (Control Room) draw liquid as a flat fill instead of hand hatching; set at the start of a paint.
+bool _solidLiquid = false;
+
 void _hatch(
   Canvas c,
   Rect r,
@@ -83,6 +86,10 @@ void _hatch(
   double alpha = 1,
 }) {
   if (r.width <= 0 || r.height <= 0) return;
+  if (_solidLiquid) {
+    c.drawRect(r, Paint()..color = color.withValues(alpha: alpha * 0.45));
+    return;
+  }
   c.save();
   c.clipRect(r);
   final p = Paint()
@@ -487,6 +494,7 @@ class ColumnLivePainter extends CustomPainter {
   final LowsysTheme theme;
   final bool lowQuality;
   final ValueListenable<UnitSystem> units;
+  final ValueListenable<bool>? shading;
 
   ColumnLivePainter({
     required this.snapshot,
@@ -494,8 +502,9 @@ class ColumnLivePainter extends CustomPainter {
     required this.anim,
     required this.theme,
     required this.units,
+    this.shading,
     this.lowQuality = false,
-  }) : super(repaint: Listenable.merge([snapshot, selected, anim, units]));
+  }) : super(repaint: Listenable.merge([snapshot, selected, anim, units, ?shading]));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -512,8 +521,15 @@ class ColumnLivePainter extends CustomPainter {
     final sel = selected.value;
 
     final plant = s.view == SimView.plant;
-    Color compColor(int stage) =>
-        plant ? p.liquidLight : p.composition(1 - st.x[stage * nc]);
+    final isa = theme.column.gaugeStyle == GaugeStyle.bargraph;
+    _solidLiquid = theme.column.liquidStyle != LiquidStyle.hatch;
+    final t2 = s.tier != ThermoTier.t1;
+    // ISA-101: liquid is grey-blue (liquidHeavy at 40 % saturation); composition shading is a Settings option
+    final isaLiquid = Color.lerp(p.steel, p.liquidHeavy, 0.4)!;
+    final shade = shading?.value ?? false;
+    Color compColor(int stage) => plant
+        ? (isa ? isaLiquid : p.liquidLight)
+        : (isa && !shade ? isaLiquid : p.composition(1 - st.x[stage * nc]));
 
     // ---- liquid on trays and in downcomers (full hydraulics adds froth, spray, drips, flooding, foam)
     final full = s.hydraulics == HydraulicsMode.full;
@@ -818,12 +834,16 @@ class ColumnLivePainter extends CustomPainter {
     final maxParticles = lowQuality
         ? theme.column.maxParticlesLow
         : theme.column.maxParticlesHigh;
-    final vNom = math.max(1e-9, plant ? s.kpis.boilup : st.vaporUp[N + 1]);
+    final vPlant = s.kpis.boilup.isFinite
+        ? s.kpis.boilup
+        : s.streams[StreamId.reflux]!.flow + s.kpis.d;
+    final vNom = math.max(1e-9, plant ? vPlant : st.vaporUp[N + 1]);
     final perGap = (maxParticles / (N + 1)).floor().clamp(1, 7);
+    final glowDots = theme.column.vaporStyle == VaporStyle.glowDots;
     final bubble = Paint()
-      ..style = PaintingStyle.stroke
+      ..style = glowDots ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeWidth = 0.9
-      ..color = p.vapor;
+      ..color = glowDots ? p.vapor.withValues(alpha: 0.55) : p.vapor;
     for (var j = 1; j <= N; j++) {
       // vapour leaving tray j+1 rises through tray j's liquid into the space above it
       final vJ = plant ? vNom : st.vaporUp[j + 1];
@@ -862,11 +882,13 @@ class ColumnLivePainter extends CustomPainter {
     }
 
     // ---- flow arrows on pipes
+    // ISA-101: pipes grey, live values ink and never coloured; cyan is for what the operator can change
+    final pipe = isa ? p.steel : p.accent;
     final flowP = Paint()
-      ..color = p.accent
+      ..color = pipe
       ..strokeWidth = 1.8
       ..strokeCap = StrokeCap.round;
-    final tag = num.style(12, p.accent);
+    final tag = num.style(12, isa ? p.ink : p.accent);
     final narrow = size.width < 260; // phone portrait: tags only, values live in the KPI strip and inspector
     final labS = lab.style(12, p.ink);
     final uSys = units.value;
@@ -888,7 +910,7 @@ class ColumnLivePainter extends CustomPainter {
       Offset(g.shellL - wall, fy),
       const Offset(1, 0),
       6,
-      Paint()..color = p.accent,
+      Paint()..color = pipe,
     );
     _drawText(
       canvas,
@@ -923,7 +945,7 @@ class ColumnLivePainter extends CustomPainter {
       Offset(5, by),
       const Offset(-1, 0),
       6,
-      Paint()..color = p.accent,
+      Paint()..color = pipe,
     );
     _drawText(
       canvas,
@@ -939,7 +961,7 @@ class ColumnLivePainter extends CustomPainter {
       Offset(size.width - 3, dyOut),
       const Offset(1, 0),
       6,
-      Paint()..color = p.accent,
+      Paint()..color = pipe,
     );
     _drawText(
       canvas,
@@ -954,7 +976,7 @@ class ColumnLivePainter extends CustomPainter {
       Offset(g.shellR + wall + 1, refluxY),
       const Offset(-1, 0),
       6,
-      Paint()..color = p.accent,
+      Paint()..color = pipe,
     );
     _drawText(
       canvas,
@@ -965,7 +987,9 @@ class ColumnLivePainter extends CustomPainter {
     );
     // boilup label kept inside the panel
     final rb = g.reboilerCenter;
-    final vbText = narrow ? 'V' : 'V_B ${kmolh(s.kpis.boilup)}';
+    final vbText = narrow
+        ? 'V'
+        : (s.kpis.boilup.isFinite ? 'V_B ${kmolh(s.kpis.boilup)}' : 'V_B —');
     final vbW = _tp(vbText, tag).width;
     final vbX = (rb.dx - vbW / 2)
         .clamp(g.shellR + wall + 4, size.width - vbW - 3)
@@ -977,20 +1001,64 @@ class ColumnLivePainter extends CustomPainter {
       tag,
       anchor: Alignment.topLeft,
     );
+    String qText() {
+      if (!t2) return 'Q';
+      final q = s.reboiler.qDelivered;
+      return narrow || q.isNaN
+          ? 'Q'
+          : 'Q ${uSys.fromSI(Quantity.energyRate, q).toStringAsFixed(0)} ${uSys.symbol(Quantity.energyRate)}';
+    }
+
     _drawText(
       canvas,
-      'Q',
+      qText(),
       Offset(rb.dx, rb.dy - g.reboilerR - 3),
-      labS,
+      t2 ? tag : labS,
       anchor: Alignment.bottomCenter,
     );
+    final cwOp = s.condenser?.cwOp ?? double.nan;
     _drawText(
       canvas,
-      'CW',
+      t2 && !narrow && cwOp.isFinite ? 'CW ${cwOp.toStringAsFixed(0)} %' : 'CW',
       Offset(g.condCenter.dx, g.condCenter.dy - g.condR - 3),
-      labS,
+      t2 ? tag : labS,
       anchor: Alignment.bottomCenter,
     );
+    if (t2 && !narrow && s.kpis.pTop.isFinite) {
+      _drawText(
+        canvas,
+        'P ${uSys.fromSI(Quantity.pressure, s.kpis.pTop).toStringAsFixed(3)} ${uSys.symbol(Quantity.pressure)}',
+        Offset(g.condCenter.dx, g.condCenter.dy + g.condR + 3),
+        tag,
+        anchor: Alignment.topCenter,
+      );
+    }
+
+    // ---- sandbox fault flags: an info-blue flag on the affected equipment (never shown in drills or plant view)
+    for (final f in s.visibleFaults) {
+      final id = f.location.equipmentId;
+      if (id == null) continue;
+      final at = switch (id) {
+        'condenser' => g.condCenter + Offset(g.condR + 4, -g.condR),
+        'reboiler' => g.reboilerCenter + Offset(g.reboilerR + 4, -g.reboilerR),
+        'reflux' => Offset(g.shellR + wall + 12, g.deckY(1) - g.spacing * 0.55 - 12),
+        'feed' => Offset(30, g.deckY(s.layout.feedStages.first) - g.spacing * 0.5 - 14),
+        _ => null,
+      };
+      if (at == null) continue;
+      final pole = Paint()
+        ..color = p.info
+        ..strokeWidth = 1.6;
+      canvas.drawLine(at, at + const Offset(0, 14), pole);
+      canvas.drawPath(
+        Path()
+          ..moveTo(at.dx, at.dy)
+          ..lineTo(at.dx + 10, at.dy + 3.5)
+          ..lineTo(at.dx, at.dy + 7)
+          ..close(),
+        Paint()..color = p.info,
+      );
+    }
 
     // ---- selection highlight (pencil-yellow)
     if (sel != null) {

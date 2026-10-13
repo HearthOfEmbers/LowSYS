@@ -6,7 +6,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
 
-enum ProfileKind { dp, flood, weep, holdup, composition }
+enum ProfileKind { dp, flood, weep, holdup, composition, temperature, vapour, liquid }
 
 extension ProfileKindLabel on ProfileKind {
   String get label => switch (this) {
@@ -15,7 +15,17 @@ extension ProfileKindLabel on ProfileKind {
         ProfileKind.weep => 'Weeping',
         ProfileKind.holdup => 'Holdup',
         ProfileKind.composition => 'x',
+        ProfileKind.temperature => 'T',
+        ProfileKind.vapour => 'V',
+        ProfileKind.liquid => 'L',
       };
+}
+
+/// The V and L profiles of the tier the learner has just left, drawn as ticks on the V and L charts (PHYSICS.md 14.5).
+class TierGhost {
+  final String fromTier;
+  final List<double> vapour, liquid;
+  const TierGhost(this.fromTier, this.vapour, this.liquid);
 }
 
 /// Plot area for the profile chart (shared with tap picking).
@@ -28,9 +38,10 @@ class ProfilePainter extends CustomPainter {
   final ValueListenable<UnitSystem> units;
   final ProfileKind kind;
   final LowsysTheme theme;
+  final ValueListenable<TierGhost?>? ghost;
 
-  ProfilePainter({required this.snapshot, required this.selected, required this.units, required this.kind, required this.theme})
-      : super(repaint: Listenable.merge([snapshot, selected, units]));
+  ProfilePainter({required this.snapshot, required this.selected, required this.units, required this.kind, required this.theme, this.ghost})
+      : super(repaint: Listenable.merge([snapshot, selected, units, ?ghost]));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -49,6 +60,7 @@ class ProfilePainter extends CustomPainter {
     final vals2 = List<double>.filled(N + 1, 0);
     String unit;
     double axisMax;
+    double axisMin = 0;
     double Function(double) show = (v) => v;
     switch (kind) {
       case ProfileKind.dp:
@@ -86,6 +98,39 @@ class ProfilePainter extends CustomPainter {
           vals2[j] = st.y[j * st.nc];
         }
         axisMax = 1;
+      case ProfileKind.temperature:
+        unit = u.symbol(Quantity.temperature);
+        var lo = double.infinity, hi = double.negativeInfinity;
+        for (var j = 1; j <= N; j++) {
+          vals[j] = st.t[j];
+          if (vals[j].isFinite) {
+            if (vals[j] < lo) lo = vals[j];
+            if (vals[j] > hi) hi = vals[j];
+          }
+        }
+        if (!lo.isFinite) {
+          lo = 300;
+          hi = 400;
+        }
+        // axis in kelvin steps of 10 so the labels are round in either unit system
+        axisMin = (lo - 5).floorToDouble();
+        axisMax = math.max(axisMin + 10, (hi + 5).ceilToDouble());
+        show = (v) => u.fromSI(Quantity.temperature, v);
+      case ProfileKind.vapour:
+      case ProfileKind.liquid:
+        final isV = kind == ProfileKind.vapour;
+        unit = u.symbol(Quantity.molarFlow);
+        final g = ghost?.value;
+        for (var j = 1; j <= N; j++) {
+          vals[j] = isV ? st.vaporUp[j] : st.liquidDown[j];
+          final gv = g == null ? null : (isV ? g.vapour : g.liquid);
+          vals2[j] = gv != null && j < gv.length ? gv[j] : double.nan;
+        }
+        show = (v) => u.fromSI(Quantity.molarFlow, v);
+        axisMax = math.max(1e-6, vals.fold(0.0, math.max) * 1.15);
+        for (final v in vals2) {
+          if (v.isFinite && v * 1.15 > axisMax) axisMax = v * 1.15;
+        }
     }
     canvas.drawRect(plot, Paint()..color = p.bgAlt.withValues(alpha: 0.55));
     // grid
@@ -95,7 +140,7 @@ class ProfilePainter extends CustomPainter {
     for (var i = 0; i <= 4; i++) {
       final x = plot.left + plot.width * i / 4;
       canvas.drawLine(Offset(x, plot.top), Offset(x, plot.bottom), grid);
-      final v = show(axisMax * i / 4);
+      final v = show(axisMin + (axisMax - axisMin) * i / 4);
       final txt = v >= 100 ? v.toStringAsFixed(0) : (v >= 10 ? v.toStringAsFixed(1) : v.toStringAsFixed(2));
       _text(canvas, txt, Offset(x, plot.bottom + 3), num.style(12, p.inkMuted), Alignment.topCenter);
     }
@@ -116,6 +161,10 @@ class ProfilePainter extends CustomPainter {
             ..strokeWidth = 1.4);
       _text(canvas, '100 %', Offset(x100, plot.top - 2), lab.style(12, p.alarm), Alignment.bottomCenter);
     }
+    if (kind == ProfileKind.temperature && s.tier == ThermoTier.t1) {
+      _text(canvas, 'Tier 1 has no temperatures: switch to Tier 2 with the T1/T2 badge', plot.center, lab.style(13, p.warn), Alignment.center, maxWidth: plot.width - 12);
+      return;
+    }
     if ((kind == ProfileKind.dp || kind == ProfileKind.flood || kind == ProfileKind.weep) && !full) {
       _text(canvas, 'ideal hydraulics: no tray hydraulics (switch to Full)', plot.center, lab.style(13, p.warn), Alignment.center, maxWidth: plot.width - 12);
       return;
@@ -124,11 +173,21 @@ class ProfilePainter extends CustomPainter {
     final barH = math.max(1.2, math.min(rowH * 0.7, 12.0));
     for (var j = 1; j <= N; j++) {
       final cy = plot.top + (j - 0.5) * rowH;
-      final w = (vals[j] / axisMax).clamp(0.0, 1.0) * plot.width;
+      final w = ((vals[j] - axisMin) / (axisMax - axisMin)).clamp(0.0, 1.0) * plot.width;
       Color c = p.liquidLight;
       if (kind == ProfileKind.flood) c = vals[j] >= 100 ? p.alarm : (vals[j] >= 90 ? p.warn : p.liquidLight);
       if (kind == ProfileKind.weep) c = p.accent2;
       canvas.drawRect(Rect.fromLTWH(plot.left, cy - barH / 2, w, barH), Paint()..color = c.withValues(alpha: 0.85));
+      if (kind == ProfileKind.temperature) c = p.hot;
+      if ((kind == ProfileKind.vapour || kind == ProfileKind.liquid) && vals2[j].isFinite) {
+        final w2 = (vals2[j] / axisMax).clamp(0.0, 1.0) * plot.width;
+        canvas.drawLine(
+            Offset(plot.left + w2, cy - barH / 2 - 1),
+            Offset(plot.left + w2, cy + barH / 2 + 1),
+            Paint()
+              ..color = p.accent
+              ..strokeWidth = 2);
+      }
       if (kind == ProfileKind.dp || kind == ProfileKind.flood || kind == ProfileKind.composition) {
         final w2 = (vals2[j] / axisMax).clamp(0.0, 1.0) * plot.width;
         canvas.drawLine(
@@ -165,6 +224,10 @@ class ProfilePainter extends CustomPainter {
       ProfileKind.dp => 'bar = total dP, tick = dry dP',
       ProfileKind.flood => 'bar = jet flood / froth fill, tick = downcomer',
       ProfileKind.composition => 'bar = liquid x, tick = vapour y',
+      ProfileKind.temperature => 'bubble-point temperature of each tray',
+      ProfileKind.vapour || ProfileKind.liquid => ghost?.value == null
+          ? (s.tier == ThermoTier.t1 ? 'constant molar overflow: V and L are flat in each section' : 'Tier 2: V and L change with the latent heats')
+          : 'bar = now, tick = ${ghost!.value!.fromTier} just before the switch',
       _ => '',
     };
     if (key.isNotEmpty) _text(canvas, key, Offset(plot.left, plot.top - 4), lab.style(12, p.inkMuted), Alignment.bottomLeft, maxWidth: plot.width);

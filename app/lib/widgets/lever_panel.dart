@@ -15,6 +15,14 @@ double _fineStep(LeverSpec s) {
       return 1;
     case Quantity.fraction:
       return 0.01;
+    case Quantity.energyRate:
+      return 10;
+    case Quantity.temperature:
+      return 0.5;
+    case Quantity.temperatureDelta:
+      return 1;
+    case Quantity.volumeFlowLiquid:
+      return 5;
     default:
       return 0.05;
   }
@@ -30,6 +38,13 @@ String _fmtValue(LeverSpec s, double si, UnitSystem u) {
       return d.toStringAsFixed(0);
     case Quantity.fraction:
       return d.toStringAsFixed(3);
+    case Quantity.energyRate:
+      return d.toStringAsFixed(1);
+    case Quantity.temperature:
+    case Quantity.temperatureDelta:
+      return d.toStringAsFixed(1);
+    case Quantity.volumeFlowLiquid:
+      return d.toStringAsFixed(0);
     default:
       return d.toStringAsFixed(2);
   }
@@ -68,6 +83,8 @@ class LeverPanel extends StatelessWidget {
               return null;
             }
 
+            final snap = sim.snapshot.value;
+            final t2 = snap != null && snap.tier != ThermoTier.t1;
             final ratioMode = (values['refluxMode'] ?? 0) >= 0.5;
             final full = (values['hydraulics'] ?? 0) >= 0.5;
             final children = <Widget>[if (header != null) header!];
@@ -88,7 +105,8 @@ class LeverPanel extends StatelessWidget {
             group('FEED', [
               tile('feedFlow'),
               tile(feedZ.id),
-              tile('feedQ'),
+              if (t2) tile('feedT') else tile('feedQ'),
+              if (t2) _FeedCondition(snap: snap, t: t),
               tile('feedStage'),
             ]);
             group('TOP', [
@@ -100,8 +118,39 @@ class LeverPanel extends StatelessWidget {
               ),
               tile(ratioMode ? 'refluxRatio' : 'refluxFlow'),
               tile('drumLevelSp'),
+              if (t2) tile('pTop'),
+              if (t2) tile('refluxSubcooling'),
             ]);
-            group('BOTTOM', [tile('boilup'), tile('sumpLevelSp')]);
+            group('BOTTOM', [
+              if (t2) tile('reboilerDuty') else tile('boilup'),
+              tile('sumpLevelSp'),
+            ]);
+            if (t2) {
+              group('UTILITIES', [
+                tile('inertVent'),
+                tile('cwInletT'),
+                tile('cwMaxFlow'),
+                tile('steamHeaderP'),
+              ]);
+              group('TRAY TEMPERATURE CONTROL', [
+                _Labeled(
+                  label: 'TC-101 (cascade to the reboiler duty)',
+                  t: t,
+                  child: _Segments(
+                    options: const ['Off', 'On'],
+                    selected: (values['tc101Enable'] ?? 0) >= 0.5 ? 1 : 0,
+                    onSelect: locked.contains('tc101Enable')
+                        ? null
+                        : (i) => sim.setLever('tc101Enable', i.toDouble()),
+                    t: t,
+                  ),
+                ),
+                if ((values['tc101Enable'] ?? 0) >= 0.5) ...[
+                  tile('tc101Tray'),
+                  tile('tc101Sp'),
+                ],
+              ]);
+            }
             group('COLUMN', [
               tile('nTrays'),
               tile('murphree'),
@@ -194,6 +243,31 @@ class LeverPanel extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+/// Feed condition read-out in Tiers 2/3: q and the vapour fraction from the feed enthalpy (PHYSICS.md 3.15).
+class _FeedCondition extends StatelessWidget {
+  final SimSnapshot snap;
+  final LowsysTheme t;
+  const _FeedCondition({required this.snap, required this.t});
+  @override
+  Widget build(BuildContext context) {
+    final q = snap.streams[StreamId.feed]?.q ?? double.nan;
+    final p = t.palette;
+    final text = q.isNaN
+        ? 'q: —'
+        : q > 1.0005
+            ? 'q = ${q.toStringAsFixed(2)}  subcooled liquid'
+            : q > 0.9995
+                ? 'q = 1.00  saturated liquid'
+                : q >= 0
+                    ? 'q = ${q.toStringAsFixed(2)}  part vapour (${(100 * (1 - q)).toStringAsFixed(0)} % vapour)'
+                    : 'q = ${q.toStringAsFixed(2)}  superheated vapour';
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, left: 2),
+      child: Text(text, key: const ValueKey('feed-q'), style: t.type.number.style(12.5, p.inkMuted)),
     );
   }
 }

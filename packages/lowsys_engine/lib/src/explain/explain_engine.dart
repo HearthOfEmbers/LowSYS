@@ -8,6 +8,8 @@ import '../model/tray_hydraulics.dart';
 import '../faults/fault_effects.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/tier1_constant_alpha.dart';
+import '../thermo/tier2_raoult.dart';
+import 'explain_t2.dart';
 import 'explain_types.dart';
 
 /// Number as TeX: 4 significant figures, scientific notation outside [1e-3, 1e5) (ENGINE_API.md 8.2).
@@ -39,7 +41,11 @@ class ExplainEngine {
   final ControlSystem control;
   final bool full;
 
+  /// The Tier-2 model while the column runs Tier 2 (equation lines then follow PHYSICS.md 3.2, 4.6, 7, 8.2).
+  final Tier2Raoult? t2;
+
   ExplainEngine({
+    this.t2,
     required this.config,
     required this.snapshot,
     required this.hyd,
@@ -162,7 +168,10 @@ class ExplainEngine {
     final eqId = switch (c.id.split(':').first) {
       'C1' => 'eq.check.material',
       'C2' => 'eq.check.component',
-      'C3' => 'eq.check.topVapour',
+      'C3' || 'C3a' => 'eq.check.topVapour',
+      'C3b' => 'eq.check.energy',
+      'C6' => 'eq.check.trayT',
+      'C7' => 'eq.check.bubble',
       'C4' => 'eq.check.valve',
       'C5' => 'eq.check.level',
       _ => 'eq.check.material',
@@ -248,8 +257,11 @@ class ExplainEngine {
     ]));
 
     // --- equilibrium and Murphree (3.1, 4.2)
+    final tier2 = t2 != null && snapshot.tier != ThermoTier.t1;
+    final t2Lines = tier2 ? ExplainT2(snapshot, t2!).stageLines(j) : const <EquationLine>[];
     groups.add(EquationGroup('Equilibrium and efficiency', [
-      EquationLine(
+      if (tier2) t2Lines[0],
+      if (!tier2) EquationLine(
         id: 'eq.equilibrium.T1',
         physicsRef: 'PHYSICS.md (3.1)',
         texSymbolic: r'y^*_j = \frac{\alpha x_j}{1 + (\alpha-1)x_j}',
@@ -268,7 +280,8 @@ class ExplainEngine {
         note:
             'Murphree vapour efficiency, including the dry-tray factor min(1, h_cl / 5 mm).',
       ),
-      EquationLine(
+      if (tier2) t2Lines[1],
+      if (!tier2) EquationLine(
         id: 'eq.vapourFlow.cmo',
         physicsRef: 'PHYSICS.md (4.5)',
         texSymbolic: r'V_j = V_{j+1} + (1-q_j)F_j',
@@ -380,7 +393,10 @@ class ExplainEngine {
       ]));
     }
     final notes = <String>[
-      _noteCmo,
+      if (tier2)
+        'Tier 2: ideal vapour-liquid equilibrium (Raoult) with enthalpy balances on every tray; the vapour flow is not constant.'
+      else
+        _noteCmo,
       _noteMixed,
       if (full) _noteBennett else _noteIdeal
     ];
@@ -394,6 +410,9 @@ class ExplainEngine {
   // ------------------------------------------------------------------ drum, sump, feed, streams
 
   ExplainResult _drum() {
+    if (t2 != null && snapshot.tier != ThermoTier.t1 && snapshot.condenser != null) {
+      return ExplainT2(snapshot, t2!).drum();
+    }
     final k = snapshot.kpis;
     final v1 = st.vaporUp[1];
     final e1 = st.entrain[1];
@@ -433,6 +452,9 @@ class ExplainEngine {
   }
 
   ExplainResult _sump() {
+    if (t2 != null && snapshot.tier != ThermoTier.t1) {
+      return ExplainT2(snapshot, t2!).sump();
+    }
     final k = snapshot.kpis;
     final N = nTrays;
     final lN = st.liquidDown[N];
@@ -465,6 +487,9 @@ class ExplainEngine {
   }
 
   ExplainResult _feed() {
+    if (t2 != null && snapshot.tier != ThermoTier.t1) {
+      return ExplainT2(snapshot, t2!).feed();
+    }
     final f = snapshot.streams[StreamId.feed]!;
     final q = snapshot.feedQ;
     final fs = snapshot.layout.feedStages.first;

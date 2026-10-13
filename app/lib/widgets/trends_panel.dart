@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
+import '../painters/effects/glow.dart';
 import '../theme/lowsys_theme.dart';
 
 /// Trends tab: auto-scaled strip charts of the 5-s trend bins. Each pixel column draws the min-max envelope of
@@ -306,7 +307,8 @@ class TrendPainter extends CustomPainter {
       final pt = Offset(x(k), y(tb.mean(i, k)));
       k == first ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
     }
-    canvas.drawPath(path, line);
+    strokeGlow(canvas, path, line, GlowBudget.of(t));
+    final isa = t.chart.lineStyle == LineStyle.glow;
     if (sp != null) {
       final spPath = Path();
       for (var k = first; k < tb.count; k++) {
@@ -314,9 +316,9 @@ class TrendPainter extends CustomPainter {
         k == first ? spPath.moveTo(pt.dx, pt.dy) : spPath.lineTo(pt.dx, pt.dy);
       }
       canvas.drawPath(
-        spPath,
+        isa ? dashedPath(spPath, t.chart.dashOn, t.chart.dashOff) : spPath,
         Paint()
-          ..color = p.ok
+          ..color = isa ? p.ink : p.ok
           ..strokeWidth = 1.2
           ..style = PaintingStyle.stroke,
       );
@@ -333,7 +335,7 @@ class TrendPainter extends CustomPainter {
       canvas.drawPath(
         opPath,
         Paint()
-          ..color = p.warn
+          ..color = isa ? p.inkMuted : p.warn
           ..strokeWidth = 1
           ..style = PaintingStyle.stroke,
       );

@@ -496,7 +496,7 @@ class CrossCheckEngine {
           out.add(na(id, title, inputs, 'collecting data'));
         } else if (badInput(inputs) case final bad?) {
           out.add(na(id, title, inputs, 'BAD input $bad'));
-        } else if (_atEnd(cs, top ? 'AT-101' : 'AT-102', mean('PV:' + (top ? 'AT-101' : 'AT-102')))) {
+        } else if (_atEnd(cs, top ? 'AT-101' : 'AT-102', mean(top ? 'PV:AT-101' : 'PV:AT-102'))) {
           out.add(na(id, title, inputs,
               '${top ? 'AT-101' : 'AT-102'} is at the end of its range'));
         } else {

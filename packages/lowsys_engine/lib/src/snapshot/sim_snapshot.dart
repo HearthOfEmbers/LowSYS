@@ -177,6 +177,15 @@ class ReboilerSnapshot {
       this.dutyLimited = false});
 }
 
+/// Column energy balance of Tiers 2/3 in watts (SCOPE.md 8): enthalpy flows in and out and the residual
+/// (in minus out). Null in Tier 1.
+@immutable
+class EnergySnapshot {
+  final double feed, reboiler, condenser, distillate, bottoms, residual;
+  const EnergySnapshot(this.feed, this.reboiler, this.condenser,
+      this.distillate, this.bottoms, this.residual);
+}
+
 @immutable
 class LoopSnapshot {
   final LoopTag tag;
@@ -426,6 +435,9 @@ class SimSnapshot {
   final List<FieldCheck> fieldChecks;
   final ScenarioSnapshot? scenario;
 
+  /// Tiers 2/3: the column energy balance (null in Tier 1; NaN terms in plant view).
+  final EnergySnapshot? energy;
+
   const SimSnapshot({
     required this.serial,
     required this.time,
@@ -452,6 +464,7 @@ class SimSnapshot {
     this.valves = const [],
     this.crossChecks = const [],
     this.fieldChecks = const [],
+    this.energy,
     this.scenario,
   });
 
@@ -483,6 +496,7 @@ class SimSnapshot {
         crossChecks: crossChecks,
         fieldChecks: fieldChecks,
         scenario: scenario,
+        energy: energy,
       );
 }
 

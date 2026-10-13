@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -9,6 +11,88 @@ Color alarmColor(ThemePalette p, AlarmPriority pr) => switch (pr) {
   AlarmPriority.medium => p.warn,
   AlarmPriority.low => p.info,
 };
+
+/// Priority glyph of the alarm banner and list: colour plus shape plus text (SCOPE.md 7.2): high = diamond,
+/// medium = triangle, low = square. An unacknowledged alarm blinks at 1 Hz (alternating fill and outline) in
+/// themes with `alarmBlink`; acknowledged alarms are steady, returned-to-normal ones are outlined.
+class AlarmGlyph extends StatefulWidget {
+  final AlarmPriority priority;
+  final AlarmState state;
+  final double size;
+  const AlarmGlyph({super.key, required this.priority, required this.state, this.size = 16});
+  @override
+  State<AlarmGlyph> createState() => _AlarmGlyphState();
+}
+
+class _AlarmGlyphState extends State<AlarmGlyph> {
+  Timer? _timer;
+  bool _on = true;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _sync(bool blink) {
+    if (blink && _timer == null) {
+      _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+        if (mounted) setState(() => _on = !_on);
+      });
+    } else if (!blink && _timer != null) {
+      _timer!.cancel();
+      _timer = null;
+      _on = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = LowsysThemeScope.of(context);
+    final p = t.palette;
+    final blink = t.effects.alarmBlink &&
+        (widget.state == AlarmState.unack || widget.state == AlarmState.rtnUnack);
+    _sync(blink);
+    final filled = widget.state == AlarmState.acked ||
+        (widget.state == AlarmState.unack && (!blink || _on));
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: CustomPaint(
+        painter: _GlyphPainter(widget.priority, alarmColor(p, widget.priority), filled),
+      ),
+    );
+  }
+}
+
+class _GlyphPainter extends CustomPainter {
+  final AlarmPriority pr;
+  final Color color;
+  final bool filled;
+  _GlyphPainter(this.pr, this.color, this.filled);
+  @override
+  void paint(Canvas c, Size s) {
+    final r = Rect.fromLTWH(1.5, 1.5, s.width - 3, s.height - 3);
+    final path = switch (pr) {
+      AlarmPriority.high => (Path()
+        ..moveTo(r.center.dx, r.top)
+        ..lineTo(r.right, r.center.dy)
+        ..lineTo(r.center.dx, r.bottom)
+        ..lineTo(r.left, r.center.dy)
+        ..close()),
+      AlarmPriority.medium => (Path()
+        ..moveTo(r.center.dx, r.top)
+        ..lineTo(r.right, r.bottom)
+        ..lineTo(r.left, r.bottom)
+        ..close()),
+      AlarmPriority.low => (Path()..addRect(r.deflate(1))),
+    };
+    c.drawPath(path, Paint()..color = color..style = filled ? PaintingStyle.fill : PaintingStyle.stroke..strokeWidth = 1.6);
+  }
+
+  @override
+  bool shouldRepaint(_GlyphPainter o) => o.pr != pr || o.color != color || o.filled != filled;
+}
 
 String stateLabel(AlarmState s) => switch (s) {
   AlarmState.unack => 'UNACK',
@@ -49,7 +133,7 @@ class AlarmBar extends StatelessWidget {
             color: color.withValues(alpha: top == null ? 0.12 : 0.28),
             child: Row(
               children: [
-                Icon(Icons.notifications_active, size: 16, color: color),
+                AlarmGlyph(priority: shown.priority, state: shown.state),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -147,11 +231,7 @@ Future<void> showAlarmList(BuildContext context) {
                               for (final a in alarms)
                                 ListTile(
                                   dense: true,
-                                  leading: Container(
-                                    width: 8,
-                                    height: 30,
-                                    color: alarmColor(p, a.priority),
-                                  ),
+                                  leading: AlarmGlyph(priority: a.priority, state: a.state, size: 18),
                                   title: Text(
                                     '${a.id}  ${a.message}',
                                     style: t.type.label.style(

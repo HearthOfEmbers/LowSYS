@@ -87,7 +87,18 @@ class TrayInspector extends StatelessWidget {
         ? 'Sump'
         : 'Tray $j';
     final x = st.x[j * nc], y = st.y[j * nc], ys = st.yStar[j * nc];
+    final t2 = s.tier != ThermoTier.t1 && !st.t[j].isNaN;
     final rows = <(String, String)>[
+      if (t2)
+        (
+          'T',
+          '${Fmt.value(Quantity.temperature, st.t[j], u)} ${u.symbol(Quantity.temperature)}',
+        ),
+      if (t2)
+        (
+          'P',
+          '${Fmt.value(Quantity.pressure, st.p[j], u)} ${u.symbol(Quantity.pressure)}',
+        ),
       ('x', frac(x)),
       if (j >= 1) ('y', frac(y)),
       if (j >= 1) ('y*', frac(ys)),

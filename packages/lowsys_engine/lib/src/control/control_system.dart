@@ -1049,8 +1049,10 @@ class ControlSystem {
     if (!trayIds.contains(j)) {
       throw ArgumentError('TC-101 can only use an instrumented tray $trayIds');
     }
+    _inst[tc101.pvTag]?.loopTag = null;
     tc101.pvTag = 'TI-${100 + j}';
     final ti = instrument(tc101.pvTag);
+    ti.loopTag = 'TC-101';
     tc101.trackPv(ti.value);
     tc101.initHistory(ti.value);
     tc101.spTracked = false;

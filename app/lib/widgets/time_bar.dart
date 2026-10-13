@@ -4,6 +4,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../controllers/sim_controller.dart';
 import '../theme/lowsys_theme.dart';
+import '../theme/themes/registry.dart';
 import 'scenario_ui.dart';
 
 String formatClock(double t) {
@@ -16,6 +17,7 @@ String speedLabel(double v) => v == 0 ? 'Pause' : '${v.toStringAsFixed(0)}×';
 
 const Map<String, String> kPresetNames = {
   Presets.bt: 'Benzene–toluene (textbook)',
+  Presets.mw: 'Methanol–water',
   Presets.btCustomAlpha: 'Custom α',
 };
 
@@ -71,6 +73,7 @@ class TimeBar extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               _SpeedMenu(sim: sim),
+              _TierBadge(sim: sim),
               const Spacer(),
               Flexible(
                 child: FittedBox(
@@ -149,6 +152,50 @@ class _SpeedMenu extends StatelessWidget {
   }
 }
 
+/// T1 / T2 badge: tap to switch the thermodynamic tier. The switch keeps the top vapour and the distillate
+/// (PHYSICS.md 13.5), so the learner sees the vapour profile change and the products stay put.
+class _TierBadge extends StatelessWidget {
+  final SimController sim;
+  const _TierBadge({required this.sim});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = LowsysThemeScope.of(context);
+    final p = t.palette;
+    return ValueListenableBuilder<SimSnapshot?>(
+      valueListenable: sim.snapshot,
+      builder: (_, s, __) {
+        final t2 = s != null && s.tier != ThermoTier.t1;
+        final locked = sim.lockedLevers.contains('tier');
+        return Tooltip(
+          message: t2
+              ? 'Tier 2: ideal VLE with energy balances. Tap for Tier 1 (textbook, constant molar overflow).'
+              : 'Tier 1: constant relative volatility and molar overflow. Tap for Tier 2 (ideal VLE with energy balances).',
+          child: InkWell(
+            onTap: locked || s == null ? null : () => sim.setTier(t2 ? ThermoTier.t1 : ThermoTier.t2),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 48, minWidth: 44),
+              alignment: Alignment.center,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  border: Border.all(color: t2 ? p.accent : p.inkMuted, width: 1.4),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Text(
+                  t2 ? 'T2' : 'T1',
+                  key: const ValueKey('tier-badge'),
+                  style: t.type.number.style(14, t2 ? p.accent : p.inkMuted, weight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _SteadyChip extends StatelessWidget {
   final SimController sim;
   final bool dense;
@@ -217,6 +264,10 @@ class _PresetMenu extends StatelessWidget {
           sim.toggleRmin();
         } else if (v == 'units') {
           sim.toggleUnits();
+        } else if (v == 'shading') {
+          sim.compositionShading.value = !sim.compositionShading.value;
+        } else if (v.startsWith('theme:')) {
+          sim.setTheme(v.substring(6));
         } else if (v == 'scenarios') {
           showScenarioList(context, sim);
         } else if (v.startsWith('save')) {
@@ -260,6 +311,18 @@ class _PresetMenu extends StatelessWidget {
             style: t.type.label.style(14, p.ink),
           ),
         ),
+        for (final th in kThemes)
+          CheckedPopupMenuItem<String>(
+            value: 'theme:${th.id}',
+            checked: sim.themeId.value == th.id,
+            child: Text('Theme: ${th.name}', style: t.type.label.style(14, p.ink)),
+          ),
+        if (sim.themeId.value == 'controlRoom')
+          CheckedPopupMenuItem<String>(
+            value: 'shading',
+            checked: sim.compositionShading.value,
+            child: Text('Composition shading', style: t.type.label.style(14, p.ink)),
+          ),
         PopupMenuItem<String>(
           value: 'rmin',
           child: Text(

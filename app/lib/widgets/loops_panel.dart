@@ -11,7 +11,11 @@ const Map<String, String> kLoopValve = {
   'FC-103': 'FV-103',
   'LC-101': 'LV-101',
   'LC-102': 'LV-102',
+  'PC-101': 'PV-101',
 };
+
+/// The flow meter that sees a loop's valve (the PV itself for the flow loops).
+const Map<String, String> kLoopMeter = {'PC-101': 'FT-201'};
 
 const Map<String, String> kLoopTitle = {
   'FC-101': 'Feed flow',
@@ -19,6 +23,8 @@ const Map<String, String> kLoopTitle = {
   'FC-103': 'Boilup',
   'LC-101': 'Drum level',
   'LC-102': 'Sump level',
+  'PC-101': 'Top pressure',
+  'TC-101': 'Tray temperature (master of FC-103)',
 };
 
 const Map<String, String> kLoopGauge = {'LC-101': 'LG-101', 'LC-102': 'LG-102'};
@@ -84,7 +90,13 @@ class Faceplate extends StatelessWidget {
     final u = sim.units.value;
     final tag = loop.tag;
     final r = snap.instruments.firstWhere((x) => x.loopTag == tag);
-    final valve = snap.valves.firstWhere((v) => v.id == kLoopValve[tag]);
+    final valve = snap.valves.where((v) => v.id == kLoopValve[tag]).firstOrNull;
+    final meter = kLoopMeter[tag] == null
+        ? r
+        : snap.instruments.firstWhere((x) => x.tag == kLoopMeter[tag], orElse: () => r);
+    final cascadeOn = (snap.levers['tc101Enable'] ?? 0) >= 0.5;
+    final iman = loop.mode == LoopMode.iman;
+    final cas = loop.mode == LoopMode.cas;
     final open = sim.selectedLoop.value == tag;
     final q = r.quantity;
     final bad = r.quality == Quality.bad || r.quality == Quality.oos;
@@ -93,9 +105,9 @@ class Faceplate extends StatelessWidget {
     final unit = u.symbol(q);
     final auto = loop.mode == LoopMode.auto;
     final man = loop.mode == LoopMode.man;
-    final c4 = snap.crossChecks
-        .where((c) => c.id == 'C4:${valve.id}')
-        .firstOrNull;
+    final c4 = valve == null
+        ? null
+        : snap.crossChecks.where((c) => c.id == 'C4:${valve.id}').firstOrNull;
     final ratio = r.typicalSigma > 0 ? r.sigma5min / r.typicalSigma : 1.0;
     final lookOdd = ratio < 0.2 || ratio > 5;
     final border = bad ? p.alarm : (loop.shed ? p.warn : p.gridMajor);
@@ -167,7 +179,9 @@ class Faceplate extends StatelessWidget {
                         Text(
                           loop.shed
                               ? 'MAN (shed: bad PV)'
-                              : loop.mode.name.toUpperCase(),
+                              : iman
+                                  ? 'IMAN (cascade off, follows FC-103)'
+                                  : loop.mode.name.toUpperCase(),
                           style: t.type.label.style(
                             12.5,
                             loop.shed ? p.warn : p.ink,
@@ -247,13 +261,29 @@ class Faceplate extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      modeButton('MAN', LoopMode.man),
-                      const SizedBox(width: 6),
-                      modeButton('AUTO', LoopMode.auto, enabled: !bad),
-                    ],
-                  ),
+                  if (tag == 'TC-101' && iman)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: TextButton(
+                        onPressed: () => sim.setLever('tc101Enable', 1),
+                        child: Text(
+                          'Enable the cascade (FC-103 goes to CAS)',
+                          style: t.type.label.style(13, p.accent, weight: FontWeight.w700),
+                        ),
+                      ),
+                    )
+                  else
+                    Row(
+                      children: [
+                        modeButton('MAN', LoopMode.man),
+                        const SizedBox(width: 6),
+                        modeButton('AUTO', LoopMode.auto, enabled: !bad),
+                        if (tag == 'FC-103') ...[
+                          const SizedBox(width: 6),
+                          modeButton('CAS', LoopMode.cas, enabled: cascadeOn && !bad),
+                        ],
+                      ],
+                    ),
                   if (loop.spTracked && auto)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -266,18 +296,18 @@ class Faceplate extends StatelessWidget {
                   _slider(
                     context,
                     label: 'SP',
-                    enabled: !man || true,
+                    enabled: !iman && !(cas && tag == 'FC-103'),
                     value: u.fromSI(q, loop.sp),
                     min: u.fromSI(q, loop.spLo),
                     max: u.fromSI(q, loop.spHi),
                     text: f(loop.sp),
                     onChanged: (v) => sim.setLoopSp(tag, u.toSI(q, v)),
-                    note: man ? 'stored; acts in AUTO' : null,
+                    note: man ? 'stored; acts in AUTO' : (cas ? 'set by TC-101' : null),
                   ),
                   _slider(
                     context,
                     label: 'OP',
-                    enabled: man,
+                    enabled: man && !iman,
                     value: loop.op,
                     min: loop.opLo,
                     max: loop.opHi,
@@ -308,6 +338,7 @@ class Faceplate extends StatelessWidget {
                       ),
                     ),
                   const SizedBox(height: 6),
+                  if (valve != null)
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -317,7 +348,7 @@ class Faceplate extends StatelessWidget {
                           width: 120,
                           height: 96,
                           child: CustomPaint(
-                            painter: ValveCurvePainter(t, valve, r, c4),
+                            painter: ValveCurvePainter(t, valve, meter, c4),
                           ),
                         ),
                       ),
