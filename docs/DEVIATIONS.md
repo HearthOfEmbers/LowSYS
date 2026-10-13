@@ -385,3 +385,8 @@ Physics/spec lead on the open items of "M6 checkpoint" (spec points 1–3), "M5 
 6. **`eq.raoult` rename: confirmed; `eq.equilibrium.T2` is retired (no alias).** §15 ids are the API. Tier 2/3 tray traces use the K model's own id: K = P_sat/P (Antoine or Lee–Kesler P_sat) → `eq.raoult`, NRTL → `eq.nrtl`, DePriester → `eq.depriester`; Tier 1 keeps `eq.equilibrium.T1`. `eq.bubblePoint` follows it as added.
    - Coder: rename in the tray trace, the math overlay and the M4 tests that check `eq.equilibrium.T2`.
    - Validator: VC-21's id check uses the §15 ids per K model.
+
+## M6 app 2 (coder, 2026-10-13)
+
+Done: thermosyphon loop schematic at the top of the Equipment tab card (sump, inlet valve, heater tubes, riser shaded by x_e and red while surging; in plain plant view only the inlet valve opening is labelled). Reboiler-type switch (Kettle / Thermosyphon) in the lever panel's UTILITIES group (Tiers 2/3), enabled only while paused (the label says "pause to switch"); the engine only flags `requiresPause`, so the gate is in the UI. Drill HUD shows `elapsed / time limit` (alarm colour in the last 5 minutes) and "Check LG-101 / LG-102" field-check buttons with the walking countdown and the reading. Saved attempts: each finished drill stores its seed and score in the save store (`drill.attempts.<id>`, last 12); the drill briefing lists them as chips and Start replays the chosen seed. Sandbox View toggle now has a third option, "Plant + calculations" (view 2). Tests in `app/test/m6_ui_test.dart` (second test). No new screenshots.
+Choices: the LG buttons are shown for every drill (the engine accepts any gauge tag); the HUD does not check which LGs the preset has. App tests: 26 pass; engine untouched.

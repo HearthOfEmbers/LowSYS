@@ -140,6 +140,21 @@ class LeverPanel extends StatelessWidget {
                   ),
                 ),
                 if ((values['condenserType'] ?? 0) >= 0.5) tile('cwOP'),
+                _Labeled(
+                  label: sim.paused
+                      ? 'Reboiler type'
+                      : 'Reboiler type (pause to switch)',
+                  t: t,
+                  child: _Segments(
+                    key: const ValueKey('lever-reboiler-type'),
+                    options: const ['Kettle', 'Thermosyphon'],
+                    selected: (values['reboilerType'] ?? 0) >= 0.5 ? 1 : 0,
+                    onSelect: locked.contains('reboilerType') || !sim.paused
+                        ? null
+                        : (i) => sim.setLever('reboilerType', i.toDouble()),
+                    t: t,
+                  ),
+                ),
                 tile('inertVent'),
                 tile('cwInletT'),
                 tile('cwMaxFlow'),
@@ -227,8 +242,9 @@ class LeverPanel extends StatelessWidget {
                   options: const [
                     'Model (true values)',
                     'Plant (readings only)',
+                    'Plant + calculations',
                   ],
-                  selected: (values['view'] ?? 0) >= 0.5 ? 1 : 0,
+                  selected: (values['view'] ?? 0).round().clamp(0, 2),
                   onSelect: locked.contains('view')
                       ? null
                       : (i) => sim.setLever('view', i.toDouble()),
@@ -333,6 +349,7 @@ class _Segments extends StatelessWidget {
   final void Function(int)? onSelect;
   final LowsysTheme t;
   const _Segments({
+    super.key,
     required this.options,
     required this.selected,
     required this.onSelect,
