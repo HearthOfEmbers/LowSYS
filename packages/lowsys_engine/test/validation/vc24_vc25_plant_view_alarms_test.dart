@@ -103,9 +103,11 @@ void main() {
         '25.2 states: raise → UNACK → ACKED → removed; clear before ack → RTN-UNACK → removed; journal',
         () {
       final sim = steadyT1();
-      sim.setLever('drumLevelSp', 88);
+      // Kc 2, Ti 1800: from SP 50 the drum crosses 85 % only after ≈ 50 min
+      // (engine: HI raised at 3000–3600 s with SP 90; the lever tops out at 90 %)
+      sim.control.setSp('LC-101', 90);
       final tRaise =
-          firstTime(sim, 3600, (s) => hasAlarm(s, 'LT-101.HI'), sample: 5);
+          firstTime(sim, 7200, (s) => hasAlarm(s, 'LT-101.HI'), sample: 5);
       expect(tRaise, isNotNull);
       expect(sim.snapshot().alarms.firstWhere((a) => a.id == 'LT-101.HI').state,
           AlarmState.unack);
@@ -117,8 +119,8 @@ void main() {
           firstTime(sim, 3600, (s) => !hasAlarm(s, 'LT-101.HI'), sample: 5);
       expect(tClear, isNotNull);
       // raise again, clear before ack
-      sim.setLever('drumLevelSp', 88);
-      firstTime(sim, 3600, (s) => hasAlarm(s, 'LT-101.HI'), sample: 5);
+      sim.control.setSp('LC-101', 90); // lever range is 10–90 %
+      firstTime(sim, 7200, (s) => hasAlarm(s, 'LT-101.HI'), sample: 5);
       sim.setLever('drumLevelSp', 50);
       final tRtn = firstTime(
           sim,
