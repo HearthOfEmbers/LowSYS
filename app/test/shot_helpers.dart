@@ -33,6 +33,8 @@ Future<void> loadFonts() async {
   await load('MaterialIcons', 'C:/dev/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
   await load('Architects Daughter', 'assets/fonts/ArchitectsDaughter-Regular.ttf');
   await load('Share Tech Mono', 'assets/fonts/ShareTechMono-Regular.ttf');
+  // VT323 is not bundled (Phosphor falls back to the platform monospace); screenshots use Share Tech Mono as a stand-in
+  await load('VT323', 'assets/fonts/ShareTechMono-Regular.ttf');
   await load('STIX Two Math', 'assets/fonts/STIXTwoMath-Regular.ttf');
   await load('Rajdhani', 'assets/fonts/Rajdhani-Medium.ttf');
   await load('JetBrains Mono', 'assets/fonts/JetBrainsMono-VF.ttf');

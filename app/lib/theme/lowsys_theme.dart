@@ -11,6 +11,9 @@ class ThemePalette {
   /// Six trend and multi-variable colours (SCOPE.md 7.1, added for the M3 Trends tab).
   final List<Color> series;
 
+  /// M7: dash pattern per series in logical px; an empty list is solid (SCOPE.md 7.1 seriesDash1..6).
+  final List<List<double>> seriesDash;
+
   const ThemePalette({
     required this.bg,
     required this.bgAlt,
@@ -44,6 +47,7 @@ class ThemePalette {
     required this.pseudoEq,
     required this.marker,
     required this.series,
+    required this.seriesDash,
   });
 
   /// Composition colour: light component end to heavy component end.
@@ -173,3 +177,6 @@ class LowsysThemeScope extends InheritedWidget {
   @override
   bool updateShouldNotify(LowsysThemeScope old) => old.theme != theme;
 }
+
+/// Blueprint, Control Room and Paper draw every series solid.
+const List<List<double>> kSolidDash = [[], [], [], [], [], []];

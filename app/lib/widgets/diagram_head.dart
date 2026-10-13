@@ -5,6 +5,7 @@ import '../app_scope.dart';
 import '../theme/lowsys_theme.dart';
 import 'column_view.dart';
 import 'figure_chrome.dart';
+import 'products_panel.dart';
 import 'txy_chart.dart';
 
 /// DiagramPanel tabs (SCOPE.md 3.2): McCabe-Thiele, T-x-y (binaries only, M5) and Profiles; the Profiles chart is
@@ -78,6 +79,7 @@ class _DiagramShellState extends State<DiagramShell> {
         String label(int id) => switch (id) {
               0 => compact ? 'McCabe' : 'McCabe–Thiele',
               2 => 'T-x-y',
+              3 => 'Products',
               _ => 'Profiles',
             };
         return Column(
@@ -138,6 +140,7 @@ class _DiagramShellState extends State<DiagramShell> {
                   final chart = switch (cur) {
                     0 => McCabeChart(compact: compact),
                     2 => TxyChart(compact: compact),
+                    3 => ProductsPanel(compact: compact),
                     _ => widget.profiles,
                   };
                   if (!paper || s == null) return chart;

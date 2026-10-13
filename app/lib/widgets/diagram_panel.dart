@@ -37,7 +37,7 @@ class ProfilesChart extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 children: [
-                  for (final k in ProfileKind.values)
+                  for (final k in ProfileKind.values.where((k) => k != ProfileKind.components || sim.config.components.length > 2))
                     Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: InkWell(

@@ -39,6 +39,7 @@ const LowsysTheme blueprintTheme = LowsysTheme(
     diagonal: Color(0xFF6F95BD),
     pseudoEq: Color(0xFFA9C8E8),
     marker: Color(0xFFFFD166),
+    seriesDash: kSolidDash,
     series: [Color(0xFFFFD166), Color(0xFF9BE7FF), Color(0xFFFF9F6E), Color(0xFFEAF4FF), Color(0xFF7CE0A3), Color(0xFFC3A6FF)],
   ),
   type: ThemeTypography(

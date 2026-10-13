@@ -19,6 +19,11 @@ const Map<String, String> kPresetNames = {
   Presets.bt: 'Benzene–toluene (textbook)',
   Presets.mw: 'Methanol–water',
   Presets.btCustomAlpha: 'Custom α',
+  Presets.ew: 'Ethanol–water',
+  Presets.ac: 'Acetone–chloroform',
+  Presets.c4: 'Isobutane–n-butane (C4 splitter)',
+  Presets.debut: 'Debutanizer (6 components)',
+  Presets.deprop: 'Depropanizer (6 components)',
 };
 
 /// Pause, clock, speed, steady indicator, run-to-steady and the preset menu (SCOPE.md 3.2).

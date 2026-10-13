@@ -600,3 +600,15 @@ Validator pass on engine eea0a5a, rebased on 54f9b41 ("Spec rulings M7"). New: `
   - `c4` 3–25 bar;
   - `pTop` 25 bar on `debut` with `thermoOutOfRange`;
   - VC-19 release timing.
+
+## M7 app (coder, 2026-10-13)
+
+Done: Phosphor theme (`phosphor.dart`, in the theme menu; scanline raster in the backdrop; VT323 not bundled, so the monospace fallbacks apply, and test screenshots use Share Tech Mono as a stand-in); `ThemePalette.seriesDash` (required, solid for the other three themes); Products tab (diagram tab id 3, multicomponent only): FUG panel (live / targets 98 % / 98 % with R = 1.3 R_min, recomputed every 10 s of sim time, invalid-key and below-R_min messages, rigorous N_act line) and the AT-100/101/102 GC lists with LK/HK marked; component profile chart (Profiles chip `x(i)`, series colour and dash per component, markers from the seventh); all presets (ew, ac, c4, debut, deprop) in the preset menu; G13 and H6 are in the scenario list. Tests `app/test/m7_ui_test.dart`; shots in `docs/screenshots/m7/`.
+
+Decisions:
+1. **Diameters** 0.75 / 0.55 m applied as ruled (only D_c changes). **Full-hydraulics steady runs** (`test/m7_hydraulics_test.dart`; seed 3, design levers): `debut` jet flood 54 % (rectifying) to 83 % (stripping), no weeping (0.00), dP 3.3 kPa/tray at the top, steady state reached. `deprop`: jet flood 59 % at the top, 121 % at tray 13 and 165 % at the bottom; no weeping; `runToSteadyState` does not reach steady in 400 000 s (D about 30.7). The spec's 60 % estimate (scaling against B-T) is wrong for the stripping section of `deprop` (liquid load plus a denser vapour). Scans (0.65 to 0.9 m, hole fraction 0.05 to 0.075) trade flooding at the bottom against weeping at the top; no single D_c gives both clean. **Question for the spec lead:** a larger D_c with fewer holes, or a taller sump section; hydraulics stay `ideal` by default as ruled.
+2. Because of 1 the app sandbox loads `debut` and `deprop` with the preset's `ideal` hydraulics instead of the sandbox-default Full (SCOPE 4.2); the Hydraulics lever still switches. Other presets unchanged.
+3. `pTop` lever limits (3 to 25 bar) now key on `tier3Model == dePriester` (or P_design above 5 bar); PC-101's own SP limit still keys on P_design (every DePriester preset is above 5 bar, so identical today).
+4. Measured open-loop PC-101 process gains were not re-measured (VC-16.6d is the validator's); pcKc stays 30 / 120 and the `m7_*` steady states still hold on the new diameters.
+5. H6 tests follow the rulings: F07 D within 2.5 kmol/h through 2600 s and within 1 kmol/h of the healthy run at 2 h (the planning event at 45 min raises D by about 3.6 on its own, so the "start value" comparison in the ruling needs the healthy run as the reference; **spec lead to confirm the row text**); F20 D at least 3.5 above healthy, C3a not `fail` at 2 h, C5 printed. F20 debrief text updated.
+6. The McCabe-Thiele tab on multicomponent presets now gets `keys:` from the config (Hengstebeck data).
