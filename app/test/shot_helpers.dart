@@ -39,6 +39,10 @@ Future<void> loadFonts() async {
   await load('Rajdhani', 'assets/fonts/Rajdhani-Medium.ttf');
   await load('JetBrains Mono', 'assets/fonts/JetBrainsMono-VF.ttf');
   await load('Source Sans 3', 'assets/fonts/SourceSans3-VF.ttf');
+  // Brass fonts are not bundled (no downloads): stand-ins for the screenshots
+  await load('Cinzel', 'assets/fonts/Rajdhani-SemiBold.ttf');
+  await load('IM Fell English', 'assets/fonts/SourceSerif4-Italic-VF.ttf');
+  await load('Courier Prime', 'assets/fonts/JetBrainsMono-VF.ttf');
   // the italic is the only Source Serif face the Paper captions use
   await load('Source Serif 4', 'assets/fonts/SourceSerif4-Italic-VF.ttf');
 }

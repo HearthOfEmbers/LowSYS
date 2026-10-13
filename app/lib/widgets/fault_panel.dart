@@ -6,6 +6,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../theme/lowsys_theme.dart';
 import 'balance_panel.dart';
+import 'crude_fault_panel.dart';
 import 'energy_panel.dart';
 import 'lever_panel.dart';
 import 'loops_panel.dart';
@@ -33,6 +34,7 @@ class _FaultPanelState extends State<FaultPanel> {
   @override
   Widget build(BuildContext context) {
     final sim = AppScope.of(context).sim;
+    if (sim.config.crude != null) return CrudeFaultPanel(controller: widget.controller, header: widget.header);
     final t = LowsysThemeScope.of(context);
     final p = t.palette;
     return ValueListenableBuilder<SimSnapshot?>(

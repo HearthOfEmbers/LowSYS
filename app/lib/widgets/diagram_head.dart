@@ -50,7 +50,7 @@ class _DiagramShellState extends State<DiagramShell> {
         final order = sim.diagramTabOrder;
         final cur = order.contains(sim.diagramTab.value)
             ? sim.diagramTab.value
-            : 0;
+            : order.first;
         Widget tabBtn(String label, int i) => Expanded(
               child: InkWell(
                 onTap: () => sim.diagramTab.value = i,
@@ -125,7 +125,7 @@ class _DiagramShellState extends State<DiagramShell> {
               child: ValueListenableBuilder<SimSnapshot?>(
                 valueListenable: sim.snapshot,
                 builder: (context, s, _) {
-                  if (s?.view.isPlant == true) {
+                  if (s?.view.isPlant == true && sim.config.crude == null) {
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(16),

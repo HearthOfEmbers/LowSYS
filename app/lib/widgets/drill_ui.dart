@@ -29,6 +29,9 @@ String diagnosisLabel(String id) {
     'packedBed': 'Packed bed',
     'packingDamage': 'Packing damage (crushed)',
     'flooding': 'Flooding (operating limit)',
+    'steamLoss': 'Stripping steam loss',
+    'pumparound': 'Pumparound',
+    'furnace': 'Furnace / COT',
     'column': 'Whole column',
     'steamSupply': 'Steam supply',
     'tsInletLine': 'Reboiler inlet line',
@@ -44,8 +47,18 @@ String diagnosisLabel(String id) {
   if (id.startsWith('instrument:')) return 'Instrument ${id.substring(11)}';
   if (id.startsWith('valve:')) return 'Valve ${id.substring(6)}';
   if (id.startsWith('bed:')) return bedLabel(int.tryParse(id.substring(4)) ?? 1);
+  if (id.startsWith('steam:')) return steamLabel(id.substring(6));
   return names[id] ?? id;
 }
+
+/// Display name of a crude steam injection point (M9): bottom, ss1, ss2, ss3.
+String steamLabel(String point) => switch (point) {
+      'bottom' => 'Bottom stripping steam (FC-321)',
+      'ss1' => 'Kero stripper steam (FC-322)',
+      'ss2' => 'Diesel stripper steam (FC-323)',
+      'ss3' => 'AGO stripper steam (FC-324)',
+      _ => 'Steam $point',
+    };
 
 /// Display name of packed bed [b] (1 = top): the PDT that watches it is PDT-(101 + b) (PHYSICS.md 10.5).
 String bedLabel(int b) => b == 1 ? 'Upper bed (PDT-102)' : (b == 2 ? 'Lower bed (PDT-103)' : 'Bed $b (PDT-${101 + b})');
@@ -61,6 +74,10 @@ List<String> expandLocations(DiagnosisDef d, SimSnapshot? s) {
     } else if (l == 'bed:*') {
       for (final b in s?.beds ?? const <PackedBedSnapshot>[]) {
         out.add('bed:${b.bed}');
+      }
+    } else if (l == 'steam:*') {
+      for (final q in const ['bottom', 'ss1', 'ss2', 'ss3']) {
+        out.add('steam:$q');
       }
     } else if (l == 'valve:*') {
       for (final v in s?.valves ?? const <ValveSnapshot>[]) {

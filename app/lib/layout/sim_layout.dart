@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app_scope.dart';
 import '../painters/effects/blueprint_grid.dart';
 import '../theme/lowsys_theme.dart';
 import '../widgets/alarm_bar.dart';
@@ -331,21 +332,29 @@ class _Expanded extends StatelessWidget {
   const _Expanded();
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: const [
-        TimeBar(),
-        AlarmBar(),
-        Expanded(
-          child: Row(
-            children: [
-              Expanded(flex: 25, child: _ColumnPanel()),
-              Expanded(flex: 50, child: _DiagramPanel()),
-              Expanded(flex: 25, child: SheetPanel(child: ControlTabs())),
-            ],
-          ),
-        ),
-        KpiStrip(scroll: false),
-      ],
+    final sim = AppScope.of(context).sim;
+    return ListenableBuilder(
+      listenable: sim,
+      builder: (context, _) {
+        // the crude flowsheet (column, three strippers, pumparound, furnace) needs a wider panel
+        final crude = sim.config.crude != null;
+        return Column(
+          children: [
+            const TimeBar(),
+            const AlarmBar(),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(flex: crude ? 36 : 25, child: const _ColumnPanel()),
+                  Expanded(flex: crude ? 40 : 50, child: const _DiagramPanel()),
+                  const Expanded(flex: 25, child: SheetPanel(child: ControlTabs())),
+                ],
+              ),
+            ),
+            const KpiStrip(scroll: false),
+          ],
+        );
+      },
     );
   }
 }
