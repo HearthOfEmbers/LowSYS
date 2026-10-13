@@ -119,3 +119,26 @@ class ExplainResult {
       required this.notes,
       required this.time});
 }
+
+/// A stage of a crude side stripper (M9): [stripper] 0..2, [bottom] true for the boot.
+class ExplainStripper extends ExplainTarget {
+  final int stripper;
+  final bool bottom;
+  const ExplainStripper(this.stripper, {this.bottom = false});
+}
+
+/// The crude pumparound (M9).
+class ExplainPumparound extends ExplainTarget {
+  const ExplainPumparound();
+}
+
+/// A crude product (M9): 0 naphtha, 1 kero, 2 diesel, 3 AGO, 4 residue.
+class ExplainProduct extends ExplainTarget {
+  final int product;
+  const ExplainProduct(this.product);
+}
+
+/// The overflash of the crude column (M9).
+class ExplainOverflash extends ExplainTarget {
+  const ExplainOverflash();
+}

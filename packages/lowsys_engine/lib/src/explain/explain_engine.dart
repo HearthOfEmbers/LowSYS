@@ -94,6 +94,8 @@ class ExplainEngine {
         return _valve(t.valveId);
       case ExplainCheck():
         return _check(t.checkId);
+      default:
+        return ExplainResult(title: 'Not available', groups: const [], notes: const ['Crude items are explained by ExplainCrude.'], time: 0);
     }
   }
 

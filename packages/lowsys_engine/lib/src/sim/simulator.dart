@@ -20,6 +20,7 @@ import '../core/quantity.dart';
 import '../faults/fault_effects.dart';
 import '../faults/fault_manager.dart';
 import '../faults/fault_spec.dart';
+import '../explain/explain_crude.dart';
 import '../explain/explain_engine.dart';
 import '../explain/explain_types.dart';
 import '../model/thermosyphon.dart';
