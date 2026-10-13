@@ -12,7 +12,7 @@ const String depropPresetJson = r'''
   "tier1Props": {"rhoL": 470, "rhoV": 36.0, "sigma": 0.005},
   "liquidViscosity": 0.0001,
   "sections": [{"kind": "trays", "trays": 28, "type": "sieve",
-    "geometry": {"diameter": 1.2, "traySpacing": 0.9, "downcomerFraction": 0.12, "weirHeight": 0.05,
+    "geometry": {"diameter": 0.55, "traySpacing": 0.9, "downcomerFraction": 0.12, "weirHeight": 0.05,
                  "apronClearance": 0.038, "holeFraction": 0.10, "holeDiameter": 0.0127, "orificeCoeff": 0.73,
                  "downcomerAeration": 0.5, "systemFactor": 1.0}}],
   "feeds": [{"stage": 11, "flow": 27.77777777777778, "z": [0.3, 0.2, 0.25, 0.1, 0.1, 0.05], "thermal": {"q": 1.0}}],

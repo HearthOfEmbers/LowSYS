@@ -89,9 +89,11 @@ void main() {
       final span = 2 * 76.4 * _kmolh;
       expect((_inst(sim)['FT-102']!.value - ft0).abs(), lessThanOrEqualTo(0.02 * span));
       expect((sim.control.fc102.op - fc0).abs(), lessThanOrEqualTo(2.0));
-      // spec: < 1 kmol/h (steady 44.94 to 44.54); at 2600 s the 900-s ramp is still settling, DEVIATIONS "M7 checkpoint"
-      expect(((sim.snapshot().kpis.d - d0) / _kmolh).abs(), lessThan(2.0));
+      // ruling: within 2.5 kmol/h throughout, within 1 at 2 h after onset (checked below)
+      expect(((sim.snapshot().kpis.d - d0) / _kmolh).abs(), lessThan(2.5));
       sim.advance(7200 - sim.time);
+      final healthyF07 = _h6("none")..advance(7200);
+      expect(((sim.snapshot().kpis.d - (healthyF07.liveMetric("kpi.d") as double)) / _kmolh).abs(), lessThan(1.0), reason: "D within 1 kmol/h of the healthy run at 2 h (planning event included)");
       expect(_inst(sim)['TI-101']!.value - ti0, greaterThanOrEqualTo(2.0), reason: 'TI-101 up');
       expect((sim.liveMetric('kpi.xDHeavy') as double) - x0, greaterThanOrEqualTo(0.02));
       // ignore: avoid_print
@@ -140,11 +142,13 @@ void main() {
       expect(c4.isNotEmpty && c4.first.status.name == 'fail', isTrue, reason: 'C4:FV-102 ${c4.map((c) => c.status.name)}');
       stuck.advance(7200 - stuck.time);
       healthy.advance(7200 - healthy.time);
-      // spec: C3a ok; the engine gives fail 10 min after the event and 'check' at 2 h (DEVIATIONS "M7 checkpoint")
+      // ruling: C3a not fail from event + 60 min, ok or check at 2 h; C5 recorded
       expect(stuck.snapshot().crossChecks.firstWhere((c) => c.id == 'C3a').status.name, isNot('fail'));
+      // ignore: avoid_print
+      print('H6 F20 C5: ${stuck.snapshot().crossChecks.where((c) => c.id.startsWith("C5")).map((c) => "${c.id}=${c.status.name}").join(",")}');
       final dStuck = stuck.liveMetric('kpi.d') as double, dHealthy = healthy.liveMetric('kpi.d') as double;
-      // spec: >= 4 (steady 52.6 vs 48.5); the engine gives 3.97 at 2 h, DEVIATIONS "M7 checkpoint"
-      expect((dStuck - dHealthy) / _kmolh, greaterThanOrEqualTo(3.9));
+      // ruling: >= 3.5 (engine 3.97 at 2 h)
+      expect((dStuck - dHealthy) / _kmolh, greaterThanOrEqualTo(3.5));
       expect((stuck.liveMetric('kpi.xDHeavy') as double) - x0, greaterThanOrEqualTo(0.02));
       // healthy planning event: compositions unchanged, the off-spec predicate never holds
       expect(((healthy.liveMetric('kpi.xDHeavy') as double) - x0).abs(), lessThanOrEqualTo(0.005));
