@@ -393,11 +393,14 @@ Choices: the LG buttons are shown for every drill (the engine accepts any gauge 
 
 ## M6 validation
 
-Validator pass on engine 23d7368 / 0d2f7db (worktree). Files: `vc14_thermosyphon_loop_validation_test.dart`, `vc14_thermosyphon_column_validation_test.dart`, independent loop reference `reference/thermosyphon_reference.dart` (PHYSICS.md 8.3 re-implemented from the text). M6 files: 39 pass, 4 skipped (spec items below), 0 fail.
+Validator pass on engine 23d7368 / 0d2f7db (worktree). Files: `vc14_thermosyphon_loop_validation_test.dart`, `vc14_thermosyphon_column_validation_test.dart`, independent loop reference `reference/thermosyphon_reference.dart` (PHYSICS.md 8.3 re-implemented from the text). M6 files: 40 pass, 3 skipped, 0 fail. Rebased on 2044f1a ("Spec rulings M6") and e9d0fbe; the rulings that need no engine change are applied below.
 
 **M5 follow-ups.**
 - `vc18_mccabe_thiele_data_test.dart`: no compile error at 0d2f7db (`RminConstruction.rMin` is `double?`, `rMin!` is valid); 13/13 pass. Nothing changed.
-- dt 30 (coder item 6): split into a group. Asserted: dt 2 settles (D 16.317, residual 5e-12); dt 30 `reached` false (no false steady), D 16.263, P +79 Pa, residual 1.5e-3. Skipped, pending the spec ruling: `negativeClamps == 0` (2576) and the dt-2 identity.
+- dt 30 (coder item 6), per ruling 2044f1a item 5 (VALIDATION.md §0): pass.
+  - dt 2 and 10 s settle: D 16.317 / 16.317, P at SP, residual 5e-12, 0 clamps at dt 2.
+  - dt 30 is finite and returns `reached` false: D 16.263, P +79 Pa, residual 1.5e-3. No false steady.
+  - `negativeClamps` at dt 30 is recorded, not asserted: 2576.
 - VC-28.8 (ce171db) un-skipped, both pass: G9 o5 at 55.81 h < 216 000 s (limit 432 000, par 216 000); low-CW hour peak −8.03 kPa at 91 s, within ± 2 kPa from 260 s, last-20-min p-p 0.1 Pa, CW 9.3 %, no safety events.
 
 **E.3 reference values (29)**
@@ -410,7 +413,7 @@ Validator pass on engine 23d7368 / 0d2f7db (worktree). Files: `vc14_thermosyphon
 | 13 | ΔT_sub 8.330 / 6.664 K, Q_max,0 1596.7 / 1636.4 kW | pass (spec "6.67" should be 6.66) |
 | 14–17 | 3.628e-4 K/Pa; A_t 0.07060 m², 39.96 m²; A_sat rule 0.140 / 0.082 = simulated ± 10 %; W_h 8.21 / 8.70 kg/s | pass |
 | 18 | cycle mean u ≤ 0.0031; delivered vs steam side 0.59 % / 0.92 % / 1.10 % (15 %, K_out 20, F18) | u pass; "≤ 0.5 %" fails in the spec's own table (S1) |
-| 19 | G14 start I_s 0.913, FC-103 100 %, I_s > 1 at 10 s (spec 17), amplitude 0.05 at 314 s; **qr 1157 kW** | pass except the duty (pending, coder point 2) |
+| 19 | G14 start I_s 0.913, FC-103 100 %, I_s > 1 at 10 s (spec 17), amplitude 0.05 at 314 s; qr 1157 kW | pass (duty inside the new 1040–1180 kW band, 2044f1a item 2) |
 | 20 | not re-run (coder: I_s < 1 at 28.2 % level, spec ≈ 31 %) | — |
 | 21, 22 | amplitude < 0.01 at 219 s; 0.141 → 0.085 at 16 % | pass |
 | 23 | W −10.7 % at 1 h; I_s > 1 at 1.98 h / 30.2 %; p-p ≥ 10 % at 2.56 h / 24.4 % | pass |
@@ -418,17 +421,20 @@ Validator pass on engine 23d7368 / 0d2f7db (worktree). Files: `vc14_thermosyphon
 | 25 | F18 s 0.4: I_s > 1 at 6.4 min, 0.05 at 14.1 min, outlet ΔP × 2.77, period 10.9 s, p-p 30 %, 1098 kW at FC-103 100 % | pass |
 | 26 | kettle F13: duty < SP from 50.7 min, FV-103 saturates at 53.8 min (s(t) 0.508, spec 0.44); valve flat at 58.7 % until then | time pass (+14 %); "creeps open" fails (S3) |
 | 27 | C5 (sump) `fail` with the 3600-s window at 75 min | pass (r/band not recorded) |
-| 28 | Q_max,0 1677.3 kW, FV-103 77.6 % | pass ± 3 %; offset = 47.6 kW/K × (110.39 − 109.51 °C), the column's sump T |
+| 28 | Q_max,0 1677.3 kW, FV-103 77.6 % | pass: identity to 0.5 %, OP 75–81 % (column-coupled values ratified in 2044f1a item 3); offset = 47.6 kW/K × (110.39 − 109.51 °C), the column's sump T |
 | 29 | σ_proc PT-101 152.0 Pa, TI-100 0.0486 K; FT-201 1.636 m³/h (2.27 %); TI-202 0.340 K (0.022 × 15.52 K rise) | pass |
 
-**VC-14.2 (B-T Tier 2, thermosyphon):** 14.2.1 I_s 0.732, amplitude 0; 14.2.2 boilup p-p 30.6 %, period 8.53 s, `model.tsUnstable` raised, growth 10 → 90 % over 212 s, column ΔP and stage-20 ΔP at 8.68 s (full hydraulics); 14.2.3 0.152 → 0.095 at 16 % (min 0.091), < 0.005 at 252 s after 35 %, alarm cleared; 14.2.4 FT-103 vs qr −0.77 %, C3b ok. All pass except FT-103 5-s bins 7.8 % p-p (pending, coder point 1).
+**VC-14.2 (B-T Tier 2, thermosyphon):** 14.2.1 I_s 0.732, amplitude 0; 14.2.2 boilup p-p 30.6 %, period 8.53 s, `model.tsUnstable` raised, growth 10 → 90 % over 212 s, column ΔP and stage-20 ΔP at 8.68 s (full hydraulics); 14.2.3 0.152 → 0.095 at 16 % (min 0.091), < 0.005 at 252 s after 35 %, alarm cleared; 14.2.4 FT-103 vs qr −0.77 %, C3b ok. All pass. Skipped: FT-103 5-s bins ≤ 2 % p-p. It is 7.8 % because FT-103 still reads the unbuffered Q_k; the Q_st buffer (2044f1a item 1) is not in the engine yet.
 
 **Physical sense (pass):** W rises and x_e, I_s fall with level (15 → 90 %); inlet throttling lowers W and I_s and raises x_e; K_out and F18 raise I_s; fouling cuts Q; more duty raises x_e; a stable loop closes Q = W (c_p ΔT_sub + λ x_e) to 1e-6.
 
-**Coder items:** none new.
+**Coder items:** none new. Still to land from 2044f1a, each with its validator follow-up:
+- the Q_st buffer, then un-skip the VC-14.2.2 FT-103 check;
+- the G14 o1 change, then run the VC-14.3.4 sweep (8–16 %) and the FC-103 SP 1150 kW case;
+- the `eq.raoult` rename, then the VC-21 id check.
 
 **Spec lead items:**
 - S1. §8.3.4 / E.3 #18: "delivered and FT-103 differ by ≤ 0.5 %" fails in the VC-14.1 table itself, because Q_k and u_k correlate. Suggest ≤ 1.5 % ("inside C3b's 2 %").
 - S2. §8.3.4 / E.3 #3: "I_s crosses 1 at ≈ 29.5 %" contradicts the 30 % row (1.01). It is ≈ 30.8 %.
 - S3. §H H4 row and the H4 `reb_foul` debrief say the steam valve creeps open for ≈ 45 min. Under §10.3 (Q_v from the clean Q_max,0, Q = min(Q_v, Q_max)), the valve is flat until Q_max < Q_v, then saturates within seconds. Reword the evidence and debrief, or change the valve model. The M4 test reads "rises over ≥ 30 min" as "saturates ≥ 30 min after onset".
-- Still open from the coder: FT-103 2 % criterion (point 1), the G14 duty (point 2), the dt-30 ruling (M5 item 6).
+- 2044f1a ruled on the FT-103, G14 and dt-30 items. What was applied, and what still waits for the coder, is listed above.

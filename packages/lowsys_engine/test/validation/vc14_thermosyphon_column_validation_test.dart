@@ -53,12 +53,12 @@ void main() {
     final z = 1.2 + _level(base) / 100 * 2.4;
     final dTsub = ts.p.dTsatdP * ts.p.rhoL * 9.80665 * z;
     final q0Hand = 47.6e3 * (ts.p.tSteam - ts.p.tSump - dTsub / 2);
-    expect(ts.qMax0, closeTo(q0Hand, 1e-3 * q0Hand), reason: 'Q_max,0 by hand from the engine state');
+    expect(ts.qMax0, closeTo(q0Hand, 5e-3 * q0Hand), reason: 'Q_max,0 by hand from the engine state');
     print('#28 Q_max,0 ${(ts.qMax0 / 1e3).toStringAsFixed(1)} kW (spec 1636), FV-103 '
         '${base.control.fv103.position.toStringAsFixed(1)} % (spec ~79), T_sump ${(ts.p.tSump - 273.15).toStringAsFixed(2)} C '
         '(VC-14.1 input 110.39 C), I_s ${s.reboiler.instabilityIndex.toStringAsFixed(3)}, level ${_level(base).toStringAsFixed(1)} %');
-    expect(ts.qMax0, closeTo(1636e3, 0.03 * 1636e3));
-    expect(base.control.fv103.position, closeTo(79, 3));
+    // ruling 2044f1a item 3: column-coupled 1677 kW / 77.6 % ratified; the identity above (0.5 %) and OP 75-81 %
+    expect(base.control.fv103.position, inInclusiveRange(75, 81));
     expect(s.kpis.qr, closeTo(1300e3, 0.005 * 1300e3), reason: 'FC-103 holds 1300 kW');
     // the sump is the column's bottom: T_sump is the bubble point there, and the loop's steam T is above it
     expect(ts.p.tSteam, greaterThan(ts.p.tSump + dTsub));
@@ -150,8 +150,8 @@ void main() {
       expect(tGrow90 - tGrow10, greaterThanOrEqualTo(30), reason: 'the amplitude grows, it does not step');
     }, timeout: _long);
     test('14.2.2 FT-103 5-s bins vary <= 2 % peak to peak',
-        skip: 'pending spec ruling (DEVIATIONS "M6 checkpoint" point 1): the steam-side Q_k itself swings with the '
-            'mist-flow limit; engine about 8 % (see the print)', () {
+        skip: 'ruled in 2044f1a item 1 (FT-103 reads the steam-chest buffer Q_st, tau 10 s): waits for the coder; '
+            'engine e9d0fbe: FT-103 = unbuffered Q_k, 7.8 % (see the print)', () {
       expect(ftBinPp, lessThanOrEqualTo(0.02));
     });
     test('14.2.4 energy: mean FT-103 vs mean kpi.qr <= 1 % over 20 min; C3b ok', () {
@@ -191,9 +191,8 @@ void main() {
       expect(t005, lessThanOrEqualTo(600));
       expect(_level(g), inInclusiveRange(5, 95));
     }, timeout: _long);
-    test('start duty 1040-1140 kW',
-        skip: 'pending spec ruling (DEVIATIONS "M6 checkpoint" point 2): engine 1157 kW from the column sump T', () {
-      expect(q0, inInclusiveRange(1040e3, 1140e3));
+    test('start duty 1040-1180 kW (VC-14.3.1 after ruling 2044f1a item 2)', () {
+      expect(q0, inInclusiveRange(1040e3, 1180e3));
     });
   });
 
