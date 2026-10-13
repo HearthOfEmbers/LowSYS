@@ -326,6 +326,7 @@ class Simulator {
           dutyMax: _rangeMax(config, 'reboilerDuty', 3.0e6, kmolh: false),
           dTbubDp: config.condenser.dTbubDp,
           pcKc: config.condenser.pcKc,
+          pcTi: config.condenser.pcTi,
           thermosyphon: config.reboiler.type == ReboilerType.thermosyphon ? config.reboiler.thermosyphon : null,
           dvMax: config.condenser.dvMax,
           cwManualOp: lev['cwOP'] ?? config.condenser.cwOpPartial,

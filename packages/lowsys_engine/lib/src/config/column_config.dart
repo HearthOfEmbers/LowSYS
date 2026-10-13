@@ -105,6 +105,9 @@ class CondenserConfig {
   /// presets (M7) have a much smaller process gain in % span per % OP (a 3.45 MPa span and a small condenser).
   final double pcKc;
 
+  /// PC-101 integral time on PV-101 (s; default 120, `deprop` 400: integrating pressure response, Kc k' Ti >= 2.8).
+  final double pcTi;
+
   /// Vapour-product header pressure (partial condenser), vent header pressure and capacities (PHYSICS.md 7.1, 7.2);
   /// null: P_design - 30 kPa, and 50 kPa below 3 bar design pressure else 1 atm.
   final double? pDown, pVent;
@@ -124,6 +127,7 @@ class CondenserConfig {
     this.cwOpPartial = 30,
     this.dTbubDp = 3.2e-4,
     this.pcKc = 10,
+    this.pcTi = 120,
     this.pDown,
     this.pVent,
     this.ventMax = 2.0,
@@ -150,6 +154,7 @@ class CondenserConfig {
       cwOpPartial: g('cwOpPartial', d.cwOpPartial),
       dTbubDp: g('dTbubDp', d.dTbubDp),
       pcKc: g('pcKc', d.pcKc),
+      pcTi: g('pcTi', d.pcTi),
       pDown: (j['pDown'] as num?)?.toDouble(),
       pVent: (j['pVent'] as num?)?.toDouble(),
       ventMax: g('ventMax', d.ventMax),
@@ -170,6 +175,7 @@ class CondenserConfig {
         'cwOpPartial': cwOpPartial,
         'dTbubDp': dTbubDp,
         if (pcKc != 10) 'pcKc': pcKc,
+        if (pcTi != 120) 'pcTi': pcTi,
         if (pDown != null) 'pDown': pDown,
         if (pVent != null) 'pVent': pVent,
         'ventMax': ventMax,

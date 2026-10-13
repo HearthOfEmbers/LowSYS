@@ -112,7 +112,7 @@ class ControlDesign {
   final double dTbubDp;
 
   /// PC-101 gain with a total condenser (%OP per % span).
-  final double pcKc;
+  final double pcKc, pcTi;
   final int nTrays, tc101Tray;
 
   /// Number of packed beds (M8): PDT-(101 + b) per bed.
@@ -136,6 +136,7 @@ class ControlDesign {
     this.thermosyphon,
     this.dTbubDp = 3.2e-4,
     this.pcKc = 10,
+    this.pcTi = 120,
     this.partial = false,
     this.dvMax = 0,
     this.dvOp = 20,
@@ -583,7 +584,7 @@ class ControlSystem {
       params: d.partial
           ? const PidParams(kc: 2.0, ti: 30, action: Action.direct, spKick: false)
           : PidParams(
-              kc: d.pcKc, ti: 120, action: Action.direct, spKick: false),
+              kc: d.pcKc, ti: d.pcTi, action: Action.direct, spKick: false),
       fastLayer: false,
       lo: 0,
       hi: 2 * pDes,
