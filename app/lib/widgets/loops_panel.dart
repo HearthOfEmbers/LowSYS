@@ -24,7 +24,7 @@ const Map<String, String> kLoopTitle = {
   'LC-101': 'Drum level',
   'LC-102': 'Sump level',
   'PC-101': 'Top pressure',
-  'TC-101': 'Tray temperature (master of FC-103)',
+  'TC-101': 'Tray temperature',
 };
 
 const Map<String, String> kLoopGauge = {'LC-101': 'LG-101', 'LC-102': 'LG-102'};

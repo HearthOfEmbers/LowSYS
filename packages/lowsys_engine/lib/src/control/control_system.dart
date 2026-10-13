@@ -887,7 +887,7 @@ class ControlSystem {
     _executeLoop(lc101, dt, t);
     _executeLoop(lc102, dt, t);
     if (tier2) {
-      pc101.kcScale = (pv101.position / pcScheduleOp).clamp(pcScheduleMin, 1.0);
+      pc101.kcScale = (pc101.op / pcScheduleOp).clamp(pcScheduleMin, 1.0);
       _executeLoop(pc101, dt, t);
       _runTc101(dt, t);
     }
