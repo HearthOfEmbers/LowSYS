@@ -449,9 +449,7 @@ const String g8Json = r'''
   "events": [],
   "scoring": {"objectives": 0.6, "time": 0.2, "safety": 0.1, "quality": 0.1,
               "qualitySpec": {"metric": "kpi.xD", "op": ">=", "value": 0.95}},
-  "debrief": "alpha at x = 0.5 falls from 2.60 at 0.7 bar to 2.49 at 1 atm, 2.30 at 2 bar and 2.20 at 3 bar. The same reflux and duty therefore give a worse separation at higher pressure, and to hold the 1 atm purities at 2 bar you had to raise the reflux and the duty.\n\nThe utilities set limits too: at 0.5 bar the condenser cannot condense even with 15 degC water, and above about 2 bar the 3.5 bar(g) steam is too cool for the reboiler.
-
-Why did the sweep start at 0.7 bar and not 0.5? At 0.5 bar(a) the distillate condenses near 60 degC. Even with 15 degC water the condenser can remove only about 1.2 MW, less than the reboiler puts in, so PC-101 cannot hold the pressure there (VC-27.3). An operator would turn the feed down, which G9 does."
+  "debrief": "alpha at x = 0.5 falls from 2.60 at 0.7 bar to 2.49 at 1 atm, 2.30 at 2 bar and 2.20 at 3 bar. The same reflux and duty therefore give a worse separation at higher pressure, and to hold the 1 atm purities at 2 bar you had to raise the reflux and the duty.\n\nThe utilities set limits too: at 0.5 bar the condenser cannot condense even with 15 degC water, and above about 2 bar the 3.5 bar(g) steam is too cool for the reboiler.\n\nWhy did the sweep start at 0.7 bar and not 0.5? At 0.5 bar(a) the distillate condenses near 60 degC. Even with 15 degC water the condenser can remove only about 1.2 MW, less than the reboiler puts in, so PC-101 cannot hold the pressure there (VC-27.3). An operator would turn the feed down, which G9 does."
 }
 ''';
 
