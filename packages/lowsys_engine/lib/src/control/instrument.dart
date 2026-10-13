@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
@@ -109,6 +110,10 @@ class InstrumentReading {
   final double digitsAge;
   final double? resultAge;
   final String? loopTag;
+
+  /// M7: the full composition of the analyser result (every component, mole fractions, aged like [value]); null for
+  /// other instruments and for binaries.
+  final Float64List? components;
   const InstrumentReading({
     required this.tag,
     required this.type,
@@ -125,6 +130,7 @@ class InstrumentReading {
     required this.digitsAge,
     this.resultAge,
     this.loopTag,
+    this.components,
   });
 }
 
@@ -168,6 +174,10 @@ class Instrument {
   double _nextSample = 0;
   double _nextPublish = double.infinity;
   double _pending = 0;
+
+  /// M7: the published full GC composition (rounded to 1e-4), with its sample-line lag and pending sample.
+  Float64List? comp;
+  Float64List? _compSs, _compPending;
   double resultTime = 0;
   bool _analyserDead = false;
 
@@ -377,9 +387,24 @@ class Instrument {
     _record(value, t, h);
   }
 
+  /// Sets the composition the analyser starts at (also used by [reset] when it runs afterwards).
+  void resetComp(Float64List c) {
+    _compSs = Float64List.fromList(c);
+    _compPending = Float64List.fromList(c);
+    comp = _round4(c);
+  }
+
+  static Float64List _round4(Float64List c) {
+    final o = Float64List(c.length);
+    for (var i = 0; i < c.length; i++) {
+      o[i] = (c[i] * 1e4).roundToDouble() / 1e4;
+    }
+    return o;
+  }
+
   /// Analyser update in the main layer (PHYSICS.md 10.5): sample-line lag, cyclic sampling, delayed result.
   /// [t] is the time at the END of the step.
-  void updateAnalyser(double dt, double v, double t) {
+  void updateAnalyser(double dt, double v, double t, {Float64List? c}) {
     _t = t;
     if (!_init) reset(v, t);
     final f = fault;
@@ -400,7 +425,16 @@ class Instrument {
             ? math.pow(10, 4 * s).toDouble() - 1
             : 0.0);
     _vss += (v - _vss) * dt / (tauSs + dt);
+    final cs = _compSs;
+    if (c != null && cs != null) {
+      final w = dt / (tauSs + dt);
+      for (var i = 0; i < cs.length; i++) {
+        cs[i] += (c[i] - cs[i]) * w;
+      }
+    }
     if (!_analyserDead && t + 1e-9 >= _nextPublish) {
+      final cp = _compPending;
+      if (cp != null) comp = _round4(cp);
       value = ((_pending.clamp(spec.lo, spec.hi)) * 1e4).roundToDouble() / 1e4;
       resultTime = _nextPublish - 300;
       _nextPublish = double.infinity;
@@ -412,6 +446,7 @@ class Instrument {
       if (kind == InstrumentFaultKind.drift)
         b = f!.sign * s * 0.10 * span * (t - f.onset) / 3600;
       _pending = _vss + b + (noise ? 0.005 * span * _rngE.normal() : 0.0);
+      if (cs != null) _compPending = Float64List.fromList(cs);
       _nextPublish = _nextSample + 300;
       _nextSample += 300;
     }
@@ -486,6 +521,7 @@ class Instrument {
         digitsAge: t - _lastChangeT,
         resultAge: spec.isAnalyser ? t - resultTime : null,
         loopTag: loopTag,
+        components: spec.isAnalyser && (comp?.length ?? 0) > 2 ? comp : null,
       );
 
   /// PV in % of span.
@@ -521,6 +557,9 @@ class Instrument {
         'nextSample': _nextSample,
         'nextPublish': _nextPublish.isFinite ? _nextPublish : null,
         'pending': _pending,
+        if (_compSs != null) 'compSs': _compSs!.toList(),
+        if (_compPending != null) 'compPending': _compPending!.toList(),
+        if (comp != null) 'comp': comp!.toList(),
         'resultTime': resultTime,
         'dead': _analyserDead,
         'binSum': _binSum,
@@ -566,6 +605,10 @@ class Instrument {
     _nextSample = d('nextSample');
     _nextPublish = (j['nextPublish'] as num?)?.toDouble() ?? double.infinity;
     _pending = d('pending');
+    Float64List? fl(String k) => j[k] == null ? null : Float64List.fromList([for (final e in j[k]! as List<Object?>) (e! as num).toDouble()]);
+    _compSs = fl('compSs');
+    _compPending = fl('compPending');
+    comp = fl('comp');
     resultTime = d('resultTime');
     _analyserDead = j['dead']! as bool;
     final bs = j['binSum']! as List<Object?>,

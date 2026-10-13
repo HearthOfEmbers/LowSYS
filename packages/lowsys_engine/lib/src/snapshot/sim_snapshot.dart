@@ -413,6 +413,9 @@ class Kpis {
   final double pTop;
   final double? recoveryLK, recoveryHK;
 
+  /// M7 key cuts (PHYSICS.md 10.5): HK and heavier in D, LK and lighter in B (binary: 1 - xD and xB).
+  final double xDHeavy, xBLight;
+
   /// |F z - D xD - B xB| / F z for the light component (zero when F = 0).
   final double balanceResidual;
 
@@ -435,6 +438,8 @@ class Kpis {
     required this.pTop,
     this.recoveryLK,
     this.recoveryHK,
+    this.xDHeavy = double.nan,
+    this.xBLight = double.nan,
     required this.balanceResidual,
     required this.energyResidual,
   });

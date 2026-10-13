@@ -56,7 +56,7 @@ class FakeMetricContext extends MetricContext {
 
 /// Metric paths that a scenario may use (ENGINE_API.md 11.1).
 final RegExp metricPathPattern = RegExp(
-    r'^(time|steady|tier|preset|objective\[\w+\]\.met|alarm\.count|alarm\[[\w.:-]+\]\.active|safety\.(reliefLifted|levelViolationSeconds)|kpi\.(xD|xB|d|b|refluxRatio|boilup|qc|qr|columnDp|maxFloodPct|maxWeepFraction|drumLevelPct|sumpLevelPct|pTop|recoveryLK|recoveryHK|balanceResidual)|answer\.\w+|lever\.[\w.]+|stage\[\d+\]\.(t|p|x|holdup|weepFrac|jetFlood)|loop\[[\w-]+\]\.(pv|sp|op|mode)|instrument\[[\w-]+\]\.(value|quality)|valve\[[\w-]+\]\.(op|position)|check\[[\w:.-]+\]\.(residual|status)|condenser\.(drumLevelPct|qc)|reboiler.(qr|steamValveOp|circulation|exitQuality|instabilityIndex|oscAmplitude|oscPeriod|inletValve))$');
+    r'^(time|steady|tier|preset|objective\[\w+\]\.met|alarm\.count|alarm\[[\w.:-]+\]\.active|safety\.(reliefLifted|levelViolationSeconds)|kpi\.(xD|xB|xDHeavy|xBLight|d|b|refluxRatio|boilup|qc|qr|columnDp|maxFloodPct|maxWeepFraction|drumLevelPct|sumpLevelPct|pTop|recoveryLK|recoveryHK|balanceResidual)|answer\.\w+|lever\.[\w.]+|stage\[\d+\]\.(t|p|x|holdup|weepFrac|jetFlood)|loop\[[\w-]+\]\.(pv|sp|op|mode)|instrument\[[\w-]+\]\.(value|quality)|valve\[[\w-]+\]\.(op|position)|check\[[\w:.-]+\]\.(residual|status)|condenser\.(drumLevelPct|qc)|reboiler.(qr|steamValveOp|circulation|exitQuality|instabilityIndex|oscAmplitude|oscPeriod|inletValve))$');
 
 /// Structured predicate: all / any / not / leaf comparisons (no expression language).
 sealed class Predicate {
