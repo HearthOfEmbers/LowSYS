@@ -482,10 +482,9 @@ const String g9Json = r'''
      "holdFor": 300, "latch": true},
     {"id": "o2", "text": "What x_D does the column seem to approach?", "after": "o1",
      "answer": {"type": "number", "correct": 0.8956, "tolerance": 0.01}},
-    {"id": "o3", "text": "Switch to Tier 1 and reach x_D of 0.95 or more, steady.", "after": "o2",
+    {"id": "o3", "text": "Switch to Tier 1 and reach x_D of 0.95 or more.", "after": "o2",
      "when": {"all": [{"metric": "tier", "op": "==", "value": 1},
-                      {"metric": "kpi.xD", "op": ">=", "value": 0.95},
-                      {"metric": "steady", "op": "==", "value": true}]},
+                      {"metric": "kpi.xD", "op": ">=", "value": 0.95}]},
      "holdFor": 300, "latch": true},
     {"id": "o4", "text": "Tier 1 went past 0.8956. Why?", "after": "o3",
      "answer": {"type": "choice",
@@ -504,7 +503,7 @@ const String g9Json = r'''
   ],
   "hints": [
     {"after": 0, "text": "The condenser is near its limit, so keep the duty and raise R by cutting D: set reflux to 105 kmol/h (D falls to about 6, R to about 17.6)."},
-    {"when": {"metric": "objective[o1].met", "op": "==", "value": true}, "text": "Switch to Tier 1 with the badge and run to steady state."},
+    {"when": {"metric": "objective[o1].met", "op": "==", "value": true}, "text": "Switch to Tier 1 with the badge and let it run. Watch x_D climb past 0.8956; there is no need to wait for steady state."},
     {"when": {"metric": "objective[o3].met", "op": "==", "value": true}, "text": "Switch back to Tier 3. Then, together: feed 60 kmol/h, reflux 60 kmol/h, duty 748 kW, P_top 0.5 bar(a). At 0.5 bar(a) the condenser carries only about 840 kW, so the feed has to come down."}
   ],
   "events": [],

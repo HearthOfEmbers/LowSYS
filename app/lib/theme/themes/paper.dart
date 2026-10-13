@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../lowsys_theme.dart';
 
-/// T-5 Paper, "Textbook" (SCOPE.md 7.2): a printed-figure look on warm paper. The fonts "Source Serif 4" and
-/// "Source Sans 3" are not bundled (no downloads without the user's go-ahead, docs/DEVIATIONS.md): the serif and
-/// sans fallbacks of the platform apply. Selection yellow is only ever used as a fill behind ink.
+/// T-5 Paper, "Textbook" (SCOPE.md 7.2): a printed-figure look on warm paper. "Source Serif 4" and "Source Sans 3"
+/// (OFL, github.com/google/fonts) are bundled; the platform serif and sans are the fallbacks. Selection yellow is only ever used as a fill behind ink.
 const LowsysTheme paperTheme = LowsysTheme(
   id: 'paper',
   name: 'Paper',

@@ -302,7 +302,7 @@ class Simulator {
           trays: config.control.trayList(N),
           partial: _isPartial(config),
           dvMax: config.condenser.dvMax,
-          cwManualOp: lev['cwOP'] ?? 70.0,
+          cwManualOp: lev['cwOP'] ?? config.condenser.cwOpPartial,
         ),
         _seed);
     _trends = TrendBuffer();
@@ -1758,11 +1758,22 @@ class Simulator {
     final inp = _inputs;
     if (tier != ThermoTier.t1 && _tier != ThermoTier.t1) {
       // T2 <-> T3 (PHYSICS.md 13.5): only the K model changes, the duty SP is kept
+      final qOld = s.qC;
       _tier = tier;
       _config = _config.copyWith(tier: tier);
       _stepper.t2 = _active;
       _stepper.t2Thermo(s.pTop);
       _stepper.t2RescaleInventory();
+      if (!_control.partial && qOld > 0) {
+        // the new K model gives another condensing T: set the CW valve for a continuous Q_C (7.3 inverted)
+        final ua = _stepper.uaCondEff;
+        final dtNew = s.tSat0 - _stepper.cwInT;
+        if (ua > 0 && dtNew > 0) {
+          final r = ua * dtNew / qOld;
+          final mcw = r <= 1 ? double.infinity : ua / (2 * 4180.0 * (r - 1));
+          _control.setCwFlowBumpless(mcw.isFinite ? mcw : 1e9);
+        }
+      }
       _levers = _buildLevers();
     } else if (tier != ThermoTier.t1) {
       // top vapour V1 and D continuous: Q_R from the steady energy balance with Tier-2/3 enthalpies
@@ -1808,6 +1819,9 @@ class Simulator {
             s.pStage[inp.feedStage], _ep.zEff);
       } catch (_) {}
       q = q.clamp(-0.5, 1.5).toDouble();
+      // a saturated-liquid feed (q = 1 preset) must come back as exactly q = 1, so that a later return to Tier 2/3
+      // restores `feedSat` and the feed keeps following the local bubble point (G9 at 0.5 bar)
+      if (inp.feedSat) q = 1.0;
       inp.feedQ = q;
       final vb = math.max(0.0, v1 - (1 - q) * f);
       inp.boilupSp = vb;
@@ -1939,7 +1953,11 @@ class Simulator {
     }
     final cur = _configWithCurrentLevers();
     final lev = {...cur.initialLevers};
-    if (type == CondenserType.total) lev.remove('cwOP');
+    if (type == CondenserType.total) {
+      lev.remove('cwOP');
+    } else {
+      lev['cwOP'] = cur.condenser.cwOpPartial;
+    }
     rebuild(cur.copyWith(
         condenser: CondenserConfig.fromJson(
             {...cur.condenser.toJson(), 'type': type.name}),
@@ -2185,6 +2203,15 @@ class Simulator {
     final xD = s.x[0];
     final xB = s.x[(N + 1) * nc];
     final fz = f * zEff[0];
+    // vapour product light flow D_V y_V (y_V: overhead-inventory composition, 2026-10-13 ruling)
+    var dvLight = 0.0;
+    if (t2 && _stepper.partial && s.dV > 0) {
+      var nvSum = 0.0;
+      for (var i = 0; i < nc; i++) {
+        nvSum += s.nVi[i];
+      }
+      dvLight = s.dV * (nvSum > 0 ? s.nVi[0] / nvSum : s.y[0]);
+    }
     final drumPct = _stepper.drumLevelPct;
     final sumpPct = _stepper.sumpLevelPct;
     final mMin = 0.05 * _config.reboiler.sumpVolume / s.vLiq[N + 1];
@@ -2203,7 +2230,7 @@ class Simulator {
       drumLevelPct: drumPct,
       sumpLevelPct: sumpPct,
       pTop: t2 ? s.pTop : _config.condenser.pTopDesign,
-      balanceResidual: fz > 0 ? (fz - dFlow * xD - bFlow * xB).abs() / fz : 0.0,
+      balanceResidual: fz > 0 ? (fz - dFlow * xD - dvLight - bFlow * xB).abs() / fz : 0.0,
       energyResidual: t2 ? _stepper.energyResidual : nan,
     );
     final plant = _view == SimView.plant;

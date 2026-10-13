@@ -1091,7 +1091,9 @@ class Stepper {
       // partial condenser: the uncondensed vapour leaves the drum at y_0 = K~ x_0, so desuperheating is to that vapour
       final hVs = part ? t2.hVAt(ts, _yb, 0) : t2.hVAt(ts, s.y, nc);
       final h0 = t2.hLAt(ts - sub, s.x, 0);
-      var nc0 = (v1 * (hVs - s.hVap[1]) + qc) / (hVs - h0);
+      // (7.4) with the entrained tray-1 liquid, which enters the drum at h_1 (2026-10-13 ruling)
+      final eh = full ? s.entrain[1] * (s.hLiq[1] - h0) : 0.0;
+      var nc0 = (v1 * (hVs - s.hVap[1]) + qc - eh) / (hVs - h0);
       if (!(nc0 > 0)) nc0 = 0;
       _ncondT = nc0;
       final nvent = inp.inertVent /

@@ -70,8 +70,8 @@ void main() {
         expect(p.isNaN, isFalse);
         pMax = pMax > (p - 700000).abs() ? pMax : (p - 700000).abs();
       }
-      // physical transient: the same P at a lower temperature lowers Q_C (docs/DEVIATIONS.md M5 checkpoint)
-      expect(pMax, lessThan(8000));
+      // Q_C-continuous CW valve at the switch (PHYSICS.md 13.5, 2026-10-13): VC-28.3 asks for +-0.5 kPa
+      expect(pMax, lessThan(500));
       s = _steady(sim);
       expect(_kmolh(s.kpis.d), closeTo(38.12, 0.1));
       expect(s.kpis.xD, closeTo(0.93266, 5e-4));
