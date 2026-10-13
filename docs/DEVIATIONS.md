@@ -619,3 +619,26 @@ Decisions:
 - **H6 re-run on 0.75 m** (ideal hydraulics, as the drill uses): F07 s 0.75 at 2 h: AT-100 0.420, x_D,heavy 0.0628, D 48.19; the difference to the healthy run at 2 h is below 1 kmol/h (asserted). F20 + planning: D 52.79 vs healthy 48.68 (+4.11), x_D,heavy 0.0791; C5 at 2 h: drum `check`, sump `fail` (printed, not asserted). Rule 1 (noise on) unchanged: C4:FV-102 leaves ok within 10 s; sigma ratio 1.2 to 1.8.
 - M7-S1 (C3a bias, T_dew) and M7-S2 (the F07 transient) are spec-lead items; the coder has not changed the C3a latent-heat rule.
 - **Validator follow-up:** with the M7-C1 fix `test/validation/m4_energy_faults_test.dart` "F12 partial reflux loss (s 0.6)" fails on the B-T preset (FC-102 OP 33 %, no symptom): B-T's FV-102 F_max is 3 x the design reflux, so the cap (1 - 0.6) F_max is above the design reflux. The test needs s of about 0.75 or more (the spec's rule is unchanged). The coder does not edit that directory.
+
+## Spec rulings M7 close-out (2026-10-13)
+
+Rulings on the open items of "M7 validation" (2eff06f) and "M7 app" / "M7 app 2" (af6864e).
+
+1. **M7-S1 (C3a / C5 drum).** The validator is right: C3a carries ΔN_0/W, and 54f9b41's "no drum-level term" was wrong. Two rulings:
+   - **Bias fixed in the check:** λ_top = H_V(x_D, **T_dew**(x_D, P̄_101)) − h_L(x_D, T̄_100) (PHYSICS.md §14.6, C3a row). The top vapour leaves tray 1 at its dew point; T_bub read V_cw 1.9 % high on `debut` (r/band 0.95 healthy). C5 (drum) uses V_cw, so it follows. Unchanged for near-pure binaries; B-T rows keep their values within tolerance.
+   - **Rate-step transient accepted, not masked:** new §14.6 bullet "Rate steps". C3a / C5 (drum) may sit at `check` / `fail` for up to about an hour after the +8 % planning event on a healthy column. Hints and debriefs never promise them green after a rate change; the F20 debrief (ENGINE_API.md §11.10) and the §14.6 fault-table row are reworded. VALIDATION.md H6: healthy row asserts C3a and C5 (drum) not `fail` from event + 60 min and `ok` at 2 h; F20 keeps "not `fail` from + 60 min, `ok` or `check` at 2 h", C5 recorded only.
+2. **M7-S2 (F07 D transient).** Physical: the feed is saturated at its own bubble point, so the heavier feed enters hotter than the feed tray and flashes ≈ 4 kmol/h of extra vapour until the trays heat up. Row now: D within 1 kmol/h of the **healthy run** at 2 h (the coder's reading confirmed), and until the planning event at most 4.5 kmol/h above its start (peak recorded). Below F12's ≥ 5 kmol/h, so the candidates stay apart.
+3. **M7-S3 (F12).** Brackets replaced: af6864e, 0.75-m trays, noise off, at 2 h: D 62.4, true xDHeavy 0.22 (AT-101 over-range 0.10). Thresholds unchanged. The B-T test in `m4_energy_faults_test.dart` uses **s = 0.8** (cap 0.2 × 300 = 60 kmol/h, 0.6 × B-T's design reflux 100); the spec's F12 rule is unchanged.
+4. **`deprop` tray design.** Two tray sections: trays 1–10 at D_c 0.55 m, trays 11–28 (feed tray and below) at **0.85 m**, the rest B-T geometry. Jet flood ∝ 1/A, so the stripping section drops from 121–165 % to ≈ 50–70 % while the top keeps its 59 % and does not weep. VC-9.6 (b) band is now 45–85 % per section (`debut`'s 83 % stripping is accepted, the normal design range; `debut` keeps a single 0.75 m). If 0.85 m fails (b), the coder may pick 0.80–0.95 m (smallest that passes) and record it. With (b) passing, the sandbox loads `debut` and `deprop` with Full hydraulics like every other preset (SCOPE.md §4.2); drills and guided scenarios stay `ideal`. PHYSICS.md §2.3, VALIDATION.md VC-9.6, M7.md, OPEN_ITEMS.md.
+5. **PC-101 open-loop gains.** Not needed. The §10.7 rule is a design aid; VC-16.6d is the acceptance. Measure a gain only if VC-16.6d fails and a retune is needed.
+
+**Coder actions**
+- C3a λ_top at T_dew(x_D, P̄_101) (C5 drum follows); re-run the H6 F20 and healthy-planning tests with the new asserts; record C3a r/band at +10 min with the true and the measured TI-202 (one line, to name the transient's source).
+- F07 test: D vs healthy at 2 h ≤ 1; D − start ≤ 4.5 until 2700 s; print the peak and its time on 0.75 m. Confirm the feed-flash mechanism in one line (feed enthalpy minus feed-tray liquid enthalpy during the ramp).
+- F20 debrief text as in ENGINE_API.md §11.10.
+- `deprop` preset: two tray sections (0.55 m trays 1–10, 0.85 m trays 11–28); if the engine takes only one tray section, add multi-tray-section support (the `sections` list already allows it). Re-run `m7_hydraulics_test` (flood % per section, Φ_min, ΔP, steady reached) and the `deprop` `ideal` tests (VC-9.6 (a), VC-16.6d on the new holdups). Then load both presets with Full hydraulics in the sandbox (reverts "M7 app" decision 2).
+
+**Validator actions**
+- VC-9.6 (a) and (b) on the two-section `deprop` and on `debut` (45–85 %); VC-16.6d on both presets.
+- H6 rows as changed: F07 (healthy reference, 4.5 pre-event cap), F12 brackets, F20 and healthy-planning C3a / C5; B-T C3a rows (H3, H9, H10) still pass with λ_top at T_dew.
+- `m4_energy_faults_test.dart` F12: s = 0.8.
