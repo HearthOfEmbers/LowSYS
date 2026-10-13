@@ -424,28 +424,72 @@ Tolerance 1×10⁻⁴ (n_eff 1×10⁻³). Shape checks: E_mal decreases with n a
 
 ## VC-14 Thermosyphon reboiler
 
-**VC-14.1 Loop unit test with fixed inputs [P].** Run the thermosyphon module alone (PHYSICS.md §8.3) for 1200 s at δ = 0.1 s with frozen column conditions: ρ_L = 780 kg/m³, ρ_V = 2.93 kg/m³, λ = 361 kJ/kg, c_p,L = 1950 J/kg/K, μ_L = 0.27 mPa·s, dT_sat/dP = 3.63×10⁻⁴ K/Pa, T_sump = 383.54 K, T_st = 421.25 K, geometry defaults (N_t = 200, D_i = 21.2 mm, L_t = 3.0 m, A = 47.6 m², U = 1000 W/m²K, z₀ = 1.2 m, h_sump = 2.4 m, z_ret = 4.5 m, D_r = 0.30 m, D_in = 0.20 m, L_in = 6.0 m, K_in = 4, K_out = 3), W₀ = 12 kg/s, u₀ = 1×10⁻³, v₀ = 0. Report means and half-amplitudes over the last 300 s.
+**VC-14.1 Loop unit test with fixed inputs [P].** Run the thermosyphon module alone (PHYSICS.md §8.3) for **3600 s** at δ = 0.1 s with frozen column conditions:
+- Properties: ρ_L = 780 kg/m³, ρ_V = 2.93 kg/m³, λ = 361 kJ/kg, c_p,L = 1950 J/kg/K, μ_L = 0.27 mPa·s, dT_sat/dP = 3.63×10⁻⁴ K/Pa, T_sump = 383.54 K, T_st = 421.25 K.
+- Geometry defaults: N_t = 200, D_i = 21.2 mm, L_t = 3.0 m, A = 47.6 m², U = 1000 W/m²K, z₀ = 1.2 m, h_sump = 2.4 m, z_ret = 4.5 m, D_r = 0.30 m, D_in = 0.20 m, L_in = 6.0 m, K_in = 4, K_out = 3.
+- Start: W₀ = 12 kg/s, x_r = x_e = 0, u₀ = 1×10⁻³, v₀ = 0, filters from the first sub-step. Q_R,SP is fixed (no valve), R_f,R = f_flooded = 0 unless stated.
 
-| Q_R,SP | Sump level | Inlet valve | W (kg/s) | x_e | Q delivered (kW) | I_s | Oscillation amplitude √(u²+v²) | Period (s) |
+Report over the last 300 s:
+- the **time mean ± half-range** ((max − min)/2) of W, x_e and the delivered Q (1 + u); in brackets, the mean of the steam-side Q;
+- the mean of I_s and of √(u² + v²);
+- the period: the mean zero-crossing interval of u for oscillating rows, the mean T_osc (`oscPeriod`) for stable rows.
+
+M6 readiness prototype (`.scratch/m6/ts.dart`, exact x_e solve, floor only while σ > 0):
+
+| Q_R,SP | Sump level | Inlet valve | W (kg/s) | x_e | Q delivered (kW) | I_s | Amplitude √(u²+v²) | Period (s) |
 |---|---|---|---|---|---|---|---|---|
-| 1300 kW | 90 % | 100 % | 19.33 | 0.136 | 1300 | 0.40 | 0.001 (floor) | 9.8 |
-| 1300 kW | 75 % | 100 % | 16.79 | 0.169 | 1300 | 0.50 | 0.001 | 9.6 |
-| 1300 kW | 75 % | 16 % | 13.05 | 0.231 | 1300 | 0.47 | 0.001 | 10.0 |
-| 1300 kW | 50 % | 100 % | 12.98 | 0.241 | 1300 | 0.74 | 0.001 | 9.2 |
-| 1300 kW | 30 % | 100 % | 10.19 | 0.325 | 1300 | 1.01 | 0.002 | 8.8 |
-| 1300 kW | 15 % | 100 % | 8.23 ± 0.28 | 0.425 ± 0.076 | 1194 ± 288 | 1.28 | 0.140 | 8.5 |
-| 1300 kW | 15 % | 16 % | 7.30 ± 0.05 | 0.451 ± 0.046 | 1191 ± 171 | 1.07 | 0.034 | 9.1 |
-| 1600 kW | 75 % | 100 % | 15.58 | 0.239 | 1597 (duty-limited, Q_max 1597) | 0.72 | 0.001 | 8.2 |
-| 1600 kW | 30 % | 100 % | 9.87 ± 0.26 | 0.376 ± 0.030 | 1443 ± 259 | 1.17 | 0.115 | 8.1 |
-| 1300 kW, K_out = 20 | 75 % | 100 % | 7.00 ± 0.28 | 0.454 ± 0.138 | – | 1.39 | 0.159 | 12.7 |
-| 1300 kW, R_f = 4×10⁻⁴ m²K/W | 75 % | 100 % | – | 0.138 | 1140 (duty-limited) | 0.41 | 0.001 | – |
+| 1300 kW | 90 % | 100 % | 19.33 | 0.136 | 1300 | 0.40 | < 1×10⁻⁶ (decayed) | 9.8 |
+| 1300 kW | 75 % | 100 % | 16.79 | 0.169 | 1300 | 0.50 | < 1×10⁻⁶ | 9.6 |
+| 1300 kW | 75 % | 16 % | 13.05 | 0.231 | 1300 | 0.47 | < 1×10⁻⁶ | 10.0 |
+| 1300 kW | 50 % | 100 % | 12.98 | 0.241 | 1300 | 0.74 | < 1×10⁻⁶ | 9.2 |
+| 1300 kW | 30 % | 100 % | 10.19 ± 0.03 | 0.325 ± 0.004 | 1300 ± 11 | 1.01 | 0.008 (still growing) | 8.8 |
+| 1300 kW | 15 % | 100 % | 8.23 ± 0.27 | 0.406 ± 0.055 | 1277 ± 229 (1270) | 1.28 | 0.141 | 8.6 |
+| 1300 kW | 15 % | 16 % | 7.30 ± 0.08 | 0.446 ± 0.020 | 1236 ± 163 (1234) | 1.08 | 0.082 | 9.0 |
+| 1300 kW | 15 % | 8 % | 5.83 | 0.493 | 1087 (mist-flow limited) | 0.87 | < 1×10⁻⁶ | 10.2 |
+| 1600 kW | 75 % | 100 % | 15.58 | 0.239 | 1597 (duty-limited, Q_max 1597) | 0.72 | < 1×10⁻⁶ | 8.2 |
+| 1600 kW | 30 % | 100 % | 9.88 ± 0.26 | 0.375 ± 0.030 | 1443 ± 260 (1436) | 1.17 | 0.116 | 8.1 |
+| 1300 kW, K_out = 20 | 75 % | 100 % | 6.94 ± 0.34 | 0.434 ± 0.051 | 1203 ± 313 (1192) | 1.42 | 0.163 | 11.5 |
+| 1300 kW, R_f,R = 8.40×10⁻⁶ K/W (= 4×10⁻⁴ m²K/W on A; F13 s = 0.267) | 75 % | 100 % | 17.24 | 0.138 | 1141 (duty-limited) | 0.41 | < 1×10⁻⁶ | 10.6 |
+| 1300 kW, K_in = 154 (F17 s = 0.5) | 50 % | 100 % | 8.02 | 0.412 | 1297 (just limited) | 0.67 | < 1×10⁻⁶ | 9.7 |
+| 1300 kW, K_out = 19 (F18 s = 0.4) | 50 % | 100 % | 5.95 ± 0.24 | 0.478 ± 0.047 | 1109 ± 339 (1096) | 1.56 | 0.180 | 11.5 |
 
-Tolerances: W ± 3 %, x_e ± 0.01, I_s ± 0.03, Q ± 1 %, period ± 15 %; amplitudes: stable rows ≤ 0.003, oscillating rows within ± 30 % of the value. The table is a regression map of the specified model, not of a real exchanger.
+Tolerances:
+- W ± 3 %, x_e ± 0.01, I_s ± 0.03, Q ± 1 %, period ± 15 %, half-ranges ± 30 %.
+- Amplitudes: stable rows < 1×10⁻⁴; oscillating rows ± 30 %; the marginal 30 % row anywhere in 0.002–0.05 (its growth time constant is ≈ 1500 s).
 
-**VC-14.2 Integrated behaviour [P-type checks].** B-T Tier 2 with the thermosyphon, duty SP 1300 kW:
-1. At sump level SP 50 % the column reaches a steady state (monitor passes).
-2. Lower LC-102 SP to 15 %: within 10 min the boilup oscillates with peak-to-peak ≥ 10 % of its mean and period 5–15 s; bottom-tray ΔP and sump level oscillate at the same period; the "thermosyphon unstable" alarm is raised. The amplitude grows over ≥ 30 s (not a step).
-3. Then throttle the inlet valve to 16 %: amplitude falls by ≥ 50 % within 5 min. Raise the level SP back to 50 %: oscillation decays below 1 % peak-to-peak within 5 min.
+The table is a regression map of the specified model, not of a real exchanger. v1.0's table (1200 s, 3 fixed-point iterations, floor at every I_s) differs in the oscillating rows. It reported (max + min)/2 as the "mean", and the iteration jitter inflated its half-ranges (PHYSICS.md §8.3.2).
+
+Spot values in the same run:
+- ΔT_sub at 75 %: 8.33 K, at 50 %: 6.67 K.
+- Q_max,0 = U A (T_st − T_b,mean): 1597 kW at 75 %, 1636 kW at 50 %.
+- The cycle mean of u is ≤ 0.005 in every oscillating row.
+
+Further unit checks:
+- **δ independence.** The 15 % / 100 % row at δ = 0.025 s matches the δ = 0.1 s row within the tolerances.
+- **Robustness.** 400 random input sets (level 0–100 %, inlet 5–100 %, K_out 3–43, K_in 4–304, Q_R,SP 0.1–3.1 MW, W₀ 0–30 kg/s, R_f,R up to 4.2×10⁻⁵ K/W, f_flooded 0–0.8), each run for 600 s, never give a non-finite value, W < 0, x_e outside [0, 1], f_sc outside [0, 1] or an amplitude above A_sat.
+- **No jitter.** In the 15 % / 100 % row, |x_e(k) − x_e(k − 1)| ≤ 0.01 between consecutive sub-steps (prototype max 0.006; v1.0's iteration gave 0.09).
+
+**VC-14.2 Integrated behaviour [P-type checks].** B-T Tier 2 with the thermosyphon (`reboilerType` 1), FC-103 in AUTO at 1300 kW, noise off, dt = 0.5 s. The expected values in brackets come from the loop alone (VC-14.1 inputs); the column's own sump T and P shift I_s by up to about ±0.05.
+1. At LC-102 SP 50 % the column reaches a steady state (the noise-free monitor passes), with `oscAmplitude` = 0 and I_s in 0.65–0.85 [0.74].
+2. Drain the sump: LC-102 to MAN with OP 100 % until the true sump level is ≤ 15 %, then the OP back to the value that held 50 % (still MAN). LC-102 in AUTO is far too slow for this (Ti 1800 s). Within 10 min of reaching 15 %:
+   - the boilup oscillates with peak-to-peak ≥ 10 % of its mean and a period of 5–15 s [8.6 s];
+   - the bottom-tray ΔP and the column ΔP oscillate at the same period;
+   - `model.tsUnstable` is raised;
+   - the amplitude grows over ≥ 30 s (not a step);
+   - FT-103's 5-s trend bins vary by ≤ 2 % of the duty peak to peak (the steam side sees the mean duty, PHYSICS.md §8.3.4).
+
+   The true sump level oscillates at the same period with a tiny amplitude (≈ 0.03 % of level; check only that it is periodic).
+3. Then throttle the inlet valve to 16 %. Within 5 min `oscAmplitude` falls by ≥ 30 % [0.141 → 0.085], and it stays ≥ 0.04 [limit 0.082]: throttling alone does not stop it at 15 %. Then raise the level (LC-102 MAN at OP 0 until the level is ≥ 50 %, then AUTO at SP 50 %). Within 5 min of the true level passing 35 %, `oscAmplitude` < 0.005 (boilup peak-to-peak < 1 %), and `model.tsUnstable` clears.
+4. Energy. Over the last 20 min of step 2, the means of FT-103 and `kpi.qr` differ by ≤ 1 % [0.5 %], and C3b stays `ok`.
+5. Time step. Step 2 at dt = 2 s gives a period within ± 15 % and an amplitude within ± 30 % of the dt = 0.5 s result.
+6. Save and restore in the middle of step 2. The continuation is bit-identical to the uninterrupted run (VC-20); the loop states W, x_r, x_e, the filters and (u, v) are part of the save.
+
+**VC-14.3 G14 [P-type] (ENGINE_API.md §11.8).**
+1. The start state passes the steady monitor, with I_s 0.80–0.95 [0.87], FC-103 at 100 % OP and a duty of 1040–1140 kW [1087].
+2. With no action, `oscAmplitude` is ≥ 0.05 within 10 min of t = 0 [≈ 5 min], and o1 is not met within 1 h.
+3. Hint player: apply hint 2 (LC-102 SP 40 %) when it unlocks. o1 is met within 90 min of t = 0, and o2 answered correctly gives a score ≥ 80. Record the time to o1 and the level at which I_s fell below 1 [≈ 31 %].
+4. Throttle-only player: at t = 900 s set `tsInletValve` 16; o1 is not met within 2 h (amplitude stays ≥ 0.04). With `tsInletValve` 10 the loop is stable, but `kpi.qr` < 1 170 kW, so o1 is still not met.
+5. No safety event: the true sump level stays within 5–95 %.
 
 ## VC-15 Crude fractionation
 
@@ -856,24 +900,26 @@ The bottoms approach the maximum-boiling azeotrope (0.3334) from above and never
 
 ## H. Hidden-fault drill symptom tests
 
-For each drill candidate the test injects the fault (fixed seed, onset at 600 s, severity at the middle of its range), runs 2 h with noise off, and asserts the *key evidence* — the observation a learner is expected to use. Direction thresholds are deliberately loose; they check that the evidence exists, not its exact size.
+For each drill candidate the test injects the fault (fixed seed, onset at 600 s, severity at the middle of its range unless the row says otherwise, the candidate's own ramp), runs 2 h with noise off (unless the row says otherwise), and asserts the *key evidence*, i.e. the observation a learner is expected to use. Direction thresholds are deliberately loose; they check that the evidence exists, not its exact size. Ranges and ramps are those of ENGINE_API.md §11.9 (H1–H5, M6). Values in [ ] for H5 are loop-only prototype numbers (PHYSICS.md §8.3 with the VC-14.1 inputs) for orientation. The thresholds are the assertions; record the engine's column-coupled values.
 
 | Drill | Fault | Key evidence to assert |
 |---|---|---|
-| H1 | F05 fouling, stripping trays 12–18, holes | ΔP across trays 12–18 up ≥ 10 % at constant flows; ΔP of trays 1–11 up < 3 %; x_D change < 0.003 in the first hour |
+| H1 | F05 fouling, stripping trays 12–18, holes (s = 0.6, drill ramp 7200 s) | ΔP across trays 12–18 up ≥ 10 % at constant flows; ΔP of trays 1–11 up < 3 %; x_D change < 0.003 in the first hour |
+| H1 | F05 fouling, rectifying trays 2–8, holes (s = 0.6, ramp 7200 s; M6 candidate `foul_rect`) | ΔP across trays 2–8 up ≥ 10 %; ΔP of trays 9–20 up < 3 % |
 | H1 | F07 feed lighter (Δz = +0.1 benzene, −0.1 toluene; PHYSICS.md §11 sum-zero convention) | ΔP change < 3 %; T profile shifts (Tier 2: tray 10 T down ≥ 1 K); Tier 2: D rises by ≥ 0.3 kmol/h via LC-101, because the lighter bottoms have the smaller molar latent heat, so the same duty boils more moles. Under Tier-1 LV control D would not move (D = V₁ + e₁ − L₀ is fixed by the flows) and the extra benzene would leave in the bottoms (x_B up). H1 runs in Tier 2 |
-| H2 | F09 CW temperature +15 K (s = 1; drill range [0.6, 1.0]) | P_top up (prototype 1.18–1.39 bar(a) for s = 0.6–1); CW valve to 100 % within 2 min; reflux subcooling down |
+| H2 | F09 CW temperature (s = 0.8, the middle of [0.6, 1.0]; ramp 1800 s) | P_top up (prototype final 1.18–1.39 bar(a) for s = 0.6–1); the CW valve reaches 100 % before the end of the ramp, then P_top rises; reflux subcooling down. (v1.0 said "CW valve to 100 % within 2 min", which belonged to a step; the drill ramps over 30 min) |
+| H2 | F09 CW flow loss (s = 0.65, the middle of [0.6, 0.7]; step; M6 candidate `cw_flow`) | FT-201 steps down at onset to (1 − s) of the CW maximum (−30 % from the 50 % design flow at s = 0.65); CW valve at 100 % within 5 min (PHYSICS.md §11 F09: 125 s at s = 0.6, 72 s at 0.7); P_top rises to 1.07–1.17 bar(a) (PHYSICS.md §11 F09: s = 0.6 → 1.070, 0.7 → 1.167); no relief lift; subcooling down |
 | H2 | F10 condenser fouling | P_top creeps up over ≥ 30 min; CW valve creeps up; subcooling down |
-| H2 | F11 non-condensables, s = 1 | CW valve rises with P_top at SP, saturates within 30 min (engine ≈ 17 min), then P_top rises (engine ≈ 139 kPa at 1 h); reflux subcooling **up** ≥ 3 K within 1 h (engine 4.3 K; PHYSICS.md §11); opening the vent restores P within 10 min |
-| H3 | F04 broken tray, rectifying (tray 5) | column ΔP down; tray-5 ΔP ≤ 15 % of neighbours; x_D down at constant L/D |
+| H2 | F11 non-condensables, s = 1 (drill range [0.7, 1.0]) | CW valve rises with P_top at SP, saturates within 30 min (engine ≈ 17 min), then P_top rises (engine ≈ 139 kPa at 1 h); reflux subcooling **up** ≥ 3 K within 1 h (engine 4.3 K; PHYSICS.md §11); opening the vent restores P within 10 min. At s = 0.7 the valve saturates within 35 min |
+| H3 | F04 broken tray, rectifying (tray 5), s = 0.9 (range [0.8, 1.0]) | column ΔP down; tray-5 ΔP ≤ 15 % of neighbours; x_D down at constant L/D |
 | H3 | F06 foaming s = 0.9 (with the v1.1 headroom, s ≤ 0.67 no longer floods; drill range [0.8, 1.0]) | max flood ≥ 100 % at unchanged load while column ΔP stays within ± 10 % of base ([P]: φ 1.08, ΔP × 0.97); x_D down ≥ 0.03 within 1 h ([P] 0.9783 → 0.908 at 60 min). Antifoam: max φ < 0.75 within 20 min, and x_D back within 0.03 of base within 40 min ([P] 0.953) |
 | H3 | F19 FT-102 bias, sign +1, s = 0.5 (+15 kmol/h; F19 biases are additive in % of span, PHYSICS.md §10.6) | displayed reflux = SP, true reflux 15 kmol/h lower; C3a: V₁ from the condenser duty disagrees with displayed L + D by ≥ 8 %; C4:FV-102 `fail` |
-| H4 | F13 reboiler fouling | steam valve rises over ≥ 30 min then saturates; duty falls below SP after saturation |
+| H4 | F13 reboiler fouling (s = 0.85, drill ramp 5400 s) | steam valve rises over ≥ 30 min, then saturates (the kettle is duty-limited once s(t) > 0.44: ≈ 47 min after onset); duty falls below SP after saturation; `model.dutyLimited` raised |
 | H4 | F14 condensate backup | duty falls below SP within 5 min with the steam valve at 100 % |
 | H4 | F15 steam header loss (s ≥ 0.7) | header pressure reading down; `FC-103.OPSAT` (steam valve at 100 % with the duty below SP); T_st down. `model.dutyLimited` is **not** expected: a header loss lowers the valve's request Q_v and Q_max together (PHYSICS.md §8.2) |
-| H5 | F19 LT-102 drift, sign +1 (reads high), s = 1 (10 %/h, the F19 maximum) | displayed sump level steady at SP, true level falling 10 %/h; thermosyphon I_s rising; oscillation appears once the true level is < 25 % (≈ 2.5 h after onset — this case runs 3 h) |
-| H5 | F17 inlet restriction | circulation W down ≥ 20 %; x_e up; no oscillation unless the duty is raised |
-| H5 | F18 outlet restriction | I_s > 1; boilup oscillation with period 5–15 s |
+| H5 | F19 LT-102 drift, sign +1 (reads high), s = 1 (10 %/h, the F19 maximum); thermosyphon, LC-102 SP 50 %; this case runs 3.5 h | displayed sump level steady at SP, true level falling ≈ 10 %/h; circulation W down ≥ 8 % within 1 h [loop-only −11 %]; I_s > 1 once the true level is ≤ 32 % [30.7 %, 1.9 h]; boilup peak-to-peak ≥ 10 % before the true level reaches 22 % [25.5 %, 2.45 h]; C5 (sump) `fail` with the 3600-s window from 75 min after onset |
+| H5 | F17 inlet restriction (s = 0.55, the middle of [0.3, 0.8]) | circulation W down ≥ 20 % [−40 %]; x_e up ≥ 0.1 [0.24 → 0.42]; inlet-line ΔP up ≥ 5× [≈ 12×]; I_s < 1 throughout [falls from 0.74 to ≈ 0.66]; `oscAmplitude` < 0.01; no oscillation unless the duty is raised |
+| H5 | F18 outlet restriction (s = 0.4, the middle of [0.2, 0.6]) | I_s > 1 within 15 min of onset [6 min]; boilup oscillation with period 5–15 s [11.5 s] and peak-to-peak ≥ 10 % within 30 min [amplitude 0.05 at 14 min]; outlet-line ΔP up ≥ 1.5× [≈ 2.6×]; duty below SP with FC-103 at 100 % [mean 1096 kW] |
 | H6 | F07 feed upset (debutanizer, +0.05 nC4, −0.05 iC5) | feed analyser trend changes (dead time 300 s); LK recovery changes with reflux unchanged |
 | H6 | F12 partial reflux loss (s = 0.5) | reflux flow below SP with FC output at 100 %; top T up; drum level up |
 | H6 | F20 reflux valve stuck | FC-102 output moves ≥ 10 % while flow is constant |
@@ -914,6 +960,14 @@ Unlike the rows above, these run with **noise on**, plant view and the drill's o
 | H10.7 | F07 ± 0.10 benzene | AT-100 shows the change within 15 min | No C4 `fail`; no C3 `fail` in 2 h |
 
 A healthy run with the drill's scripted event (H9.0, H10.0) must never meet the off-spec predicate, so the protect bonus measures the fault and not the event (ENGINE_API.md §11.5 rule 7). The H9 feed event is therefore ratio-preserving: F, L₀ and the reboiler duty all step by +5 % together (ENGINE_API.md §11.6), so the column's L/V and D/F stay put. A feed-only step under LV control sends the extra benzene into the bottoms (x_B 0.013 → ≈ 0.024 about 8 min later, M3 adjudication). If H9.0 still fails, reduce all three steps from +5 % to +3 % and record it.
+
+**Instrument candidates of H3 and H5, noise on (M6).** Same set-up as the H9 rows: the drill's own settings, minimum severity, sign ±1 where random, onset 600 s, seeds 1–3.
+- **H3 `ft102_bias`, s = 0.4.** As H9.1: C3a `fail` and C4:FV-102 `fail` within 10 min (rule 1).
+- **H5 `lt102_drift`, s = 1, sign +1.** This candidate is exempt from rule 1 (ENGINE_API.md §11.5 scope note). Assert instead:
+  - C5 (sump) at `check` or worse, held ≥ 60 s, within 30 min of onset (600-s window);
+  - C5 (sump) `fail` with the 3600-s window within 75 min;
+  - an LG-102 field check started 30 min after onset differs from LT-102 by ≥ 4 % of level;
+  - the circulation (plantCalc `circulation`) is down ≥ 8 % within 75 min.
 
 ---
 

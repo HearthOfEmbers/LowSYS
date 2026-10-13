@@ -242,6 +242,12 @@ class CondenserConfig { final CondenserType type; final double drumVolume, overh
   pTopDesign, reliefSet, cwInletT, cwMaxFlow /*kg/s*/, uaClean /*W/K, from the preset*/, dvMax; }
 class ReboilerConfig { final ReboilerType type; final double sumpHeight, sumpArea,
   steamHeaderPressure, uaClean /*W/K, from the preset*/; final ThermosyphonGeometry? thermosyphon; }
+// M6. SI units; B-T defaults of PHYSICS.md §8.3.1. With a thermosyphon, the kettle's uaClean is not used and
+// UA_R,clean = u * area (FV-103 F_max, F13, C4). Every preset gets this geometry (type kettle unless a scenario or the
+// `reboilerType` lever selects the thermosyphon).
+class ThermosyphonGeometry { final int nTubes /*200*/; final double tubeId /*0.0212*/, tubeLength /*3.0*/,
+  area /*47.6, outside*/, u /*1000 W/m²K*/, z0 /*1.2*/, zReturn /*4.5*/, inletD /*0.20*/, inletLength /*6.0*/,
+  riserD /*0.30*/, kIn /*4*/, kOut /*3*/, xCrit /*0.30*/; }
 ```
 
 Preset JSON example (abbreviated, B-T default):
@@ -396,7 +402,7 @@ class LeverSpec {
 Lever ids (SI values): `feedFlow`, `feedZ.<componentId>`, `feedQ`, `feedT`, `feedVaporFraction`, `feedStage`, `refluxFlow`, `refluxRatio`, `refluxMode` (0 flow / 1 ratio), `refluxSubcooling`, `boilup`, `reboilerDuty`, `pTop`, `condenserType`, `drumLevelSp`, `sumpLevelSp`, `distillateValve`, `bottomsValve`, `nTrays`, `murphree`, `trayType.<section>`, `hydraulics`, `cwInletT`, `cwMaxFlow`, `steamHeaderP`, `reboilerType`, `tsInletValve`, `antifoam`, `inertVent`, `tc101Enable`, `tc101Tray`, `tc101Sp`, `noise`, `crudeRate`, `cot`, `topTSp`, `drawRate.<product>`, `paDuty`, `steam.<point>`, `drumTSp`. Ranges and defaults: SCOPE.md §4.
 
 M3 additions:
-- `view`: 0 model, 1 plant (PHYSICS.md §10.9).
+- `view`: 0 model, 1 plant (PHYSICS.md §10.9). M6 adds 2 = plant view with engineering calculations ("plantCalc"; drill JSON `"view": "plantCalc"`).
 - `badPvShed`: 1 shed (default) / 0 none (§10.2).
 - `bypass.<valveId>`: −1 closed (default) or 0–100 % (§10.3).
 - `feedFlowOp`, `refluxOp`, `boilupOp`: OP % of FC-101/102/103, effective in MAN, alongside the existing `distillateValve` and `bottomsValve`.
@@ -619,6 +625,28 @@ class Kpis {
   final double balanceResidual;     // |F z − D xD − B xB| / F z, light component (should → 0 at steady state)
   final double energyResidual;      // Tiers 2/3, relative
 }
+
+// M6 (the M4 kettle fields are whatever M4 shipped; listed here for completeness). SI units.
+@immutable
+class ReboilerSnapshot {
+  final ReboilerType type;
+  final double duty;                // Q_R,delivered (W), main-step mean
+  final double steamSideDuty;       // mean of Q_k (W): what FT-103 measures (thermosyphon); = duty for the kettle
+  final double qMax, uaEff;         // kettle and thermosyphon; NaN in drills (fault parameters, PHYSICS.md §10.9)
+  // Thermosyphon only (NaN for the kettle; NaN in plant view, kept in plantCalc view):
+  final double circulation;         // W (kg/s), end of step
+  final double exitQuality;         // x_e
+  final double riserQuality;        // x_r
+  final double instabilityIndex;    // I_s
+  final double oscAmplitude;        // √(u² + v²)
+  final double oscPeriod;           // T_osc (s)
+  final double inletLineDp;         // c_in W² (Pa), friction loss of the inlet line including the valve
+  final double outletLineDp;        // c_out W² (Pa)
+  final double drivingHead;         // ΔP_drive (Pa); NaN in plant and plantCalc views (it reveals the true level)
+  final double sensibleFraction;    // f_sc; NaN in plant views
+  final double inletValve;          // lever value, % open (always visible)
+  // Never in the snapshot: K_in, K_out (fault F17/F18 parameters), R_f,R, f_flooded.
+}
 ```
 
 ### 7.2 McCabe–Thiele data
@@ -795,6 +823,13 @@ enum FaultType { trayDamage, trayFouling, foaming, feedComposition, feedThermal,
 //        Σ dz = 0: unlisted components absorb −Σ(listed) in proportion to their z (binary: exactly −dz);
 //        z ← z + sign·s·dz, clamp ≥ 0, renormalise only if clamped (PHYSICS.md §11). The M2 fixture's
 //        list form [0.15, −0.15] is equivalent. "random" only inside drill candidates.
+// M6 location forms (FaultLocation JSON keys "from"/"to", "tag", "equipment", "feed"):
+//   F04: {"type": "trayDamage",  "location": {"from": 5, "to": 5}}
+//   F05: {"type": "trayFouling", "location": {"from": 12, "to": 18}, "params": {"mode": "holes"|"downcomer"|"both"}}
+//   F06: {"type": "foaming",     "location": {"from": 1, "to": 20}}          (whole B-T column)
+//   F13/F14/F15: {"type": "reboilerFouling"|"condensateBackup"|"steamHeaderLoss", "location": {"equipment": "reboiler"}}
+//   F17/F18: {"type": "tsInletRestriction"|"tsOutletRestriction", "location": {"equipment": "reboiler"}}
+//        Injecting F17/F18 with a kettle reboiler is a ConfigException (ScenarioDef.validate() checks it too).
 
 @immutable
 class FaultSpec {
@@ -997,6 +1032,7 @@ An objective counts for scoring if it is achieved when the scenario finishes. Ev
 - `time`, `steady`, `tier` (1, 2 or 3), `preset` (string; `==`/`!=` only)
 - `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFraction (M2, DEVIATIONS.md E23), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, balanceResidual.
 - `stage[<j>].<t|p|x|holdup|weepFrac|jetFlood>` (x = light component)
+- `reboiler.<circulation|exitQuality|instabilityIndex|oscAmplitude|oscPeriod|inletValve>` (M6; true values; units kg/s, –, –, –, s, % open; NaN with a kettle). M3's `reboiler.<qr|steamValveOp>` below is unchanged
 - `loop[<tag>].<pv|sp|op|mode>` (pv is the reading)
 - `instrument[<tag>].<value|quality>`
 - `valve[<id>].<op|position>`
@@ -1072,6 +1108,7 @@ The M2 runner implements `at`, `setLever`, `setLoopMode` (with `tag`), `injectFa
 
 **Diagnosis**
 - Locations `"instrument:*"` and `"valve:*"` expand to every instrument tag and valve id visible in the drill, in tag order.
+- M6 vocabulary. Categories add `restriction` (F17/F18) and `condensate` (F14). Locations add `column` (whole column, F06), `steamSupply` (F15), `tsInletLine` and `tsOutletLine` (F17/F18). The UI shows them as "Restriction", "Condensate / steam trap", "Whole column", "Steam supply", "Reboiler inlet line" and "Reboiler outlet line".
 - `modes` lists the failure-mode choices offered when the category is `instrument`: `bias`, `drift`, `stuck`, `signalLoss`, `plugged`, `spiking`, `coated`. An empty list hides the mode question.
 - The `Diagnosis` object is `{category, location, mode?}`.
 
@@ -1162,6 +1199,8 @@ The ScoreCard lists every term, t₀, t_os, the protect time and each attempt, s
 ### 11.5 Drill design rules (noise on, played on a phone)
 
 Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests them with noise **on**, at the minimum severity of each range.
+
+Scope of rule 1 (M6). Rule 1 applies to instrument and valve candidates (F19, F20, F28) in every drill. Process candidates (F04–F18) produce evidence far above the noise and are checked by the key-evidence rows of VALIDATION.md §H. There is one named exception: H5 `lt102_drift` (§11.9). Its drift is meant to be slow, and the drill is about its consequence, a surging reboiler. Its 600-s-window checks reach only `check`, so it relies on rule 3's permanent sources instead: the LG-102 field check, the circulation trend, C5 with a longer window, and `model.tsUnstable` after ≈ 2 h.
 
 1. **Signal-to-noise.** Within 20 min of t₀ (for drifts: of t₀ plus 10 min), the key evidence reaches at least one of the following with the default 600-s window:
    - a cross-check residual ≥ 2 × its band (status `fail`) held for ≥ 60 s;
@@ -1390,7 +1429,7 @@ Notes:
 
 ### 11.8 Guided scenarios: objective definitions and reference numbers
 
-All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`, model view. Reference numbers marked [P] were computed with the committed M1 engine (2026-10-12) and are checked by VC-26.4.
+All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`, model view (G14 states its own Tier 2 setup). Reference numbers marked [P] were computed with the committed M1 engine (2026-10-12) and are checked by VC-26.4.
 
 | Id | Start | Objectives (predicates in shorthand) | Hints (essentials) | Reference numbers |
 |---|---|---|---|---|
@@ -1406,6 +1445,7 @@ All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`,
 | G10 The other azeotrope (M5) | `ac`, overrides tier t3, murphree 1.0 (locked); `steady` at the preset defaults (L₀ 150 kmol/h, duty 1515.9 kW, D 38). Time limit 86 400 s, par 28 800 | o1 tier == 3 ∧ kpi.d ≥ 13.06 mol/s (47 kmol/h) ∧ steady, hold 300; o2 (after o1) choice "D rose by 10 kmol/h. Where does the azeotrope leave the column?" → "in the bottoms" (others: "in the distillate", "split between both", "it never forms in a column"); o3 (after o2) number "Read the azeotrope's acetone mole fraction off the T-x-y tab" = 0.333 ± 0.02. All latch | (1) at 0: "Keep the duty and lower the reflux to 140 kmol/h: D rises to about 48 kmol/h." (2) with o1's predicate: "x_B moved only from 0.378 to 0.363 while x_D fell from 0.96 to 0.86: the bottoms are pinned near a limit." (3) after o2: "Open the T-x-y tab: the azeotrope is where the bubble and dew curves touch at a temperature maximum (the diamond)." | [I] defaults x_D 0.96153, x_B 0.37842. L₀ 140 at 1515.9 kW: D 48.01, x_D 0.85666, x_B 0.36298; L₀ 130: D 58.21, x_D 0.77811, x_B 0.35190. Azeotrope 0.3335 / 64.61 °C (VC-10.5). VC-28.8 |
 | G11 Flooding (shipped in M2, `scenarios.dart`) | as shipped: `steady`, Tier 1, full hydraulics, E 0.7; **briefing text must change** from "about 83 % of flood" to "about 63 %" (TS 0.9 m) | As shipped: o1 kpi.maxFloodPct ≥ 100, hold 30, latch; o2 (after o1) maxFloodPct between 80 and 92 ∧ xD ≥ 0.95, hold 600. M3 adds o3: number "throughput at flood onset (% of design)" = 160 ± 10 | As shipped; the first hint should add "about six steps of 10 %" | [P] at TS 0.9 m, uniform scaling ×k of F, L₀, V_B, steady state: ×1.0 62.9 % / xD 0.9783; ×1.1 69.2 / 0.9766; ×1.2 75.6 / 0.9737; ×1.3 81.9 / 0.9687; ×1.4 88.5 / 0.9601; ×1.5 95.2 / 0.9460; ×1.6 102.1 / 0.9236; ×1.7 109.7 / 0.8885. Flood onset ≈ ×1.57; o2 is reachable at ×1.3–1.4 |
 | G12 Turndown and weeping (shipped in M2) | as shipped | As shipped: o1 lever.feedFlow ≤ 11.12 mol/s ∧ lever.trayType.0 == 0 ∧ kpi.maxWeepFraction ≥ 0.3, hold 60, latch; o2 (after o1) the same throughput, lever.trayType.0 == 1, maxWeepFraction < 0.05, xB ≤ 0.03, hold 300. M3 adds o3: choice "Why don't valve trays weep yet?" → "closed valves keep the hole velocity up" | As shipped | VC-12.4 (w 0.51 on sieve trays at 35 %), VC-12.5 (w 0 on valve trays at 35 %) |
+| G14 Thermosyphon tuning (M6) | B-T, overrides tier t2, hydraulics full; model view, noise off. `levers.set`: `reboilerType` 1, `sumpLevelSp` 15 (%), `tsInletValve` 8 (%) (locked: `reboilerType`). `steady` start: stable (I_s ≈ 0.87) but duty-limited by mist flow (≈ 1090 kW with FC-103 at 100 % OP; SP 1300 kW). Event at 0: `setLever tsInletValve` 100, text "The outside operator has opened the reboiler inlet valve fully." Time limit 14 400 s, par 3600 | o1 reboiler.oscAmplitude < 0.02 ∧ reboiler.instabilityIndex < 1 ∧ kpi.qr ≥ 1 170 000 W (90 % of the 1300 kW SP), hold 300, latch. At the start o1 is false through the duty term. o2 (after o1) choice "Throttling the inlet valve calms a thermosyphon because…" → "extra single-phase friction at the inlet damps the density waves" (others: "it raises the circulation", "it lowers the exit quality", "it raises the sump level") | (1) at 0: "Open the Equipment tab. I_s above 1 means the loop will surge. Your handles: the sump level (driving head), the inlet valve (stabilising friction, but less circulation) and the duty." (2) when reboiler.oscAmplitude ≥ 0.05: "Raise the LC-102 set point to 40 %. More head means more circulation, an exit quality below 0.3 and I_s below 1." (3) after o1: "At 15 % level the inlet valve could only trade surge for duty: 16 % open still surged (I_s ≈ 1.08), and 8 % open lost ≈ 16 % of the duty." | [P-loop]: §8.3 alone with the VC-14.1 inputs (frozen column). Start: I_s 0.87, Q 1087 kW. After opening: I_s > 1 within 17 s; amplitude 0.05 at ≈ 5 min and 0.13 at ≈ 7 min (limit 0.141, period 8.6 s). A level ramp 15 → 40 % over 30 min gives I_s < 1 at 31 % level and amplitude < 0.02 about 6 min later. Inlet 16 % at 15 % level: limit 0.082, so o1 cannot be met by throttling. Inlet 10 %: stable, but 1147 kW < 1170. Level ≥ 32 % with the inlet open: stable at 1300 kW. The validator records the column-coupled times (VALIDATION.md VC-14.3) |
 
 Every guided scenario's JSON carries these objectives verbatim. Its hints must, followed literally, complete it (SCOPE.md M3 acceptance; VC-26.4 plays G1–G6 automatically by applying the hint values).
 
@@ -1413,6 +1453,235 @@ Every guided scenario's JSON carries these objectives verbatim. Its hints must, 
 - G8 adds: "Why did the sweep start at 0.7 bar and not 0.5? At 0.5 bar(a) the distillate condenses near 60 °C. Even with 15 °C water the condenser can remove only about 1.2 MW, less than the reboiler puts in, so PC-101 cannot hold the pressure there (VC-27.3). An operator would turn the feed down, which G9 does."
 - G9: "At 1 atm Tier 3 stalled below 0.8956 however high R went (about 0.890 at R 17.6). Tier 1's constant α has no azeotrope, so it 'beat' it. At 0.5 bar(a) you reached x_D {kpi.xD:0.0000}, past the 1-atm azeotrope, because there it sits at 0.911: this is how vacuum and pressure-swing distillation get past it."
 - G10: "A maximum-boiling azeotrope is the heaviest thing in the column, so it collects in the bottoms: x_B can approach 0.333 from above but never cross it, and drawing more distillate only dilutes the top."
+
+### 11.9 Drills H1–H5 (M6)
+
+These five drills share one frame. Every JSON below carries it in full, so the files can be copied as they stand:
+- B-T in Tier 2 with full hydraulics, starting `steady`, noise on, all loops in AUTO and TC-101 disabled.
+- The off-spec predicate of §11.2, two attempts, standard scoring with no bonus.
+- `onsetWindow[1] + 3600 ≤ timeLimit` (rule 4).
+
+Views follow SCOPE.md §6.2: `plantCalc` for H1, H3 and H5, model view for H2 and H4. Field checks of LG-101, LG-102 and PG-101 (3 minutes each) are available in every drill, as in H9.
+
+The `debrief` strings are the required content; the wording may be polished. Severity ranges and ramps are physics decisions of the M6 readiness pass, and the numbers behind them are in PHYSICS.md §11 and VALIDATION.md §H. The H2 JSON here supersedes the example in §11.2.
+
+```json
+{
+  "id": "H1_creeping_dp", "kind": "drill", "title": "Creeping ΔP", "milestone": 6, "topic": "hydraulics",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "plantCalc", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 10800,
+  "briefing": "The column's temperatures and pressure drop have been drifting all week. Rates are steady. Find out whether something inside the column is changing, or something coming into it.",
+  "onsetWindow": [600, 2400],
+  "candidates": [
+    {"id": "foul_strip", "weight": 2,
+     "fault": {"type": "trayFouling", "location": {"from": 12, "to": 18}, "params": {"mode": "holes"}, "severityRange": [0.4, 0.8], "ramp": 7200},
+     "answer": {"category": "fouling", "location": "stripping"},
+     "debrief": "**Trays 12–18 were fouling** (holes plugging) from {fault.onset:time}. Their pressure drop rose at constant flows while trays 1–11 did not change; the separation changed little at first."},
+    {"id": "foul_rect", "weight": 1,
+     "fault": {"type": "trayFouling", "location": {"from": 2, "to": 8}, "params": {"mode": "holes"}, "severityRange": [0.4, 0.8], "ramp": 7200},
+     "answer": {"category": "fouling", "location": "rectifying"},
+     "debrief": "**Trays 2–8 were fouling** from {fault.onset:time}. The ΔP rise was in the rectifying section only, at constant flows."},
+    {"id": "feed_light", "weight": 2,
+     "fault": {"type": "feedComposition", "params": {"dz": {"benzene": 0.10}, "sign": 1}, "severityRange": [1.0, 1.0], "ramp": 1800},
+     "answer": {"category": "feedUpset", "location": "feed"},
+     "debrief": "**The feed got lighter** (+0.10 benzene) from {fault.onset:time}. Every temperature moved down together (a coherent wave on C6), AT-100 showed it, and no section's ΔP changed. More moles boiled at the same duty, so LC-101 raised the distillate."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1500, "cost": 0.03, "text": "Look at the pressure drop tray by tray (Profiles → ΔP, a calculated value). A section whose ΔP rises while the flows stay put is changing inside."},
+    {"after": 3000, "cost": 0.03, "text": "A feed change moves all the temperatures together (C6 shows a coherent wave) and shows on the feed analyser AT-100, but it does not change any section's ΔP."},
+    {"after": 4500, "cost": 0.03, "text": "Fouled holes raise the dry-tray ΔP first, and the flood % of those trays rises with it."}
+  ],
+  "diagnosis": {"categories": ["fouling", "feedUpset", "foaming", "trayDamage", "instrument", "none"],
+                "locations": ["rectifying", "stripping", "column", "feed", "instrument:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+```json
+{
+  "id": "H2_pressure", "kind": "drill", "title": "Pressure won't hold", "milestone": 6, "topic": "condenser",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "model", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType", "cwInletT", "cwMaxFlow"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 10800,
+  "briefing": "PC-101 is struggling to hold the top pressure. Is the cooling water letting you down, is the condenser dirty, or is something in the overhead that will not condense?",
+  "onsetWindow": [600, 2400],
+  "candidates": [
+    {"id": "cw_temp", "weight": 1,
+     "fault": {"type": "coolingLoss", "params": {"mode": "temperature"}, "severityRange": [0.6, 1.0], "ramp": 1800},
+     "answer": {"category": "cooling", "location": "condenser"},
+     "debrief": "**The cooling water got warmer** by {fault.magnitude} K from {fault.onset:time} (TI-201). PC-101 opened the CW valve to 100 %, then the pressure rose; the reflux was *less* subcooled."},
+    {"id": "cw_flow", "weight": 1,
+     "fault": {"type": "coolingLoss", "params": {"mode": "flow"}, "severityRange": [0.6, 0.7], "ramp": 0},
+     "answer": {"category": "cooling", "location": "condenser"},
+     "debrief": "**A cooling-water pump tripped** at {fault.onset:time}: FT-201 fell at once and the CW valve went to 100 %; the pressure rose and the reflux was less subcooled."},
+    {"id": "cond_foul", "weight": 1,
+     "fault": {"type": "condenserFouling", "severityRange": [0.7, 1.0], "ramp": 7200},
+     "answer": {"category": "fouling", "location": "condenser"},
+     "debrief": "**The condenser was fouling** from {fault.onset:time}. CW temperature and flow were normal, the CW valve crept open over an hour, and the subcooling fell."},
+    {"id": "inerts", "weight": 1,
+     "fault": {"type": "nonCondensables", "severityRange": [0.7, 1.0], "ramp": 0},
+     "answer": {"category": "inerts", "location": "condenser"},
+     "debrief": "**Non-condensables were building up** from {fault.onset:time}. They blanket tubes, so the condensate came out *more* subcooled while the pressure rose — the classic tell. Opening the vent clears them."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1500, "cost": 0.03, "text": "Check the cooling water first: inlet temperature TI-201 and flow FT-201. A supply problem shows there."},
+    {"after": 3000, "cost": 0.03, "text": "Watch the reflux subcooling on the condenser panel. Blanketing by inerts *raises* it; a weaker condenser lowers it."},
+    {"after": 4500, "cost": 0.03, "text": "Fouling is slow (an hour or more); a pump trip is a step; inerts accumulate steadily and a vent clears them."}
+  ],
+  "diagnosis": {"categories": ["cooling", "fouling", "inerts", "instrument", "valve", "none"],
+                "locations": ["condenser", "instrument:*", "valve:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+```json
+{
+  "id": "H3_lost_separation", "kind": "drill", "title": "Lost separation", "milestone": 6, "topic": "hydraulics",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "plantCalc", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "The distillate is going off-spec and nobody touched the set points. Something inside the column — or one of its meters — has changed. Find it.",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "broken_tray", "weight": 1,
+     "fault": {"type": "trayDamage", "location": {"from": 5, "to": 5}, "severityRange": [0.8, 1.0], "ramp": 0},
+     "answer": {"category": "trayDamage", "location": "rectifying"},
+     "debrief": "**Tray 5 was broken** at {fault.onset:time}: its calculated ΔP dropped to a small fraction of its neighbours', the column ΔP fell, and the distillate purity fell at the same L/D."},
+    {"id": "foam", "weight": 1,
+     "fault": {"type": "foaming", "location": {"from": 1, "to": 20}, "severityRange": [0.8, 1.0], "ramp": 600},
+     "answer": {"category": "foaming", "location": "column"},
+     "debrief": "**The column was foaming** from {fault.onset:time}. Flood % went to 100 % at normal rates while the measured column ΔP hardly moved. Antifoam fixes it."},
+    {"id": "ft102_bias", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "FT-102"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.6], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:FT-102"},
+     "debrief": "**FT-102 (reflux) read {fault.magnitude} wrong** from {fault.onset:time}. FC-102 held the reading, so the real reflux changed. C3a (vapour from the condenser duty vs reflux + distillate) and C4 for FV-102 went red."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1200, "cost": 0.03, "text": "Look at the calculated ΔP of each tray. One tray with almost none is a hole in the column."},
+    {"after": 2400, "cost": 0.03, "text": "Compare the flood % (calc) with the measured column ΔP (PDT-101). Foam floods the trays without raising the ΔP much."},
+    {"after": 3300, "cost": 0.03, "text": "Open the Balance tab: if C3a and a valve check disagree, suspect a meter, not the column."}
+  ],
+  "diagnosis": {"categories": ["trayDamage", "foaming", "instrument", "valve", "fouling", "feedUpset", "none"],
+                "locations": ["rectifying", "stripping", "column", "feed", "instrument:*", "valve:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+```json
+{
+  "id": "H4_reboiler", "kind": "drill", "title": "Reboiler can't keep up", "milestone": 6, "topic": "reboiler",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "model", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType", "steamHeaderP"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 10800,
+  "briefing": "The reboiler is not delivering the duty FC-103 asks for. Is it the exchanger, its steam trap, or the steam supply?",
+  "onsetWindow": [600, 2400],
+  "candidates": [
+    {"id": "reb_foul", "weight": 1,
+     "fault": {"type": "reboilerFouling", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 5400},
+     "answer": {"category": "fouling", "location": "reboiler"},
+     "debrief": "**The reboiler was fouling** from {fault.onset:time}. The steam valve crept open for about three quarters of an hour and then saturated, and only then did the duty fall short. The header pressure (PT-201) stayed normal."},
+    {"id": "trap", "weight": 1,
+     "fault": {"type": "condensateBackup", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 60},
+     "answer": {"category": "condensate", "location": "reboiler"},
+     "debrief": "**The steam trap failed** at {fault.onset:time}, and condensate backed up over the tubes. The duty fell short within minutes with the valve at 100 % and a normal header pressure. The fix is to open the trap bypass."},
+    {"id": "header", "weight": 1,
+     "fault": {"type": "steamHeaderLoss", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 120},
+     "answer": {"category": "steam", "location": "steamSupply"},
+     "debrief": "**The steam header pressure fell** at {fault.onset:time} (PT-201), so the steam was colder. FC-103 saturated at 100 % with the duty below its set point; the exchanger itself was fine."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1500, "cost": 0.03, "text": "Check the steam supply first: the header pressure PT-201."},
+    {"after": 3000, "cost": 0.03, "text": "How fast did it happen? Fouling takes most of an hour; a failed trap takes minutes."},
+    {"after": 4500, "cost": 0.03, "text": "A degraded exchanger raises the duty-limited alarm; a header loss does not, because the valve's own capacity fell with it."}
+  ],
+  "diagnosis": {"categories": ["fouling", "condensate", "steam", "valve", "instrument", "none"],
+                "locations": ["reboiler", "steamSupply", "instrument:*", "valve:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+```json
+{
+  "id": "H5_bottoms_swings", "kind": "drill", "title": "Bottoms level swings", "milestone": 6, "topic": "reboiler",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "plantCalc", "badPvShed": true,
+  "levers": {"set": {"reboilerType": 1, "tsInletValve": 100},
+             "lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 14400,
+  "briefing": "This column has a thermosyphon reboiler. The night shift reported that the boilup and the bottoms were 'swinging' at times. Watch the loop on the Equipment tab and find the cause before it gets worse.",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "lt102_drift", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "LT-102"}, "params": {"kind": "drift", "sign": 1}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:LT-102"},
+     "debrief": "**LT-102 (sump level) drifted high** by 10 % per hour from {fault.onset:time}. LC-102 kept the *reading* at its set point, so the true level fell. Less head meant less circulation and a higher exit quality, and the loop began to surge once the true level was below about 30 %. The sight glass LG-102 and C5 (sump) gave it away."},
+    {"id": "ts_inlet", "weight": 1,
+     "fault": {"type": "tsInletRestriction", "location": {"equipment": "reboiler"}, "severityRange": [0.3, 0.8], "ramp": 1800},
+     "answer": {"category": "restriction", "location": "tsInletLine"},
+     "debrief": "**The reboiler inlet line was restricting** from {fault.onset:time}. The inlet-line ΔP rose, the circulation fell and the exit quality rose, but the loop did *not* surge: friction at the inlet stabilises a thermosyphon."},
+    {"id": "ts_outlet", "weight": 1,
+     "fault": {"type": "tsOutletRestriction", "location": {"equipment": "reboiler"}, "severityRange": [0.2, 0.6], "ramp": 1800},
+     "answer": {"category": "restriction", "location": "tsOutletLine"},
+     "debrief": "**The reboiler outlet line was restricting** from {fault.onset:time}. The outlet-line ΔP rose, I_s went above 1 and the boilup surged with a period of about 10–13 s. Throttling the inlet valve damps it until the line is cleared."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1500, "cost": 0.03, "text": "Open the Equipment tab: the circulation, the exit quality and I_s tell you how healthy the loop is, and the inlet- and outlet-line ΔPs tell you where it is being squeezed."},
+    {"after": 3000, "cost": 0.03, "text": "Is the sump level real? Compare LT-102 with C5 (sump) on the Balance tab — try the 1-hour window — and do a field check of LG-102."},
+    {"after": 4500, "cost": 0.03, "text": "Inlet restriction lowers circulation without surging; outlet restriction makes the loop surge."}
+  ],
+  "diagnosis": {"categories": ["restriction", "instrument", "fouling", "condensate", "steam", "valve", "none"],
+                "locations": ["tsInletLine", "tsOutletLine", "reboiler", "steamSupply", "instrument:*", "valve:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+Notes:
+- **Ranges.** Every candidate's minimum severity still produces its key evidence (VALIDATION.md §H):
+  - F05: at s_f 0.4 with the 7200-s ramp, the hole area falls 8 % in the first 30 min (dry ΔP +18 %) and 32 % by the end of the ramp.
+  - F09 flow: s ≥ 0.6, because s = 0.5 is absorbed by the CW valve; capped at 0.7, because s = 1 lifts the relief valve.
+  - F11: from 0.7, so that the CW valve saturates within ≈ 25 min.
+  - F04: from 0.8, so that the tray ΔP is ≤ 15 % of its neighbours'.
+  - F13: the 5400-s ramp saturates the valve 45–60 min after onset; the 6-h default would not do it inside the 2-h symptom test.
+  - F17 from 0.3 (W −30 %); F18 from 0.2 (I_s 1.33).
+- **H5 `lt102_drift`** is exempt from §11.5 rule 1 (see the scope note there). With LC-102 in AUTO, the true level falls at 10 %/h from 50 %. I_s passes 1 at ≈ 30 % (≈ 2 h after onset), and the boilup swings ≥ 10 % peak to peak at ≈ 25 % (≈ 2.5 h). The true level is still ≥ 11 % at the time limit (earliest onset), so it never trips LOLO.
+- **H2 F09 temperature.** With the 1800-s ramp, the CW valve saturates during the ramp, not "within 2 min" (VALIDATION.md §H, corrected). The flow candidate is the step.
+- **Hidden fault parameters.** H2 and H4 run in model view. The snapshot must not show UA_eff, R_f, Q_max, the inert inventory, K_in or K_out while a drill runs (PHYSICS.md §10.9).
+- **Decoys.** H3 and H5 mix process and instrument answers (rule 6). H1, H2 and H4 are process-only drills. Their category question is about *which* process cause, so they need no instrument decoy.
 
 ---
 
