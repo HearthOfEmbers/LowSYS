@@ -1,8 +1,8 @@
-﻿# LowSYS status and coordinator handoff
+# LowSYS status and coordinator handoff
 
 Status: IN PROGRESS
 
-Last updated 2026-10-12 by the outgoing coordinator.
+Last updated 2026-10-13 by the outgoing coordinator.
 
 ## What exists
 - Specs: `SCOPE.md` (milestones M1–M10, levers, faults, scenarios, themes), `PHYSICS.md`, `ENGINE_API.md`, `VALIDATION.md`. The coder records deviations in `DEVIATIONS.md`. `OPEN_ITEMS.md` holds spec fixes still waiting for the physics lead.
@@ -54,14 +54,18 @@ Last updated 2026-10-12 by the outgoing coordinator.
   3. Disable the `lowsys-coordinator` scheduled task.
 
 ## Next steps
-State 2026-10-13 (handoff from the coordinator run that started 2026-10-12):
-- M4 closed (engine validated, 452+ tests; app done incl. emulator pass). M5 closed (fb33c07, 601f80e): Tier 3, presets ew/ac/c4, T-x-y, G9/G10, Paper theme. Spec rulings: 4ee46dd, ce171db.
-- M6 engine checkpoint in (601f80e): thermosyphon (VC-14.1 reproduces), F17/F18, plantCalc view, H1–H5, G14. M6 app first pass (23d7368): Equipment card, drill list, HUD, Diagnose dialog. 25 app tests pass.
-- M7 spec ready (3062d2c, docs/milestones/M7.md, prototype in tools/prototypes/m7). Open: column diameters (~0.75/0.55 m recommended), 852 °R DePriester limit quoted from memory (validator found it plausible).
-- Known failing: `vc18_mccabe_thiele_data_test.dart` compile error and the dt-30 s test in `m5_columns_validation_test.dart` (validator's folder).
+State 2026-10-13 (handoff from the coordinator run of 2026-10-13):
+- M6, M7, M8, M9 closed: engine + app coded, validated (Opus xhigh), spec rulings applied. Latest: eba6818. Engine suites 814 pass / 4 skip (validator run 1377203); app 60 tests pass.
+- Key rulings this run (all in DEVIATIONS "Spec rulings ..." sections): FT-103 10-s lag; G14 o1 >= 1260 kW & FC-103 < 99 %; deprop valve trays 0.55/0.85 m, condenser.pcKc/pcTi (deprop Kc 120, Ti 400 s, VC-16.6d +-2 kPa); M8 deviations ratified; M9 F24 cap frozen at onset, G16 o1 without steady.
+- M10 mostly done (5cc3d20, ae01f95): engine isolate (web on UI isolate, 3 ms budget), OFL fonts bundled, Library (15 cards), tutorial (5 steps), semantics labels, 130 % text scale, colour-blind-safe ok colours (Blueprint/Control Room/Paper changed; SCOPE 7.2 still lists old values), web build succeeds.
 
 Next (run in parallel):
-1. **Validator (Opus xhigh):** fix the two failing tests above, un-skip the two VC-28.8 clauses (ce171db), then validate the M6 engine at 23d7368 against docs/milestones/M6.md's 29 reference values. Work in a clean worktree.
-2. **Spec lead (Opus high):** rule on the coder's open M6 items in DEVIATIONS.md (low-CW dip 8 kPa at 90 s vs the ce171db criteria; PC-101 limit cycle at dt 30 on the doubled-condenser case; VC-14.2.2 FT-103 5-s bins 8.3 % p-p vs ≤ 2 %; G14 throttling alone meets o1 at 10 % inlet; `eq.raoult` rename).
-3. **Coder (Sonnet):** finish the M6 app (loop schematic, HUD countdown, field-check buttons, sandbox plantCalc view toggle), apply the rulings, then start M7.
-4. While M7 is coded, ready the M8 spec (Opus xhigh if new physics).
+1. **Coder (Sonnet):** finish localisation (strings still inline: panel headings, alarm/fault panels, faceplates, drill/debrief dialogs, painter captions -> app/lib/l10n/strings.dart); Android APK build + emulator smoke run (AVD lowsys_pixel); run the engine suite under Chrome (`dart test -p chrome` or equivalent) if feasible; golden tests for the crude flowsheet. Remove or .gitignore the stray untracked `packages/lowsys_engine/tool/m9_*.dart` and `app/test/failures/`.
+2. **Validator (Opus xhigh, worktree):** follow-ups from "Spec rulings M7-S4/M8" (deprop valve trays, VC-16.6d), "Spec rulings M9" (F25 rows, F24 SP-raise row, no-steam closure), M10 acceptance (VALIDATION.md §U contrast, accessibility) and a full-suite run on Windows (+ Chrome if coder enables it).
+3. **Spec lead (Opus high):** coder notes in DEVIATIONS "Spec rulings M9 (coder)" (F24 s=1 energy closure 2.3e-3 vs 1e-3 from film-floor mass; negativeClamps ~1.4 M counting every step) and update SCOPE 7.2 theme colours to the new ok colours.
+4. 100x frame-time: 21.8 % frames > 32 ms at 100x with isolate (1x idle is 22.4 %, i.e. machine raster floor on a busy machine). Re-measure on an idle machine; if still > 1 %, profile raster cost.
+5. When the above is green: write the summary report in docs/reports/, set Status COMPLETE, disable `lowsys-coordinator`. iOS is skipped (Windows host) — note it in the report.
+
+## Needs user
+- Packing constants (M8) and vapour heat capacities / Daubert constants (M9) are quoted from memory; check against the reference books (see OPEN_ITEMS.md).
+- iOS build/simulator validation needs a Mac.
