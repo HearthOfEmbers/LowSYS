@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -6,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
+import 'figure_write.dart';
 import '../theme/themes/paper.dart';
 
 /// Names of the diagram tabs by id (0 McCabe-Thiele, 1 Profiles, 2 T-x-y).
@@ -108,26 +108,8 @@ Future<String> exportFigure(GlobalKey key, {required String preset, required Str
   if (longest > 4096) ratio = 4096 / size.longestSide;
   final img = await b.toImage(pixelRatio: ratio);
   final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-  Directory dir;
-  final env = Platform.environment;
-  if (Platform.isWindows) {
-    final home = env['USERPROFILE'] ?? '.';
-    dir = Directory('$home\Downloads');
-    if (!dir.existsSync()) dir = Directory('$home\Documents');
-  } else if (Platform.isAndroid) {
-    dir = Directory('/storage/emulated/0/Android/data/dev.lowsys.lowsys_app/files/figures');
-  } else {
-    dir = Directory((env['HOME'] != null) ? '${env['HOME']}/Downloads' : Directory.systemTemp.path);
-  }
-  try {
-    dir.createSync(recursive: true);
-  } on Object {
-    dir = Directory.systemTemp;
-  }
   final now = DateTime.now();
   String two(int v) => v.toString().padLeft(2, '0');
   final name = 'lowsys_${preset}_${tab}_${two(now.hour)}${two(now.minute)}${two(now.second)}.png';
-  final f = File('${dir.path}${Platform.pathSeparator}$name');
-  f.writeAsBytesSync(bytes!.buffer.asUint8List());
-  return f.path;
+  return writeFigureBytes(bytes!.buffer.asUint8List(), name);
 }

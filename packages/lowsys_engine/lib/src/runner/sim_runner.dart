@@ -10,6 +10,7 @@ import '../sim/lever_spec.dart';
 import '../sim/simulator.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/thermo_model.dart';
+import 'frame.dart';
 
 /// The only thing the app uses to talk to the engine (ENGINE_API.md 6.6). The M10 move to a
 /// background isolate is a local change behind this interface.
@@ -21,6 +22,11 @@ abstract class SimRunner {
   /// Advance by up to [simSeconds] but stop when [wallBudget] is used. Returns the sim time actually advanced.
   Future<double> advance(double simSeconds, Duration wallBudget);
   Future<SimSnapshot> snapshot();
+
+  /// Advances by up to [advanceSeconds] within [budget] (0: no advance) and returns the snapshot with the derived data
+  /// of [req] (M10). A background-isolate runner does all of it off the UI isolate.
+  Future<FrameResult> frame(FrameRequest req,
+      {double advanceSeconds = 0, Duration budget = const Duration(milliseconds: 6)});
   Future<void> setLever(LeverId id, double value);
   Future<void> setTier(ThermoTier t);
   Future<void> setLoopMode(LoopTag tag, LoopMode mode);

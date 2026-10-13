@@ -1,11 +1,11 @@
 {
-    "name": "lowsys_app",
-    "short_name": "lowsys_app",
+    "name": "LowSYS",
+    "short_name": "LowSYS",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "An interactive distillation column simulator for teaching.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
