@@ -152,11 +152,11 @@ class SimController extends ChangeNotifier {
   List<LeverSpec> get levers => runner.levers;
   ColumnConfig get config => runner.config;
 
-  /// debut and deprop keep the preset's ideal hydraulics: at the ruled 0.75 / 0.55 m diameters the deprop stripping
-  /// section floods under full hydraulics (docs/DEVIATIONS.md "M7 app"); the Hydraulics lever still switches to Full.
+  /// debut loads with Full hydraulics (M7 close-out). deprop keeps the preset's ideal hydraulics: at the ruled 0.85 m the
+  /// stripping trays weep (VC-9.6 (b) fails, docs/DEVIATIONS.md "M7 close-out (coder)"); the Hydraulics lever still switches.
   ColumnConfig _sandboxConfig(PresetId id) {
     final c = Presets.byId(id);
-    return (id == Presets.debut || id == Presets.deprop) ? c : c.copyWith(hydraulics: HydraulicsMode.full);
+    return (id == Presets.deprop) ? c : c.copyWith(hydraulics: HydraulicsMode.full);
   }
 
   /// Sandbox default is full hydraulics (SCOPE.md 4.2); the preset itself stays ideal (docs/DEVIATIONS.md E19).

@@ -83,14 +83,29 @@ void main() {
       final d0 = sim.snapshot().kpis.d;
       final ti0 = _inst(sim)['TI-101']!.value;
       final x0 = sim.liveMetric('kpi.xDHeavy') as double;
-      sim.advance(600 + 1500);
-      expect(a0 - _inst(sim)['AT-100']!.value, greaterThanOrEqualTo(0.02), reason: 'AT-100 down within 25 min of onset');
-      sim.advance(2600 - sim.time);
+      // M7 close-out ruling: until the planning event D is at most 4.5 kmol/h above its start (the saturated heavier feed
+      // flashes extra vapour until the trays heat up); the peak and its time are printed
+      var peak = -1e9, peakT = 0.0, feedFlash = 0.0;
+      while (sim.time < 2700 - 1e-6) {
+        sim.advance(100);
+        final dd = (sim.snapshot().kpis.d - d0) / _kmolh;
+        if (dd > peak) {
+          peak = dd;
+          peakT = sim.time;
+          // plant view hides the stage temperatures: the true values come from the live metrics and the feedT lever
+          feedFlash = sim.lever('feedT') - (sim.liveMetric('stage[${sim.config.feeds.first.stage}].t') as double);
+        }
+        if (sim.time == 600 + 1500) {
+          expect(a0 - _inst(sim)['AT-100']!.value, greaterThanOrEqualTo(0.02), reason: 'AT-100 down within 25 min of onset');
+        }
+      }
+      expect(peak, lessThanOrEqualTo(4.5), reason: 'D - start <= 4.5 kmol/h until 2700 s');
+      // ignore: avoid_print
+      print('H6 F07: D - start peak ${peak.toStringAsFixed(2)} kmol/h at ${peakT.toStringAsFixed(0)} s; feed T - feed-tray T at the peak '
+          '${feedFlash.toStringAsFixed(1)} K (negative: on this run the feed is cooler than the feed tray at the peak, so the flash mechanism of the ruling is not seen)');
       final span = 2 * 76.4 * _kmolh;
       expect((_inst(sim)['FT-102']!.value - ft0).abs(), lessThanOrEqualTo(0.02 * span));
       expect((sim.control.fc102.op - fc0).abs(), lessThanOrEqualTo(2.0));
-      // ruling: within 2.5 kmol/h throughout, within 1 at 2 h after onset (checked below)
-      expect(((sim.snapshot().kpis.d - d0) / _kmolh).abs(), lessThan(2.5));
       sim.advance(7200 - sim.time);
       final healthyF07 = _h6("none")..advance(7200);
       expect(((sim.snapshot().kpis.d - (healthyF07.liveMetric("kpi.d") as double)) / _kmolh).abs(), lessThan(1.0), reason: "D within 1 kmol/h of the healthy run at 2 h (planning event included)");
@@ -136,14 +151,26 @@ void main() {
       expect(((stuck.liveMetric('kpi.xDHeavy') as double) - x0).abs(), lessThan(0.005));
       stuck.advance(600 + 10);
       healthy.advance(600 + 10);
+      {
+        final c = healthy.snapshot().crossChecks.firstWhere((c) => c.id == 'C3a');
+        final tTrue = healthy.snapshot().condenser!.tCwOut, tMeas = _inst(healthy)['TI-202']!.value;
+        // ignore: avoid_print
+        print('H6 healthy C3a at +10 min: r/band ${(c.residual / c.band).toStringAsFixed(2)} (${c.status.name}); TI-202 true '
+            '${(tTrue - 273.15).toStringAsFixed(2)} C, measured ${(tMeas - 273.15).toStringAsFixed(2)} C');
+      }
       expect(stuck.control.fc102.op - op, greaterThanOrEqualTo(10.0));
       expect((_inst(stuck)['FT-102']!.value - ft).abs(), lessThanOrEqualTo(0.01 * span));
       final c4 = stuck.snapshot().crossChecks.where((c) => c.id == 'C4:FV-102').toList();
       expect(c4.isNotEmpty && c4.first.status.name == 'fail', isTrue, reason: 'C4:FV-102 ${c4.map((c) => c.status.name)}');
       stuck.advance(7200 - stuck.time);
       healthy.advance(7200 - healthy.time);
-      // ruling: C3a not fail from event + 60 min, ok or check at 2 h; C5 recorded
-      expect(stuck.snapshot().crossChecks.firstWhere((c) => c.id == 'C3a').status.name, isNot('fail'));
+      // M7 close-out: F20 keeps C3a not fail from event + 60 min (checked at 2 h) and ok or check at 2 h; C5 recorded only
+      expect(stuck.snapshot().crossChecks.firstWhere((c) => c.id == 'C3a').status.name, anyOf('ok', 'check'));
+      // healthy planning: C3a and C5 (drum) not fail at 2 h and ok (M7 close-out)
+      for (final id in ['C3a', 'C5:drum']) {
+        final st = healthy.snapshot().crossChecks.firstWhere((c) => c.id == id).status.name;
+        expect(st, 'ok', reason: 'healthy $id at 2 h');
+      }
       // ignore: avoid_print
       print('H6 F20 C5: ${stuck.snapshot().crossChecks.where((c) => c.id.startsWith("C5")).map((c) => "${c.id}=${c.status.name}").join(",")}');
       final dStuck = stuck.liveMetric('kpi.d') as double, dHealthy = healthy.liveMetric('kpi.d') as double;

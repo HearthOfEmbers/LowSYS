@@ -344,7 +344,7 @@ class ExplainEngine {
           texSymbolic:
               r'\varphi_j = \frac{Q_{out}/A_n}{U_{nf}},\quad U_{nf} = C_{SB}\left(\frac{\sigma}{0.02}\right)^{0.2}\sqrt{\frac{\rho_L-\rho_V}{\rho_V}}\,SF\,f_{hole}',
           texSubstituted:
-              'F_{LV} = ${texNum(hyd.fLV[j])},\\ C_{SB} = ${texNum(hyd.csb[j])},\\ U_{nf} = ${texNum(hyd.unf[j])}\\ \\mathrm{m/s},\\ \\varphi_{$j} = \\frac{${texNum(hyd.qOut[j] / hyd.d.aN)}}{${texNum(hyd.unf[j])}} = ${texNum(st.jetFlood[j])}',
+              'F_{LV} = ${texNum(hyd.fLV[j])},\\ C_{SB} = ${texNum(hyd.csb[j])},\\ U_{nf} = ${texNum(hyd.unf[j])}\\ \\mathrm{m/s},\\ \\varphi_{$j} = \\frac{${texNum(hyd.qOut[j] / hyd.dAt[j].aN)}}{${texNum(hyd.unf[j])}} = ${texNum(st.jetFlood[j])}',
           value: st.jetFlood[j],
           note:
               'Fractional approach to jet flood (Fair, Lygeros-Magoulas fit).',

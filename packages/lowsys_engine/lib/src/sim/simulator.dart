@@ -7,6 +7,7 @@ import 'package:meta/meta.dart';
 
 import '../config/column_config.dart';
 import '../config/presets.dart';
+import '../config/tray_geometry.dart';
 import '../control/control_system.dart';
 import '../control/cross_checks.dart';
 import '../control/trend_buffer.dart';
@@ -322,6 +323,7 @@ class Simulator {
     _state = ColumnState(N, nc);
     _debug = StepDebug(nc);
     final sec = config.traySection;
+    final stageGeom = _stageGeometries(config);
     _ep = EffectiveParams(N + 2, nc);
     _faults = carry?.faults ??
         FaultManager(
@@ -335,6 +337,7 @@ class Simulator {
       nc: nc,
       thermo: _thermo,
       geom: sec.geometry,
+      stageGeometry: stageGeom,
       trayType: sec.type,
       pTop: config.condenser.pTopDesign,
       entrainment: options.entrainment,
@@ -357,7 +360,7 @@ class Simulator {
       control: _control,
       health: _health,
       debug: _debug,
-      geometry: sec.geometry,
+      stageGeometry: stageGeom,
       drumVolume: config.condenser.drumVolume,
       sumpVolume: config.reboiler.sumpVolume,
       murphreePasses: options.murphreePasses,
@@ -384,6 +387,20 @@ class Simulator {
   /// A partial condenser exists only in Tiers 2 and 3 (PHYSICS.md 7.2).
   static bool _isPartial(ColumnConfig c) =>
       c.condenser.type == CondenserType.partial && c.tier != ThermoTier.t1;
+
+  /// Tray geometry of every stage 0..N+1 (stages outside tray sections get the first section's).
+  static List<TrayGeometry> _stageGeometries(ColumnConfig c) {
+    final first = c.traySection.geometry;
+    final out = List<TrayGeometry>.filled(c.trayCount + 2, first);
+    var stage = 1;
+    for (final s in c.sections) {
+      for (var k = 0; k < s.stageCount; k++) {
+        if (s is TraySection) out[stage + k] = s.geometry;
+      }
+      stage += s.stageCount;
+    }
+    return out;
+  }
 
   void _initFromCarry() {
     _stepper.bus
@@ -1297,7 +1314,7 @@ class Simulator {
       case 'trayType.0':
         _hyd.trayType = v >= 0.5 ? TrayType.valve : TrayType.sieve;
         _config = _config.copyWith(
-            sections: [_config.traySection.copyWith(type: _hyd.trayType)]);
+            sections: [for (final s in _config.sections) s is TraySection ? s.copyWith(type: _hyd.trayType) : s]);
       case 'antifoam':
         _faults.setAntifoam(v >= 0.5, _state.time);
       case 'reboilerType':
@@ -2218,8 +2235,6 @@ class Simulator {
     final N = s.nTrays;
     final n = s.n;
     final nc = s.nc;
-    final sec = _config.traySection.geometry;
-    final aA = sec.areaActive;
     final nan = double.nan;
     final full = _stepper.full;
     _stepper.refreshHydraulics(options.dt);
@@ -2235,7 +2250,7 @@ class Simulator {
         froth[j] = h.froth[j];
         flags[j] = h.flags[j];
       } else {
-        hcl[j] = s.holdup[j] * s.vLiq[j] / aA;
+        hcl[j] = s.holdup[j] * s.vLiq[j] / _stepper.aActiveAt[j];
         froth[j] = s.alphaE[j] > 0 ? hcl[j] / s.alphaE[j] : hcl[j];
       }
     }

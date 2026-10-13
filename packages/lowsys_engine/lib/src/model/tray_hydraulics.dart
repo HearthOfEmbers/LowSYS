@@ -55,6 +55,10 @@ class HydraulicSolver {
   final Tier1ConstantAlpha thermo;
   final TrayGeometry geom;
   final TrayGeometryDerived d;
+
+  /// Geometry of the tray section each stage belongs to (index = stage; M7 close-out: several tray sections).
+  late final List<TrayGeometry> geomAt;
+  late final List<TrayGeometryDerived> dAt;
   TrayType trayType;
   /// Top pressure (Pa); the Tier-2 stepper updates it every step.
   double pTop;
@@ -108,6 +112,7 @@ class HydraulicSolver {
     required this.nc,
     required this.thermo,
     required this.geom,
+    List<TrayGeometry>? stageGeometry,
     required this.trayType,
     required this.pTop,
     this.entrainment = true,
@@ -115,6 +120,8 @@ class HydraulicSolver {
     this.downcomerLimit = true,
   })  : n = nTrays + 2,
         d = TrayGeometryDerived.from(geom) {
+    geomAt = stageGeometry ?? List.filled(n, geom);
+    dAt = [for (final g in geomAt) g == geom ? d : TrayGeometryDerived.from(g)];
     Float64List f() => Float64List(n);
     aAct = f();
     qIn = f();
@@ -164,22 +171,23 @@ class HydraulicSolver {
   double get rhoV => thermo.rhoV;
 
   /// Bennett inverse: clear-liquid height of a tray carrying liquid [q] (m3/s) at froth density [ae].
-  double normalHcl(double q, double ae) =>
+  double normalHcl(int j, double q, double ae) =>
       ae *
-      (geom.weirHeight +
-          TrayCorrelations.bennettC(geom.weirHeight) *
-              math.pow(q / (d.lW * ae), 2.0 / 3.0));
+      (geomAt[j].weirHeight +
+          TrayCorrelations.bennettC(geomAt[j].weirHeight) *
+              math.pow(q / (dAt[j].lW * ae), 2.0 / 3.0));
 
   /// Fills the arrays from the state. [dt] only enters the cap on entrainment and the overflow time constant.
   void update(ColumnState s, EffectiveParams ep, double dt) {
     final N = nTrays;
-    final aA = d.aA;
-    final c = TrayCorrelations.bennettC(geom.weirHeight);
     final valve = trayType == TrayType.valve;
-    final dh = valve ? 0.040 : geom.holeDiameter;
     pressure[1] = pTop;
     pressureDropTotal = 0;
     for (var j = 1; j <= N; j++) {
+      final geom = geomAt[j], d = dAt[j];
+      final aA = d.aA;
+      final c = TrayCorrelations.bennettC(geom.weirHeight);
+      final dh = valve ? 0.040 : geom.holeDiameter;
       final sB = ep.brokenS[j];
       final vl = s.vLiq[j];
       final rhoL = rhoLs[j], rhoV = rhoVs[j], sigma = sigmas[j];
@@ -293,11 +301,12 @@ class HydraulicSolver {
     }
     // second pass: downcomer backup (5.10, 5.11) needs the receiving tray's normal clear-liquid height
     for (var j = 1; j <= N; j++) {
+      final geom = geomAt[j], d = dAt[j];
       final vlj = s.vLiq[j];
       double hn;
       if (j + 1 <= N) {
         final q = s.liquid[j] * s.vLiq[j + 1];
-        hn = alphaE[j + 1] > 0 ? normalHcl(q, alphaE[j + 1]) : 0.0;
+        hn = alphaE[j + 1] > 0 ? normalHcl(j + 1, q, alphaE[j + 1]) : 0.0;
       } else {
         hn = 0.0;
       }
