@@ -23,12 +23,27 @@ void main() {
     final base = kpiOf(crudeSim());
     final s = crudeSim();
     injectF24(s, 'bottom', 1.0);
-    steadyC(s);
+    final r = s.runToSteadyState(maxSimSeconds: 172800);
+    expect(r.reached, isTrue, reason: 'steady state not reached, residual ${r.residual}');
     final k = kpiOf(s);
     // ignore: avoid_print
     print('F24 s=1 bottom T rise ${(k.bottomT - base.bottomT).toStringAsFixed(2)} K, energy residual ${s.snapshot().kpis.energyResidual}, negativeClamps ${s.snapshot().solverHealth.negativeClamps}');
-    // the ruling asks for 1e-3; the engine gives 2.3e-3 (docs/DEVIATIONS.md "M10 (coder)", spec rulings M9 item 5)
-    expect(s.snapshot().kpis.energyResidual.abs(), lessThan(3e-3));
+    // VC-15.7: 1e-3 relative to Q_C + Q_PA, checked at three times 20 min apart (spec ruling M9-coder, 2026-10-13)
+    for (var i = 0; i < 3; i++) {
+      if (i > 0) s.advance(1200);
+      final sn = s.snapshot();
+      // ignore: avoid_print
+      print('F24 s=1 closure at +${i * 20} min: ${sn.kpis.energyResidual}');
+      expect(sn.kpis.energyResidual.abs(), lessThan(1e-3), reason: 'energy closure at check $i');
+      // stages 27-30 are vapour-free: the stage-26 liquid temperature, within 0.02 K
+      for (var j = 27; j <= 30; j++) {
+        expect(sn.stages.t[j], closeTo(sn.stages.t[26], 0.02), reason: 'stage $j at check $i');
+      }
+    }
+    // no new clamp episodes over the final hour
+    final c0 = s.snapshot().solverHealth.negativeClamps;
+    s.advance(3600);
+    expect(s.snapshot().solverHealth.negativeClamps, c0, reason: 'negativeClamps grew over the final hour');
     expect(k.bottomT - base.bottomT, inInclusiveRange(12.9, 16.9));
   });
 
