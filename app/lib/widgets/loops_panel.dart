@@ -93,7 +93,10 @@ class Faceplate extends StatelessWidget {
     final valve = snap.valves.where((v) => v.id == kLoopValve[tag]).firstOrNull;
     final meter = kLoopMeter[tag] == null
         ? r
-        : snap.instruments.firstWhere((x) => x.tag == kLoopMeter[tag], orElse: () => r);
+        : snap.instruments.firstWhere(
+            (x) => x.tag == kLoopMeter[tag],
+            orElse: () => r,
+          );
     final cascadeOn = (snap.levers['tc101Enable'] ?? 0) >= 0.5;
     final iman = loop.mode == LoopMode.iman;
     final cas = loop.mode == LoopMode.cas;
@@ -158,12 +161,19 @@ class Faceplate extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              tag,
-                              style: t.type.display.style(
-                                15,
-                                p.accent,
-                                weight: FontWeight.w700,
+                            Flexible(
+                              flex: 0,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  tag,
+                                  style: t.type.display.style(
+                                    15,
+                                    p.accent,
+                                    weight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -180,8 +190,8 @@ class Faceplate extends StatelessWidget {
                           loop.shed
                               ? 'MAN (shed: bad PV)'
                               : iman
-                                  ? 'IMAN (cascade off, follows FC-103)'
-                                  : loop.mode.name.toUpperCase(),
+                              ? 'IMAN (cascade off, follows FC-103)'
+                              : loop.mode.name.toUpperCase(),
                           style: t.type.label.style(
                             12.5,
                             loop.shed ? p.warn : p.ink,
@@ -190,61 +200,63 @@ class Faceplate extends StatelessWidget {
                       ],
                     ),
                   ),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 190),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        InkWell(
-                          onTap: () => sim.openMath(ExplainInstrument(r.tag)),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerRight,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (badge.isNotEmpty)
-                                  Container(
-                                    margin: const EdgeInsets.only(right: 6),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                    ),
-                                    color: bad ? p.alarm : p.warn,
-                                    child: Text(
-                                      badge,
-                                      style: t.type.number.style(
-                                        11.5,
-                                        p.bgAlt,
-                                        weight: FontWeight.w700,
+                  Flexible(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 190),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          InkWell(
+                            onTap: () => sim.openMath(ExplainInstrument(r.tag)),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (badge.isNotEmpty)
+                                    Container(
+                                      margin: const EdgeInsets.only(right: 6),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      color: bad ? p.alarm : p.warn,
+                                      child: Text(
+                                        badge,
+                                        style: t.type.number.style(
+                                          11.5,
+                                          p.bgAlt,
+                                          weight: FontWeight.w700,
+                                        ),
                                       ),
                                     ),
+                                  Text(
+                                    bad ? f(r.lastGoodValue) : f(r.value),
+                                    style: t.type.number.style(
+                                      18,
+                                      bad ? p.inkFaint : p.ink,
+                                      weight: FontWeight.w600,
+                                    ),
                                   ),
-                                Text(
-                                  bad ? f(r.lastGoodValue) : f(r.value),
-                                  style: t.type.number.style(
-                                    18,
-                                    bad ? p.inkFaint : p.ink,
-                                    weight: FontWeight.w600,
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    unit,
+                                    style: t.type.label.style(12, p.inkMuted),
                                   ),
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  unit,
-                                  style: t.type.label.style(12, p.inkMuted),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            'SP ${f(loop.sp)}   OP ${loop.op.toStringAsFixed(1)} %',
-                            style: t.type.number.style(12.5, p.inkMuted),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              'SP ${f(loop.sp)}   OP ${loop.op.toStringAsFixed(1)} %',
+                              style: t.type.number.style(12.5, p.inkMuted),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   Icon(
@@ -268,7 +280,11 @@ class Faceplate extends StatelessWidget {
                         onPressed: () => sim.setLever('tc101Enable', 1),
                         child: Text(
                           'Enable the cascade (FC-103 goes to CAS)',
-                          style: t.type.label.style(13, p.accent, weight: FontWeight.w700),
+                          style: t.type.label.style(
+                            13,
+                            p.accent,
+                            weight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     )
@@ -280,7 +296,11 @@ class Faceplate extends StatelessWidget {
                         modeButton('AUTO', LoopMode.auto, enabled: !bad),
                         if (tag == 'FC-103') ...[
                           const SizedBox(width: 6),
-                          modeButton('CAS', LoopMode.cas, enabled: cascadeOn && !bad),
+                          modeButton(
+                            'CAS',
+                            LoopMode.cas,
+                            enabled: cascadeOn && !bad,
+                          ),
                         ],
                       ],
                     ),
@@ -302,7 +322,9 @@ class Faceplate extends StatelessWidget {
                     max: u.fromSI(q, loop.spHi),
                     text: f(loop.sp),
                     onChanged: (v) => sim.setLoopSp(tag, u.toSI(q, v)),
-                    note: man ? 'stored; acts in AUTO' : (cas ? 'set by TC-101' : null),
+                    note: man
+                        ? 'stored; acts in AUTO'
+                        : (cas ? 'set by TC-101' : null),
                   ),
                   _slider(
                     context,
@@ -317,14 +339,40 @@ class Faceplate extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   if (r.typicalSigma > 0) ...[
-                    Row(children: [
-                      Expanded(child: Text('Signal look (5 min σ)', style: t.type.label.style(12.5, p.inkMuted))),
-                      Text('${Fmt.sig(u.fromSI(q, r.sigma5min), 2)}  typical ${Fmt.sig(u.fromSI(q, r.typicalSigma), 2)}', style: t.type.number.style(12.5, lookOdd ? p.warn : p.ink)),
-                    ]),
-                    Row(children: [
-                      Expanded(child: Text('Digits last changed', style: t.type.label.style(12.5, p.inkMuted))),
-                      Text('${r.digitsAge.floor()} s ago', style: t.type.number.style(12.5, r.digitsAge > 120 ? p.warn : p.ink)),
-                    ]),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Signal look (5 min σ)',
+                            style: t.type.label.style(12.5, p.inkMuted),
+                          ),
+                        ),
+                        Text(
+                          '${Fmt.sig(u.fromSI(q, r.sigma5min), 2)}  typical ${Fmt.sig(u.fromSI(q, r.typicalSigma), 2)}',
+                          style: t.type.number.style(
+                            12.5,
+                            lookOdd ? p.warn : p.ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Digits last changed',
+                            style: t.type.label.style(12.5, p.inkMuted),
+                          ),
+                        ),
+                        Text(
+                          '${r.digitsAge.floor()} s ago',
+                          style: t.type.number.style(
+                            12.5,
+                            r.digitsAge > 120 ? p.warn : p.ink,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                   if (lookOdd)
                     Text(
@@ -339,49 +387,49 @@ class Faceplate extends StatelessWidget {
                     ),
                   const SizedBox(height: 6),
                   if (valve != null)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      InkWell(
-                        onTap: () => sim.openMath(ExplainValve(valve.id)),
-                        child: SizedBox(
-                          width: 120,
-                          height: 96,
-                          child: CustomPaint(
-                            painter: ValveCurvePainter(t, valve, meter, c4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        InkWell(
+                          onTap: () => sim.openMath(ExplainValve(valve.id)),
+                          child: SizedBox(
+                            width: 120,
+                            height: 96,
+                            child: CustomPaint(
+                              painter: ValveCurvePainter(t, valve, meter, c4),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              valve.id,
-                              style: t.type.display.style(
-                                13.5,
-                                p.accent,
-                                weight: FontWeight.w700,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                valve.id,
+                                style: t.type.display.style(
+                                  13.5,
+                                  p.accent,
+                                  weight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                            Text(
-                              c4 == null ||
-                                      c4.status == CheckStatus.notAvailable
-                                  ? 'Expects ${Fmt.value(q, valve.expectedFlow, u)} $unit at OP ${loop.op.toStringAsFixed(1)} %, meter says ${f(r.value)} (the band appears after a full window)'
-                                  : 'Expects ${Fmt.value(q, c4.terms['expected'] ?? double.nan, u)} $unit at OP ${(c4.terms['op'] ?? 0).toStringAsFixed(1)} %, meter says ${Fmt.value(q, c4.terms['measured'] ?? double.nan, u)} (band ±${Fmt.value(q, c4.band, u)})',
-                              style: t.type.label.style(
-                                12.5,
-                                checkColor(p, c4?.status),
+                              Text(
+                                c4 == null ||
+                                        c4.status == CheckStatus.notAvailable
+                                    ? 'Expects ${Fmt.value(q, valve.expectedFlow, u)} $unit at OP ${loop.op.toStringAsFixed(1)} %, meter says ${f(r.value)} (the band appears after a full window)'
+                                    : 'Expects ${Fmt.value(q, c4.terms['expected'] ?? double.nan, u)} $unit at OP ${(c4.terms['op'] ?? 0).toStringAsFixed(1)} %, meter says ${Fmt.value(q, c4.terms['measured'] ?? double.nan, u)} (band ±${Fmt.value(q, c4.band, u)})',
+                                style: t.type.label.style(
+                                  12.5,
+                                  checkColor(p, c4?.status),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            _BypassRow(valve: valve, sim: sim),
-                          ],
+                              const SizedBox(height: 4),
+                              _BypassRow(valve: valve, sim: sim),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                   const SizedBox(height: 4),
                   Wrap(
                     spacing: 4,
@@ -514,7 +562,8 @@ class _BypassRow extends StatelessWidget {
     final t = LowsysThemeScope.of(context);
     final p = t.palette;
     final on = valve.bypass >= 0;
-    return Row(
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text('Bypass', style: t.type.label.style(12.5, p.inkMuted)),
         const SizedBox(width: 6),

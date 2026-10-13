@@ -284,6 +284,8 @@ class SimController extends ChangeNotifier {
     if (!_loaded) return;
     final before = snapshot.value;
     if (before != null && before.tier == t) return;
+    // Tier 1 has a total condenser only (PHYSICS.md 7.2): a partial condenser stays in Tier 2
+    if (t == ThermoTier.t1 && (before?.condenser?.partial ?? false)) return;
     await runner.setTier(t);
     if (before != null) {
       tierGhost.value = TierGhost(

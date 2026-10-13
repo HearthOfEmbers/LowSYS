@@ -34,6 +34,8 @@ Future<void> loadFonts() async {
   await load('Architects Daughter', 'assets/fonts/ArchitectsDaughter-Regular.ttf');
   await load('Share Tech Mono', 'assets/fonts/ShareTechMono-Regular.ttf');
   await load('STIX Two Math', 'assets/fonts/STIXTwoMath-Regular.ttf');
+  await load('Rajdhani', 'assets/fonts/Rajdhani-Medium.ttf');
+  await load('JetBrains Mono', 'assets/fonts/JetBrainsMono-VF.ttf');
 }
 
 final bool shots = Platform.environment['LOWSYS_SHOTS'] == '1';

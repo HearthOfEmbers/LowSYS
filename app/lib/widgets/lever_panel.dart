@@ -127,6 +127,19 @@ class LeverPanel extends StatelessWidget {
             ]);
             if (t2) {
               group('UTILITIES', [
+                _Labeled(
+                  label: 'Condenser',
+                  t: t,
+                  child: _Segments(
+                    options: const ['Total', 'Partial'],
+                    selected: (values['condenserType'] ?? 0) >= 0.5 ? 1 : 0,
+                    onSelect: locked.contains('condenserType')
+                        ? null
+                        : (i) => sim.setLever('condenserType', i.toDouble()),
+                    t: t,
+                  ),
+                ),
+                if ((values['condenserType'] ?? 0) >= 0.5) tile('cwOP'),
                 tile('inertVent'),
                 tile('cwInletT'),
                 tile('cwMaxFlow'),

@@ -52,8 +52,9 @@ class StageArrays {
   /// n*nc, row-major by stage
   final Float64List x, y, yStar;
 
-  /// K, Pa. NaN in Tier 1.
+  /// K, Pa. In Tier 1 [t] is the display-only T* (Raoult bubble point of x_j at the stage pressure, [idealT] true).
   final Float64List t, p;
+  final bool idealT;
   final Float64List liquidDown, vaporUp;
   final Float64List entrain, weep;
   final Float64List holdup, hcl, froth;
@@ -75,6 +76,7 @@ class StageArrays {
     required this.y,
     required this.yStar,
     required this.t,
+    this.idealT = false,
     required this.p,
     required this.liquidDown,
     required this.vaporUp,
@@ -130,6 +132,10 @@ class CondenserSnapshot {
   final double tCond, tReflux, subcooling, inertFraction, vaporMoles;
   final double nCond, nVent, nRelief;
 
+  /// Partial condenser (PHYSICS.md 7.2): true, and the vapour-product rate D_V (mol/s; 0 for a total condenser).
+  final bool partial;
+  final double vaporProduct;
+
   /// n_V,i per component (mol); empty in Tier 1.
   final Float64List vaporInventory;
   const CondenserSnapshot(this.drumHoldup, this.drumLevelPct,
@@ -148,6 +154,8 @@ class CondenserSnapshot {
       this.nCond = double.nan,
       this.nVent = double.nan,
       this.nRelief = double.nan,
+      this.partial = false,
+      this.vaporProduct = 0,
       required this.vaporInventory});
 }
 

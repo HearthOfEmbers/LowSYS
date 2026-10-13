@@ -331,7 +331,7 @@ class CrossCheckEngine {
       ('LV-102', 'FT-105', 'LC-102'),
       ('PV-101', 'FT-201', 'PC-101'),
     ]) {
-      if (valve == 'PV-101' && !is2) continue;
+      if (valve == 'PV-101' && (!is2 || cs.partial)) continue;
       final id = 'C4:$valve', title = 'check.c4';
       final inputs = [meter];
       final isT2Valve = valve == 'FV-103' && is2 || valve == 'PV-101';

@@ -69,8 +69,16 @@ class ControlDesign {
   /// scale Q_max,0 (W), tray count, instrumented trays, the TC-101 tray and the PC-101 set point (Pa).
   final double pTopDesign, cwMaxFlow, dutyDesign, qMax0, cwDesign;
   final int nTrays, tc101Tray;
+  /// Partial condenser (PHYSICS.md 7.2, 10.7): PC-101 drives the vapour-product valve PV-102 (full scale [dvMax] mol/s,
+  /// start OP [dvOp] %) and the CW valve sits at [cwManualOp] %.
+  final bool partial;
+  final double dvMax, dvOp, cwManualOp;
   final List<int> trays;
   const ControlDesign({
+    this.partial = false,
+    this.dvMax = 0,
+    this.dvOp = 20,
+    this.cwManualOp = 70,
     this.pTopDesign = 101325,
     this.cwMaxFlow = 41.54,
     this.dutyDesign = 1.3e6,
@@ -132,7 +140,11 @@ class ControlSystem {
   late final ControlLoop fc101, fc102, fc103, lc101, lc102;
 
   // ---- Tier 2 (M4): pressure, temperatures, cooling water, steam header; PC-101 and TC-101
-  late Valve pv101;
+  /// PC-101's valve: PV-101 (cooling water) with a total condenser, PV-102 (vapour product, mol/s) with a partial one;
+  /// [cwValve] is always the cooling-water valve (the same object as [pv101] when the condenser is total).
+  late Valve pv101, cwValve;
+  bool partial = false;
+  double cwManualOp = 70, meanDv = 0;
   late Instrument pt101, pt201, ti100, ti201, ti202, ft201, tiSump;
   final List<Instrument> trayTis = [];
   final List<int> trayIds = [];
@@ -426,20 +438,26 @@ class ControlSystem {
         ),
         seed: seed);
     final t2insts = [pt101, pt201, ti100, ...trayTis, tiSump, ti201, ti202, ft201];
-    final pv101 = Valve('PV-101', d.cwMaxFlow, seed, op: d.cwDesign);
+    final cwValve = Valve('PV-101', d.cwMaxFlow, seed,
+        op: d.partial ? d.cwManualOp : d.cwDesign);
+    final pv101 = d.partial
+        ? Valve('PV-102', d.dvMax, seed, op: d.dvOp)
+        : cwValve;
     final pc101 = ControlLoop(
       tag: 'PC-101',
       pvTag: 'PT-101',
-      mvRef: 'PV-101',
-      params: const PidParams(
-          kc: 10, ti: 120, action: Action.direct, spKick: false),
+      mvRef: pv101.id,
+      params: d.partial
+          ? const PidParams(kc: 2.0, ti: 30, action: Action.direct, spKick: false)
+          : const PidParams(
+              kc: 10, ti: 120, action: Action.direct, spKick: false),
       fastLayer: false,
       lo: 0,
       hi: 2 * pDes,
       spLo: 20000,
       spHi: 500000,
       sp: pDes,
-      op: d.cwDesign,
+      op: d.partial ? d.dvOp : d.cwDesign,
     );
     final tcTray = d.trays.contains(d.tc101Tray) ? d.tc101Tray : d.trays.first;
     final tc101 = ControlLoop(
@@ -476,6 +494,9 @@ class ControlSystem {
         [fv101, fv102, fv103, lv101, lv102, pv101]);
     cs
       ..pv101 = pv101
+      ..cwValve = cwValve
+      ..partial = d.partial
+      ..cwManualOp = d.cwManualOp
       ..pt101 = pt101
       ..pt201 = pt201
       ..ti100 = ti100
@@ -666,6 +687,7 @@ class ControlSystem {
       for (final v in valves) {
         v.resetNoise();
       }
+      if (partial) cwValve.resetNoise();
     }
     noise = on;
   }
@@ -678,6 +700,7 @@ class ControlSystem {
     for (final v in valves) {
       v.reseed(seed);
     }
+    if (partial) cwValve.reseed(seed);
   }
 
   /// Applies the active F19/F28/F20 faults to the instruments and valves (called at the start of a step).
@@ -774,7 +797,7 @@ class ControlSystem {
   void runFastLayer(double dt, double t) {
     time = t;
     final nc = math.max(1, (dt / deltaC).round());
-    var s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0, sCw = 0.0;
+    var s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0, sCw = 0.0, sDv = 0.0;
     for (var k = 0; k < nc; k++) {
       final tk = t + k * deltaC;
       // 1. valves in the fixed order, then the transmitter on each line
@@ -794,7 +817,10 @@ class ControlSystem {
       s3 += f3;
       s4 += f4;
       if (tier2) {
-        final fcw = pv101.step(deltaC, pc101.op, noise) * cwScale;
+        final fcw = partial
+            ? cwValve.step(deltaC, cwManualOp, noise) * cwScale
+            : pv101.step(deltaC, pc101.op, noise) * cwScale;
+        if (partial) sDv += pv101.step(deltaC, pc101.op, noise);
         ft201.update(deltaC, fcw / rhoWater, tk);
         sCw += fcw;
       }
@@ -830,6 +856,7 @@ class ControlSystem {
     meanFlows[3] = s3 / nc;
     meanFlows[4] = s4 / nc;
     meanCw = sCw / nc;
+    meanDv = sDv / nc;
   }
 
   void _executeLoop(ControlLoop l, double h, double t) {
@@ -887,7 +914,8 @@ class ControlSystem {
     _executeLoop(lc101, dt, t);
     _executeLoop(lc102, dt, t);
     if (tier2) {
-      pc101.kcScale = (pc101.op / pcScheduleOp).clamp(pcScheduleMin, 1.0);
+      pc101.kcScale =
+          partial ? 1.0 : (pc101.op / pcScheduleOp).clamp(pcScheduleMin, 1.0);
       _executeLoop(pc101, dt, t);
       _runTc101(dt, t);
     }
@@ -1265,6 +1293,8 @@ class ControlSystem {
         'tc101Enabled': tc101Enabled,
         'tc101Pv': tc101.pvTag,
         'cwScale': cwScale,
+        if (partial) 'cwManualOp': cwManualOp,
+        if (partial) 'cwValve': cwValve.toJson(),
         'loops': {for (final l in loops) l.tag: l.toJson()},
         'valves': {for (final v in valves) v.id: v.toJson()},
         'instruments': {for (final i in instruments) i.spec.tag: i.toJson()},
@@ -1289,6 +1319,11 @@ class ControlSystem {
     final pv = j['tc101Pv'] as String?;
     if (pv != null && _inst.containsKey(pv)) tc101.pvTag = pv;
     cwScale = (j['cwScale'] as num?)?.toDouble() ?? 1.0;
+    if (partial) {
+      cwManualOp = (j['cwManualOp'] as num?)?.toDouble() ?? cwManualOp;
+      final cv = j['cwValve'];
+      if (cv != null) cwValve.loadJson(cv as Map<String, Object?>);
+    }
     // keyed by tag: the instrumented trays change with the tray count (PHYSICS.md 10.5)
     final ls = j['loops']! as Map<String, Object?>;
     for (final l in loops) {

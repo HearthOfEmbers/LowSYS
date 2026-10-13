@@ -94,6 +94,11 @@ class TrayInspector extends StatelessWidget {
           'T',
           '${Fmt.value(Quantity.temperature, st.t[j], u)} ${u.symbol(Quantity.temperature)}',
         ),
+      if (!t2 && st.idealT && st.t[j].isFinite)
+        (
+          'T* (ideal)',
+          '${Fmt.value(Quantity.temperature, st.t[j], u)} ${u.symbol(Quantity.temperature)}',
+        ),
       if (t2)
         (
           'P',

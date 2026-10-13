@@ -161,10 +161,6 @@ class ProfilePainter extends CustomPainter {
             ..strokeWidth = 1.4);
       _text(canvas, '100 %', Offset(x100, plot.top - 2), lab.style(12, p.alarm), Alignment.bottomCenter);
     }
-    if (kind == ProfileKind.temperature && s.tier == ThermoTier.t1) {
-      _text(canvas, 'Tier 1 has no temperatures: switch to Tier 2 with the T1/T2 badge', plot.center, lab.style(13, p.warn), Alignment.center, maxWidth: plot.width - 12);
-      return;
-    }
     if ((kind == ProfileKind.dp || kind == ProfileKind.flood || kind == ProfileKind.weep) && !full) {
       _text(canvas, 'ideal hydraulics: no tray hydraulics (switch to Full)', plot.center, lab.style(13, p.warn), Alignment.center, maxWidth: plot.width - 12);
       return;
@@ -224,7 +220,7 @@ class ProfilePainter extends CustomPainter {
       ProfileKind.dp => 'bar = total dP, tick = dry dP',
       ProfileKind.flood => 'bar = jet flood / froth fill, tick = downcomer',
       ProfileKind.composition => 'bar = liquid x, tick = vapour y',
-      ProfileKind.temperature => 'bubble-point temperature of each tray',
+      ProfileKind.temperature => s.tier == ThermoTier.t1 ? 'T*, ideal (Raoult) bubble point, display only: constant alpha has no temperatures' : 'bubble-point temperature of each tray',
       ProfileKind.vapour || ProfileKind.liquid => ghost?.value == null
           ? (s.tier == ThermoTier.t1 ? 'constant molar overflow: V and L are flat in each section' : 'Tier 2: V and L change with the latent heats')
           : 'bar = now, tick = ${ghost!.value!.fromTier} just before the switch',

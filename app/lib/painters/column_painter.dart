@@ -487,6 +487,94 @@ class ColumnVesselPainter extends CustomPainter {
 
 /// Everything that moves: liquid hatching, levels, vapour bubbles, flow dashes, labels, selection.
 /// Repaints from the snapshot notifier and the UI clock, never from a widget rebuild.
+/// ISA-101 vertical level bar graph (SCOPE.md 7.2): grey-blue fill, HI/LO ticks at 85 / 15 % (HIHI/LOLO 95 / 5 %), an
+/// accent SP marker on the left. The fill turns warn / alarm only when a limit is crossed: colour means something is wrong.
+void _levelBar(Canvas c, Rect r, double pct, double? sp, LowsysTheme theme) {
+  if (!pct.isFinite || r.height < 8) return;
+  final p = theme.palette;
+  final lvl = (pct / 100).clamp(0.0, 1.0);
+  final alarm = pct >= 95 || pct <= 5;
+  final warn = pct >= 85 || pct <= 15;
+  final fill = alarm
+      ? p.alarm
+      : warn
+          ? p.warn
+          : Color.lerp(p.steel, p.liquidHeavy, 0.4)!;
+  c.drawRect(r, Paint()..color = p.bgAlt.withValues(alpha: 0.85));
+  c.drawRect(
+    Rect.fromLTRB(r.left, r.bottom - r.height * lvl, r.right, r.bottom),
+    Paint()..color = fill.withValues(alpha: 0.9),
+  );
+  c.drawRect(
+    r,
+    Paint()
+      ..color = p.inkMuted
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0,
+  );
+  final tick = Paint()
+    ..color = p.inkMuted
+    ..strokeWidth = 1.0;
+  for (final v in [15.0, 85.0]) {
+    final y = r.bottom - r.height * v / 100;
+    c.drawLine(Offset(r.right, y), Offset(r.right + 3.5, y), tick);
+  }
+  for (final v in [5.0, 95.0]) {
+    final y = r.bottom - r.height * v / 100;
+    c.drawLine(Offset(r.right, y), Offset(r.right + 2, y), tick);
+  }
+  if (sp != null && sp.isFinite) {
+    final y = r.bottom - r.height * (sp / 100).clamp(0.0, 1.0);
+    c.drawPath(
+      Path()
+        ..moveTo(r.left - 1, y)
+        ..lineTo(r.left - 6, y - 3.5)
+        ..lineTo(r.left - 6, y + 3.5)
+        ..close(),
+      Paint()..color = p.accent,
+    );
+  }
+}
+
+/// ISA-style tag bubble ("FIC" over "101"), outlined by the loop mode: AUTO grey, MAN warn, CAS accent, shed alarm.
+void _tagBubble(Canvas c, Offset at, String tag, LoopSnapshot? loop, LowsysTheme theme) {
+  final p = theme.palette;
+  final fn = '${tag.substring(0, 1)}IC';
+  final num = tag.substring(3);
+  final Color edge;
+  if (loop == null) {
+    edge = p.inkFaint;
+  } else if (loop.shed) {
+    edge = p.alarm;
+  } else {
+    edge = switch (loop.mode) {
+      LoopMode.man => p.warn,
+      LoopMode.cas => p.accent,
+      LoopMode.iman => p.inkFaint,
+      _ => p.inkMuted,
+    };
+  }
+  c.drawCircle(at, 11.5, Paint()..color = p.bg.withValues(alpha: 0.92));
+  c.drawCircle(
+    at,
+    11.5,
+    Paint()
+      ..color = edge
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = loop != null && (loop.shed || loop.mode == LoopMode.man) ? 1.6 : 1.1,
+  );
+  c.drawLine(
+    Offset(at.dx - 11.5, at.dy),
+    Offset(at.dx + 11.5, at.dy),
+    Paint()
+      ..color = edge.withValues(alpha: 0.6)
+      ..strokeWidth = 0.7,
+  );
+  final st = theme.type.label.style(8.5, p.ink, weight: FontWeight.w600);
+  _drawText(c, fn, at + const Offset(0, -2.2), st, anchor: Alignment.bottomCenter);
+  _drawText(c, num, at + const Offset(0, 1.2), st, anchor: Alignment.topCenter);
+}
+
 class ColumnLivePainter extends CustomPainter {
   final ValueListenable<SimSnapshot?> snapshot;
   final ValueListenable<int?> selected;
@@ -1032,6 +1120,42 @@ class ColumnLivePainter extends CustomPainter {
         tag,
         anchor: Alignment.topCenter,
       );
+    }
+
+    // ---- Control Room (ISA-101): level bar graphs with SP marker and HI/LO ticks, and tag bubbles beside the instruments
+    if (isa) {
+      LoopSnapshot? loopOf(String tag) {
+        for (final l in s.loops) {
+          if (l.tag == tag) return l;
+        }
+        return null;
+      }
+
+      _levelBar(
+        canvas,
+        Rect.fromLTRB(dr.left - 13, dr.top - 5, dr.left - 7, dr.bottom + 5),
+        s.kpis.drumLevelPct,
+        loopOf('LC-101')?.sp,
+        theme,
+      );
+      _levelBar(
+        canvas,
+        Rect.fromLTRB(g.shellR + wall + 4, g.sumpTop + 2, g.shellR + wall + 10, g.sumpBot - 2),
+        s.kpis.sumpLevelPct,
+        loopOf('LC-102')?.sp,
+        theme,
+      );
+      if (!narrow && g.shellL > 60) {
+        final fbY = g.deckY(s.layout.feedStages.first) - g.spacing * 0.5;
+        _tagBubble(canvas, Offset(g.shellL - wall - 13, fbY - 38), 'FC-101', loopOf('FC-101'), theme);
+        _tagBubble(canvas, Offset(g.shellL - wall - 13, by - 38), 'LC-102', loopOf('LC-102'), theme);
+        _tagBubble(canvas, Offset(g.shellR + wall + 18, refluxY - 16), 'FC-102', loopOf('FC-102'), theme);
+        _tagBubble(canvas, Offset(size.width - 17, dyOut + 16), 'LC-101', loopOf('LC-101'), theme);
+        _tagBubble(canvas, Offset(rb.dx, rb.dy - g.reboilerR - 28), 'FC-103', loopOf('FC-103'), theme);
+        if (t2) {
+          _tagBubble(canvas, Offset(g.condCenter.dx + g.condR + 17, g.condCenter.dy), 'PC-101', loopOf('PC-101'), theme);
+        }
+      }
     }
 
     // ---- sandbox fault flags: an info-blue flag on the affected equipment (never shown in drills or plant view)

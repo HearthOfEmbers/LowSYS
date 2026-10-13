@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lowsys_app/app.dart';
 import 'package:lowsys_app/controllers/save_store.dart';
 import 'package:lowsys_app/controllers/sim_controller.dart';
+import 'package:lowsys_app/widgets/fault_panel.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import 'shot_helpers.dart';
@@ -78,7 +79,7 @@ void main() {
       // faults tab: instrument card
       sim.controlTab.value = 4;
       await frames(tester, 3);
-      await tester.scrollUntilVisible(find.textContaining('Instrument fault'), 300, scrollable: find.byType(Scrollable).last);
+      await tester.scrollUntilVisible(find.textContaining('Instrument fault'), 300, scrollable: find.descendant(of: find.byType(FaultPanel), matching: find.byType(Scrollable)).first);
       await frames(tester, 3);
       expect(find.textContaining('Instrument fault'), findsWidgets);
       await snap(tester, key, '${e.key}_faults_instrument', dir: 'm3');
