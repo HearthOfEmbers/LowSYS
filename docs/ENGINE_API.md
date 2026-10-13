@@ -1776,7 +1776,7 @@ Frame:
     {"id": "fv102_stuck", "weight": 2,
      "fault": {"type": "valve", "location": {"tag": "FV-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "valve", "location": "valve:FV-102"},
-     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** Nothing showed until planning raised the rates at 45 min. Then the feed and the duty went up, FC-102's set point went up and its OP ran to 100 %, but the reflux flow did not move. The meter was honest: C3a only showed the drum filling and came back as LC-101 caught up, while C4 for FV-102 stayed red. More vapour with the same reflux meant more distillate and a heavier overhead. Open `bypass.FV-102` and set the reflux by hand."}
+     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** Nothing showed until planning raised the rates at 45 min. Then the feed and the duty went up, FC-102's set point went up and its OP ran to 100 %, but the reflux flow did not move. The meter was honest: the balances wobbled after the rate change, as they do on a healthy column, and settled within the hour, while C4 for FV-102 stayed red. More vapour with the same reflux meant more distillate and a heavier overhead. Open `bypass.FV-102` and set the reflux by hand."}
   ],
   "events": [
     {"id": "planning", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 2.22222,
