@@ -27,3 +27,4 @@ packages/*/pubspec.lock
 *.iml
 .flutter-plugins
 .flutter-plugins-dependencies
+docs/.coordinator_started
