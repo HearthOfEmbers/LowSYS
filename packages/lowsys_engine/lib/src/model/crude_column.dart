@@ -369,7 +369,19 @@ class CrudeColumn {
         health.negativeLatent++;
         den = 1;
       }
-      v[a] = math.max(0.0, num / den);
+      final vRaw = num / den;
+      if (vRaw <= 0) {
+        // vapour-free stage (spec rulings M9 item 5): V = 0 and T follows the stage energy balance, not the bubble point,
+        // until the stage is supplied with enough energy to boil again
+        v[a] = 0.0;
+        final cp = th.hLmix(x, a * nc, t[a] + 1) - hl[a];
+        // implicit in the outflow enthalpy (d num / dT = -L cp), stable on the thin film of a dry tray
+        vfDT[a] = cp > 1 && hold[a] > 0 ? (dt * num / (cp * (hold[a] + dt * l[a]))).clamp(-5.0, 5.0) : 0.0;
+        vf[a] = true;
+      } else {
+        v[a] = vRaw;
+        vf[a] = false;
+      }
     }
     // overhead: reflux from FC-301, limited by what the drum can supply
     final reflux = inp.reflux;
@@ -440,12 +452,22 @@ class CrudeColumn {
     if (mNew < floor) {
       mNew = floor;
       dM = mNew - hold[a];
+      // spec rulings M9 C2: with the film floor binding the outflow follows from the clamped dM, L = In - Out - dM/dt
+      final lNew = dNon - dM / dt;
+      if (lNew < 0) health.negativeClamps++; // L = 0 with M below the film: counted
+      _mNew[a] = mNew;
+      l[a] = math.max(0.0, lNew);
+      return;
     }
     _mNew[a] = mNew;
     l[a] = math.max(0.0, lo + k * dM);
   }
 
   double naphthaOut = 0, residueOut = 0;
+
+  /// Vapour-free main-column stages (V_HC = 0, T from the energy balance) and the temperature step they take.
+  late final List<bool> vf = List<bool>.filled(ns, false);
+  late final List<double> vfDT = List<double>.filled(ns, 0.0);
 
   double _condenserDuty() {
     return v[0] * (hv[0] - th.hLmix(yy, 0, inp.drumT)) + steamUp[0] * (th.hVwater(t[0]) - th.hLwater(inp.drumT));
@@ -535,7 +557,9 @@ class CrudeColumn {
       final scale = (1 - _ywOld[a]) / (1 - ywF[a]);
       s *= scale;
       ds *= scale;
-      if (s > 0 && ds > 0) {
+      if (vf[a]) {
+        t[a] += vfDT[a];
+      } else if (s > 0 && ds > 0) {
         var dT = -math.log(s) / (ds / s);
         dT = dT.clamp(-10.0, 10.0);
         // second-order correction with exp(dl * dT)
@@ -804,7 +828,9 @@ class CrudeColumn {
       hout += pAct[k] * hl[s2(k)];
     }
     hout += residueOut * hl[nm - 1];
-    return (hin - hout) / (fF * feed.h);
+    // spec rulings M9 C3: relative to the duty moved, Q_C + Q_PA (fF h_F is small and can pass through zero)
+    final den = qc.abs() + qPA.abs();
+    return (hin - hout) / (den > 1 ? den : (fF * feed.h).abs());
   }
 
   /// Relative mass closure (feed - products)/feed at the current state.

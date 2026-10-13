@@ -1166,7 +1166,9 @@ class Stepper {
           (fN > 0 ? fN * lN1 * (hN1 - hB) : 0.0) +
           qR -
           _cj[N + 1] * s.tau[N + 1] * dP / dt;
-      s.vapor[N + 1] = _sSumpNow * math.max(0.0, num / (s.hVap[N + 1] - hB));
+      final vSump = num / (s.hVap[N + 1] - hB);
+      if (vSump < -1e-12) health.negativeClamps++; // spec rulings M9 C1
+      s.vapor[N + 1] = _sSumpNow * math.max(0.0, vSump);
     }
     for (var j = N; j >= 1; j--) {
       final hj = s.hLiq[j];
@@ -1186,7 +1188,9 @@ class Stepper {
       if (j == fs) num += f * (hF - hj);
       if (full && j + 1 <= N) num += s.entrain[j + 1] * (s.hLiq[j + 1] - hj);
       num -= _cj[j] * s.tau[j] * dP / dt;
-      s.vapor[j] = math.max(0.0, num / (s.hVap[j] - hj));
+      final vRaw = num / (s.hVap[j] - hj);
+      if (vRaw < -1e-12) health.negativeClamps++; // spec rulings M9 C1
+      s.vapor[j] = math.max(0.0, vRaw);
     }
   }
 

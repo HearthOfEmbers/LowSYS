@@ -20,11 +20,10 @@ const String g16Json = r'''
   "parTime": 7200,
   "briefing": "The crude unit runs at 20 000 bbl/d with a furnace outlet at 345 °C and a 5 MW pumparound. The kerosene is too heavy and overlaps the diesel: the kerosene D86 95 % is 238 °C against a limit of 235 °C, and the diesel–kerosene gap is −9 K. Change the draws, the pumparound duty and the stripping steam to meet both specs, without letting the residue's front end drop (residue TBP 5 % must stay at or above 355 °C). Each move takes two to three hours of process time to settle: use the fast-forward.",
   "objectives": [
-    {"id": "o1", "text": "Kerosene D86 95 % at or below 235 °C and diesel–kerosene gap at or above 0 K, with the residue TBP 5 % at or above 355 °C, at steady state.",
+    {"id": "o1", "text": "Kerosene D86 95 % at or below 235 °C and diesel–kerosene gap at or above 0 K, with the residue TBP 5 % at or above 355 °C, held for 10 minutes.",
      "when": {"all": [{"metric": "crude.d86p95.kero", "op": "<=", "value": 508.15},
                       {"metric": "crude.gap.dieselKero", "op": ">=", "value": 0},
-                      {"metric": "crude.residueTbp5", "op": ">=", "value": 628.15},
-                      {"metric": "steady", "op": "==", "value": true}]},
+                      {"metric": "crude.residueTbp5", "op": ">=", "value": 628.15}]},
      "holdFor": 600, "latch": true},
     {"id": "o2", "text": "What opened the diesel–kerosene gap?", "after": "o1",
      "answer": {"type": "choice",
