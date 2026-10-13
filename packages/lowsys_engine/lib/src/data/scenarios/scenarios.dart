@@ -344,3 +344,111 @@ const String g6Json = r'''
   "debrief": "xD = {kpi.xD:0.0000} with {lever.nTrays:0} trays. The product N x E, the number of equilibrium stages, is what sets the separation: 20 x 0.7 = 28 x 0.5 = 14."
 }
 ''';
+
+/// M4: Tier 2 guided scenarios (ENGINE_API.md 11.8).
+const String g7Json = r'''
+{
+  "id": "G7_what_cmo_hides",
+  "kind": "guided",
+  "title": "What constant molar overflow hides",
+  "milestone": 4,
+  "topic": "thermo",
+  "preset": "bt",
+  "overrides": {"tier": "t1", "hydraulics": "ideal"},
+  "start": "steady",
+  "noise": false,
+  "levers": {
+    "set": {},
+    "lock": ["feedStage", "nTrays", "murphree"],
+    "show": ["refluxFlow", "boilup", "reboilerDuty"]
+  },
+  "timeLimit": 86400,
+  "parTime": 21600,
+  "briefing": "The column runs on the textbook model: constant molar overflow, so the vapour flow is the same on every tray. Real columns are not like that. Switch to Tier 2 with the T1/T2 badge (the switch keeps the distillate flow, so the top vapour stays put) and compare the vapour and liquid profiles on the Profiles tab and the operating lines on the McCabe-Thiele diagram.\n\nThen look at methanol-water, where the effect is larger.",
+  "objectives": [
+    {"id": "o1", "text": "Switch to Tier 2 and let the column settle.",
+     "when": {"all": [{"metric": "tier", "op": "==", "value": 2},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o2", "text": "Why is the vapour at the bottom smaller than at the top?", "after": "o1",
+     "answer": {"type": "choice",
+                "options": ["Toluene's latent heat is larger, so the same heat boils fewer moles",
+                            "Heat is lost through the shell",
+                            "The feed is cold",
+                            "The pressure is lower at the bottom"],
+                "correct": 0}},
+    {"id": "o3", "text": "Methanol-water in Tier 2: let the column settle.", "after": "o2",
+     "when": {"all": [{"metric": "preset", "op": "==", "value": "mw"},
+                      {"metric": "tier", "op": "==", "value": 2},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o4", "text": "How much smaller is the boilup than the top vapour here?", "after": "o3",
+     "answer": {"type": "choice",
+                "options": ["about 2 %", "about 6 %", "about 12 %", "about 25 %"],
+                "correct": 2}}
+  ],
+  "hints": [
+    {"after": 600, "text": "Switch tiers with the T1/T2 badge. The switch keeps D, so compare the V profile on the Profiles tab."},
+    {"after": 3600, "text": "A mole of the heavy component takes more heat to boil than a mole of the light one, so near the bottom the same duty makes fewer moles of vapour."}
+  ],
+  "events": [
+    {"id": "load_mw", "when": {"metric": "objective[o2].met", "op": "==", "value": true},
+     "action": "loadPreset", "preset": "mw", "tier": "t2",
+     "text": "Now the methanol-water column, in Tier 2."}
+  ],
+  "scoring": {"objectives": 0.7, "time": 0.2, "safety": 0.1, "quality": 0.0},
+  "debrief": "In Tier 1 the vapour is the same on every tray. In Tier 2 the boilup is about 5 % below the top vapour for benzene-toluene (150 to about 142 kmol/h) because toluene needs more heat per mole to boil than benzene, and about 12 % below for methanol-water (90 to 79 kmol/h), where water's latent heat is 15 % larger.\n\nThe operating lines are no longer straight, and the gap to the dashed textbook lines is what constant molar overflow hides."
+}
+''';
+
+const String g8Json = r'''
+{
+  "id": "G8_pressure_volatility",
+  "kind": "guided",
+  "title": "Pressure and volatility",
+  "milestone": 4,
+  "topic": "thermo",
+  "preset": "bt",
+  "overrides": {"tier": "t2", "hydraulics": "ideal", "reboiler.steamHeaderPressure": 1101325.0, "condenser.cwInletT": 288.15},
+  "start": "steady",
+  "noise": false,
+  "levers": {
+    "set": {},
+    "lock": ["feedStage", "nTrays", "murphree", "hydraulics"],
+    "show": ["pTop", "refluxFlow", "reboilerDuty"]
+  },
+  "timeLimit": 86400,
+  "parTime": 28800,
+  "briefing": "Relative volatility depends on the pressure: the lower the pressure, the easier the separation. The column has 10 bar(g) steam and 15 degC cooling water so that it can run from vacuum to 3 bar.\n\nLower the top pressure to 0.7 bar and let it settle, then raise it to 3 bar, then bring it back to 2 bar and hold the 1 atm specifications there (x_D and x_B within 0.002 of where you started). Watch alpha on the diagram, and what the reflux and the duty have to do.",
+  "objectives": [
+    {"id": "o1", "text": "Run at 0.7 bar or lower, steady.",
+     "when": {"all": [{"metric": "lever.pTop", "op": "<=", "value": 70500},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o2", "text": "Run at 3 bar or higher, steady.", "after": "o1",
+     "when": {"all": [{"metric": "lever.pTop", "op": ">=", "value": 299000},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o3", "text": "At 2 bar, hold the 1 atm specifications.", "after": "o2",
+     "when": {"all": [{"metric": "lever.pTop", "op": "between", "lo": 199000, "hi": 201000},
+                      {"metric": "kpi.xD", "from": "start", "op": ">=", "value": -0.002},
+                      {"metric": "kpi.xB", "from": "start", "op": "<=", "value": 0.002},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o4", "text": "What happened to alpha as the pressure rose?",
+     "answer": {"type": "choice", "options": ["it rose", "it fell", "it did not change"], "correct": 1}},
+    {"id": "o5", "text": "To hold the specs at 2 bar you had to...",
+     "answer": {"type": "choice",
+                "options": ["raise reflux and duty", "lower reflux and duty", "change nothing", "cool the feed"],
+                "correct": 0}}
+  ],
+  "hints": [
+    {"after": 600, "text": "Change the top pressure with the pTop lever; the pressure controller closes or opens the cooling water."},
+    {"after": 3600, "text": "At the same reflux and duty, a higher pressure gives a worse separation: x_D falls and x_B rises. Raise the reflux and the duty together."}
+  ],
+  "events": [],
+  "scoring": {"objectives": 0.6, "time": 0.2, "safety": 0.1, "quality": 0.1,
+              "qualitySpec": {"metric": "kpi.xD", "op": ">=", "value": 0.95}},
+  "debrief": "alpha at x = 0.5 falls from 2.60 at 0.7 bar to 2.49 at 1 atm, 2.30 at 2 bar and 2.20 at 3 bar. The same reflux and duty therefore give a worse separation at higher pressure, and to hold the 1 atm purities at 2 bar you had to raise the reflux and the duty.\n\nThe utilities set limits too: at 0.5 bar the condenser cannot condense even with 15 degC water, and above about 2 bar the 3.5 bar(g) steam is too cool for the reboiler."
+}
+''';

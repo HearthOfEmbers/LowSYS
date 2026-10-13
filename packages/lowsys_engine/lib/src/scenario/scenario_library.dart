@@ -13,6 +13,8 @@ abstract final class Scenarios {
     'G4_q_line': g4Json,
     'G5_where_to_feed': g5Json,
     'G6_real_trays': g6Json,
+    'G7_what_cmo_hides': g7Json,
+    'G8_pressure_volatility': g8Json,
     'G11_flooding': g11Json,
     'G12_turndown': g12Json,
   };

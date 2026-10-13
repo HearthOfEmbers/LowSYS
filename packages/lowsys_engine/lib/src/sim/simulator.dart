@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../config/column_config.dart';
+import '../config/presets.dart';
 import '../control/control_system.dart';
 import '../control/cross_checks.dart';
 import '../control/trend_buffer.dart';
@@ -496,7 +497,7 @@ class Simulator {
   /// Marches to steady state (PHYSICS.md 13.1) with the fast-forward step until the monitor of 13.3
   /// declares steady, then keeps going until the residual is below [polishTolerance] (docs/DEVIATIONS.md).
   SteadyStateResult runToSteadyState({
-    double maxSimSeconds = 172800,
+    double maxSimSeconds = 345600,
     bool fastForward = true,
     double polishTolerance = 1e-11,
   }) {
@@ -510,7 +511,7 @@ class Simulator {
 
   /// Starts a resumable run to steady state; call [SteadyRun.advance] repeatedly.
   SteadyRun beginSteadyRun(
-      {double maxSimSeconds = 172800,
+      {double maxSimSeconds = 345600,
       bool fastForward = true,
       double polishTolerance = 1e-11}) {
     _carry = 0;
@@ -1306,8 +1307,33 @@ class Simulator {
     _evalChecks();
   }
 
-  /// C6 reference (Tiers 2/3); nothing to do in Tier 1.
-  void setTemperatureReference() {}
+  /// C6 reference (Tiers 2/3): the newest 300 s of the TI readings become the "no change" profile.
+  void setTemperatureReference() {
+    final ctx = _t2Context();
+    if (ctx == null) return;
+    if (_checks.setReference(_trends, ctx)) {
+      _evalChecks();
+      return;
+    }
+    _checks.tiReference = {
+      for (final tag in CrossCheckEngine.tiTags(ctx))
+        tag: _control.instrument(tag).value
+    };
+    _evalChecks();
+  }
+
+  T2CheckContext? _t2Context() => _tier == ThermoTier.t1
+      ? null
+      : T2CheckContext(
+          thermo: _t2,
+          feedT: _inputs.feedT,
+          refluxSubLever: _inputs.refluxSub,
+          uaRebClean: _config.reboiler.uaClean,
+          cwMax: _inputs.cwMaxFlow,
+          trayIds: _control.trayIds,
+          nTrays: _state.nTrays);
+
+  int _tier2StartBin = 0;
 
   bool get _scenarioIsDrill => _scenario?.def.isDrill ?? false;
 
@@ -1339,7 +1365,8 @@ class Simulator {
   }
 
   void _evalChecks() {
-    _checks.evaluate(_trends, _control, _inputs.feedQ, _steady);
+    _checks.evaluate(_trends, _control, _inputs.feedQ, _steady,
+        t2: _t2Context(), tier2StartBin: _tier2StartBin);
   }
 
   /// Everything that follows a successful main step (PHYSICS.md 12.4 step 13).
@@ -1422,6 +1449,52 @@ class Simulator {
     _scenario!.update();
   }
 
+  /// Replaces the column by another preset, at its steady state, and keeps the clock, the scenario and the
+  /// noise and view settings (G7 "Next", the `loadPreset` event; ENGINE_API.md 11.8).
+  void loadPreset(String presetId,
+      {String? tier, Map<String, Object?> overrides = const {}}) {
+    var cfg = Presets.byId(presetId);
+    if (overrides.isNotEmpty) cfg = cfg.applyOverrides(overrides);
+    if (tier != null) {
+      cfg = cfg.copyWith(tier: ThermoTier.values.firstWhere((e) => e.name == tier));
+    }
+    final keepTime = _state.time;
+    final noise = _control.noise;
+    final view = _view;
+    final scenario = _scenario;
+    _scenario = null;
+    _pinDrum = null;
+    _build(cfg, null);
+    _control.setNoise(false);
+    _resetNoisyMonitor();
+    final key = jsonEncode(
+        [_configWithCurrentLevers().toJson(), 'preset', options.murphreePasses]);
+    final cached = _scenarioCache[key];
+    if (cached != null) {
+      _loadDynamic(cached);
+    } else {
+      runToSteadyState();
+      _scenarioCache[key] = _dumpDynamic(includeTrends: false);
+    }
+    _state.time = keepTime;
+    _carry = 0;
+    _nextCheck = keepTime + 60;
+    _steady = true;
+    _steadyCount = 5;
+    _captureMonitor();
+    _control.setNoise(false);
+    _control.reseed(_seed);
+    _initControl();
+    if (_tier != ThermoTier.t1) _tier2StartBin = (_trends.newestEnd / TrendBuffer.binSeconds).round();
+    _view = view;
+    _setNoise(noise);
+    _resetMonitor(capture: true);
+    if (_control.noise) _resetNoisyMonitor();
+    _scenario = scenario;
+    if (_tier != ThermoTier.t1) setTemperatureReference();
+    _emit(SimEventType.rebuildDone, 'Loaded preset $presetId');
+  }
+
   void takeHint(int index) => _requireScenario().takeHint(index);
   AnswerResult submitAnswer(String objectiveId, Object answer) =>
       _requireScenario().submitAnswer(objectiveId, answer);
@@ -1452,19 +1525,27 @@ class Simulator {
     switch (path) {
       case 'steady':
         return _steady;
+      case 'tier':
+        return _tier == ThermoTier.t1 ? 1 : (_tier == ThermoTier.t2 ? 2 : 3);
+      case 'preset':
+        return _config.presetId;
       case 'alarm.count':
         return _control.alarms.activeCount;
       case 'safety.reliefLifted':
-        return false;
+        return _stepper.reliefLifted;
       case 'safety.levelViolationSeconds':
         return _levelViolation;
       case 'condenser.drumLevelPct':
         return _stepper.drumLevelPct;
       case 'condenser.qc':
+        return _tier == ThermoTier.t1 ? double.nan : _state.qC;
       case 'reboiler.qr':
+        return _tier == ThermoTier.t1 ? double.nan : _stepper.qDelivered;
       case 'reboiler.steamValveOp':
-        return double.nan;
+        return _tier == ThermoTier.t1 ? double.nan : _control.fv103.position;
     }
+    final om = RegExp(r'^objective\[(\w+)\]\.met$').firstMatch(path);
+    if (om != null) return _scenario?.objectiveMet(om.group(1)!) ?? false;
     if (path.startsWith('kpi.')) return _liveKpi(path.substring(4));
     if (path.startsWith('lever.')) {
       try {
@@ -1482,9 +1563,11 @@ class Simulator {
         case 'x':
           return st.x[j * st.nc];
         case 't':
-          return double.nan;
+          return _tier == ThermoTier.t1 ? double.nan : st.t[j];
         case 'p':
-          return _config.condenser.pTopDesign;
+          return _tier == ThermoTier.t1
+              ? _config.condenser.pTopDesign
+              : (j == 0 ? st.pTop : st.pStage[j]);
         case 'holdup':
           return st.holdup[j];
         case 'weepFrac':
@@ -1565,7 +1648,11 @@ class Simulator {
       case 'sumpLevelPct':
         return _stepper.sumpLevelPct;
       case 'pTop':
-        return _config.condenser.pTopDesign;
+        return _tier == ThermoTier.t1 ? _config.condenser.pTopDesign : s.pTop;
+      case 'qc':
+        return _tier == ThermoTier.t1 ? double.nan : s.qC;
+      case 'qr':
+        return _tier == ThermoTier.t1 ? double.nan : _stepper.qDelivered;
       case 'balanceResidual':
         final fl = used ? _debug.feedFlow : s.feedAct;
         final fz = fl * _ep.zEff[0];
@@ -1615,6 +1702,8 @@ class Simulator {
   void _enterTier2Control(double duty) {
     _stepper.prepareTier2();
     _stepper.fillBusT2();
+    _tier2StartBin = (_trends.newestEnd / TrendBuffer.binSeconds).round();
+    _checks.tiReference = null;
     _control.enterTier2(_stepper.bus, _state.time,
         duty: duty, qMax0: _stepper.qMax0);
     final tr = _config.control.tc101Tray;
@@ -1751,18 +1840,36 @@ class Simulator {
       stage: inp.feedStage,
       flow: _control.fc101.sp,
       z: Float64List.fromList(inp.z),
-      thermal: FeedQ(inp.feedQ),
+      thermal: _tier == ThermoTier.t1
+          ? FeedQ(inp.feedQ)
+          : (inp.feedSat ? const FeedQ(1.0) : FeedTemperature(inp.feedT)),
     );
+    final t1 = _tier == ThermoTier.t1;
     return _config.copyWith(
+      tier: _tier,
       feeds: [feed, ..._config.feeds.skip(1)],
       murphree: inp.murphree,
+      condenser: CondenserConfig.fromJson({
+        ..._config.condenser.toJson(),
+        'cwInletT': inp.cwInT,
+        'cwMaxFlow': inp.cwMaxFlow,
+      }),
+      reboiler: ReboilerConfig.fromJson({
+        ..._config.reboiler.toJson(),
+        'steamHeaderPressure': inp.steamHeaderP,
+      }),
       initialLevers: {
         'feedFlow': _control.fc101.sp,
         'refluxFlow': _control.fc102.sp,
         'refluxRatio': inp.refluxRatio,
         'refluxMode': inp.ratioMode ? 1.0 : 0.0,
-        'boilup': _control.fc103.sp,
+        'boilup': t1 ? _control.fc103.sp : inp.boilupSp,
         'feedQ': inp.feedQ,
+        'reboilerDuty': t1 ? _dutyLever : _control.fc103.sp,
+        'pTop': t1 ? inp.pTopInit : _control.pc101.sp,
+        'refluxSubcooling': inp.refluxSub,
+        'inertVent': inp.inertVent,
+        if (!t1 && !inp.feedSat) 'feedT': inp.feedT,
       },
       control: ControlConfig(
         levelKc: _config.control.levelKc,
@@ -1771,6 +1878,8 @@ class Simulator {
         sumpLevelSp: _control.lc102.sp,
         distillateMax: _control.lv101.fMax,
         bottomsMax: _control.lv102.fMax,
+        temperatureTrays: _config.control.temperatureTrays,
+        tc101Tray: _control.tc101Tray,
       ),
     );
   }
@@ -2044,6 +2153,14 @@ class Simulator {
     if (plant) {
       Float64List nanArr(int len) => Float64List(len)..fillRange(0, len, nan);
       final lt1 = rd('LT-101').value, lt2 = rd('LT-102').value;
+      // Tiers 2/3: stages.t is NaN except on the instrumented trays, which carry the TI reading (PHYSICS.md 10.9)
+      final tPlant = nanArr(n);
+      if (t2) {
+        for (final j in _control.trayIds) {
+          tPlant[j] = rd('TI-${100 + j}').value;
+        }
+        tPlant[N + 1] = rd('TI-${100 + N + 1}').value;
+      }
       final hold = Float64List.fromList(stages.holdup);
       hold[0] = lt1 * _control.n01;
       hold[N + 1] = lt2 * _control.ns1;
@@ -2053,7 +2170,7 @@ class Simulator {
         x: nanArr(n * nc),
         y: nanArr(n * nc),
         yStar: nanArr(n * nc),
-        t: nanArr(n),
+        t: tPlant,
         p: stages.p,
         liquidDown: nanArr(n),
         vaporUp: nanArr(n),
@@ -2091,15 +2208,21 @@ class Simulator {
           ftV = rd('FT-103').value,
           ftD = rd('FT-104').value,
           ftB = rd('FT-105').value;
+      final qcPlant = t2
+          ? ControlSystem.rhoWater *
+              rd('FT-201').value *
+              4180.0 *
+              (rd('TI-202').value - rd('TI-201').value)
+          : nan;
       streamsOut = {
         StreamId.feed: StreamSnapshot(StreamId.feed, ftF, comp(at0), nan),
-        StreamId.reflux:
-            StreamSnapshot(StreamId.reflux, ftL, comp(1 - at1), nan),
+        StreamId.reflux: StreamSnapshot(StreamId.reflux, ftL, comp(1 - at1),
+            t2 ? rd('TI-100').value : nan),
         StreamId.distillate:
             StreamSnapshot(StreamId.distillate, ftD, comp(1 - at1), nan),
         StreamId.bottoms: StreamSnapshot(StreamId.bottoms, ftB, comp(at2), nan),
-        StreamId.boilup:
-            StreamSnapshot(StreamId.boilup, ftV, comp(double.nan), nan),
+        StreamId.boilup: StreamSnapshot(
+            StreamId.boilup, t2 ? nan : ftV, comp(double.nan), nan),
       };
       kpisOut = Kpis(
         xD: 1 - at1,
@@ -2107,21 +2230,40 @@ class Simulator {
         d: ftD,
         b: ftB,
         refluxRatio: ftD > 1e-9 ? ftL / ftD : nan,
-        boilup: ftV,
-        qc: nan,
-        qr: nan,
+        boilup: t2 ? nan : ftV,
+        qc: qcPlant,
+        qr: t2 ? ftV : nan,
         columnDp: rd('PDT-101').value,
         maxFloodPct: nan,
         maxWeepFraction: nan,
         drumLevelPct: lt1,
         sumpLevelPct: lt2,
-        pTop: _config.condenser.pTopDesign,
+        pTop: t2 ? rd('PT-101').value : _config.condenser.pTopDesign,
         balanceResidual: nan,
         energyResidual: nan,
       );
-      condOut = CondenserSnapshot(hold[0], lt1,
-          vaporInventory: Float64List(0));
-      rebOut = ReboilerSnapshot(hold[N + 1], lt2, rebOut.starvation);
+      condOut = t2
+          ? CondenserSnapshot(hold[0], lt1,
+              qC: qcPlant,
+              uaClean: _config.condenser.uaClean,
+              tCwIn: rd('TI-201').value,
+              tCwOut: rd('TI-202').value,
+              cwFlow: rd('FT-201').value * ControlSystem.rhoWater,
+              cwOp: _control.pc101.op,
+              tReflux: rd('TI-100').value,
+              vaporInventory: Float64List(0))
+          : CondenserSnapshot(hold[0], lt1, vaporInventory: Float64List(0));
+      rebOut = t2
+          ? ReboilerSnapshot(hold[N + 1], lt2, rebOut.starvation,
+              qDelivered: ftV,
+              uaClean: _config.reboiler.uaClean,
+              steamP: rd('PT-201').value + 101325.0,
+              steamT: WaterProps.saturationT(
+                  math.max(rd('PT-201').value + 101325.0, 20000.0)),
+              steamValveOp: _control.fc103.op,
+              tSump: rd('TI-${100 + N + 1}').value,
+              dutyLimited: _control.modelDutyLimited)
+          : ReboilerSnapshot(hold[N + 1], lt2, rebOut.starvation);
     }
     final loopSnaps = <LoopSnapshot>[];
     for (final l in _control.visibleLoops) {
@@ -2227,6 +2369,16 @@ class Simulator {
           'feedStage': _inputs.feedStage,
           'murphree': _inputs.murphree,
           'z': _inputs.z.toList(),
+          'feedT': _inputs.feedT,
+          'feedSat': _inputs.feedSat,
+          'refluxSub': _inputs.refluxSub,
+          'inertVent': _inputs.inertVent,
+          'steamHeaderP': _inputs.steamHeaderP,
+          'cwInT': _inputs.cwInT,
+          'cwMaxFlow': _inputs.cwMaxFlow,
+          'pTopInit': _inputs.pTopInit,
+          'dutyLever': _dutyLever,
+          'tier': _tier.name,
         },
         'alpha': _thermo.alpha.toList(),
         'dynamic': _dumpDynamic(),
@@ -2299,6 +2451,17 @@ class Simulator {
     for (var i = 0; i < z.length; i++) {
       sim._inputs.z[i] = (z[i]! as num).toDouble();
     }
+    double? dd(String k) => (inp[k] as num?)?.toDouble();
+    sim._inputs
+      ..feedT = dd('feedT') ?? sim._inputs.feedT
+      ..feedSat = (inp['feedSat'] as bool?) ?? sim._inputs.feedSat
+      ..refluxSub = dd('refluxSub') ?? 0
+      ..inertVent = dd('inertVent') ?? 0
+      ..steamHeaderP = dd('steamHeaderP') ?? sim._inputs.steamHeaderP
+      ..cwInT = dd('cwInT') ?? sim._inputs.cwInT
+      ..cwMaxFlow = dd('cwMaxFlow') ?? sim._inputs.cwMaxFlow
+      ..pTopInit = dd('pTopInit') ?? sim._inputs.pTopInit;
+    sim._dutyLever = dd('dutyLever') ?? sim._dutyLever;
     final a = saved['alpha']! as List<Object?>;
     for (var i = 0; i < a.length; i++) {
       sim._thermo.alpha[i] = (a[i]! as num).toDouble();

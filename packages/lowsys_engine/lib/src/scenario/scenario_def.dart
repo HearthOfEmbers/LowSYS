@@ -482,6 +482,9 @@ class ScenarioDef {
             p.add('event: unknown lever "$l"');
           if (e.data['value'] == null && e.data['delta'] == null)
             p.add('event setLever needs value or delta');
+        case 'loadPreset':
+          if (!Presets.ids.contains('${e.data['preset']}'))
+            p.add('event: unknown preset "${e.data['preset']}"');
         case 'setLoopMode':
           if (!_loopPattern.hasMatch('${e.data['tag']}'))
             p.add('event: unknown loop "${e.data['tag']}"');
