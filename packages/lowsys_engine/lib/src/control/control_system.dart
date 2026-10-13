@@ -103,6 +103,9 @@ class ControlSystem {
 
   // trend series indices
   final Map<String, int> _tix = {};
+  // trend series indices cached per object (the string keys would be rebuilt on every push)
+  final Map<Instrument, int> _pvIx = {};
+  List<int> _opIx = const [], _spIx = const [], _posIx = const [];
 
   // true values the alarms and models need (set by the simulator)
   /// True with full hydraulics; PDT-101 reads zero (bottom of its span) otherwise, so it raises no OOR.
@@ -346,6 +349,7 @@ class ControlSystem {
     trends = tb;
     for (final i in instruments) {
       _tix['PV:${i.spec.tag}'] = tb.register('PV:${i.spec.tag}');
+      _pvIx[i] = _tix['PV:${i.spec.tag}']!;
     }
     for (final l in loops) {
       _tix['OP:${l.tag}'] = tb.register('OP:${l.tag}');
@@ -381,18 +385,23 @@ class ControlSystem {
   void _pushInstrument(Instrument i) {
     final tb = trends;
     if (tb == null) return;
-    tb.push(_tix['PV:${i.spec.tag}']!, i.value, i.quality.index);
+    tb.push(_pvIx[i]!, i.value, i.quality.index);
   }
 
   void _pushLoops() {
     final tb = trends;
     if (tb == null) return;
-    for (final l in loops) {
-      tb.push(_tix['OP:${l.tag}']!, l.op);
-      tb.push(_tix['SP:${l.tag}']!, l.sp);
+    if (_opIx.isEmpty) {
+      _opIx = [for (final l in loops) _tix['OP:${l.tag}']!];
+      _spIx = [for (final l in loops) _tix['SP:${l.tag}']!];
+      _posIx = [for (final v in valves) _tix['POS:${v.id}']!];
     }
-    for (final v in valves) {
-      tb.push(_tix['POS:${v.id}']!, v.position);
+    for (var k = 0; k < loops.length; k++) {
+      tb.push(_opIx[k], loops[k].op);
+      tb.push(_spIx[k], loops[k].sp);
+    }
+    for (var k = 0; k < valves.length; k++) {
+      tb.push(_posIx[k], valves[k].position);
     }
   }
 
@@ -575,12 +584,14 @@ class ControlSystem {
         }
         fc102.setSpCascade(_lastGoodRatioSp);
       }
-      for (final l in [fc101, fc102, fc103]) {
-        _executeLoop(l, deltaC, tk + deltaC);
-      }
-      for (final i in [ft101, ft102, ft103, ft104, ft105]) {
-        _pushInstrument(i);
-      }
+      _executeLoop(fc101, deltaC, tk + deltaC);
+      _executeLoop(fc102, deltaC, tk + deltaC);
+      _executeLoop(fc103, deltaC, tk + deltaC);
+      _pushInstrument(ft101);
+      _pushInstrument(ft102);
+      _pushInstrument(ft103);
+      _pushInstrument(ft104);
+      _pushInstrument(ft105);
       final tr = fastTrace;
       if (tr != null) {
         tr.points.add(FastPoint(

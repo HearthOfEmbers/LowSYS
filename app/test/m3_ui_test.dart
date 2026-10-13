@@ -58,7 +58,13 @@ void main() {
       // balance tab
       sim.controlTab.value = 2;
       await sim.setCheckWindow(300);
-      await frames(tester, 60);
+      await frames(tester, 5);
+      await snap(tester, key, '${e.key}_balance_collecting', dir: 'm3');
+      await sim.injectFault(const FaultSpec(
+          type: FaultType.instrument, location: FaultLocation.tag('FT-102'), severity: 0.4, params: {'kind': 'bias', 'sign': 1}));
+      sim.setSpeed(300);
+      await frames(tester, 200);
+      sim.setSpeed(30);
       await snap(tester, key, '${e.key}_balance', dir: 'm3');
       expect(tester.takeException(), isNull);
 

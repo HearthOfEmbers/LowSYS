@@ -259,7 +259,21 @@ class McCabePainter extends CustomPainter {
 
     marker(d.xB, 'xB ${d.xB.toStringAsFixed(3)}', Alignment.bottomLeft, const Offset(8, -6));
     marker(d.xF, 'xF', Alignment.topCenter, const Offset(0, 11));
-    marker(d.xD, 'xD ${d.xD.toStringAsFixed(3)}', Alignment.centerRight, const Offset(-9, 6));
+    // xD sits at the plot's corner: label above the frame with a leader line, clear of the stair markers
+    {
+      final o = _pt(plot, d.xD, d.xD);
+      final lead = Paint()
+        ..color = p.marker.withValues(alpha: 0.8)
+        ..strokeWidth = 1;
+      canvas.drawLine(Offset(o.dx, o.dy - 2), Offset(o.dx - 6, o.dy - 12), lead);
+      final tri = Path()
+        ..moveTo(o.dx, o.dy + 1)
+        ..lineTo(o.dx - 5, o.dy + 9)
+        ..lineTo(o.dx + 5, o.dy + 9)
+        ..close();
+      canvas.drawPath(tri, Paint()..color = p.marker);
+      _text(canvas, 'xD ${d.xD.toStringAsFixed(3)}', Offset(o.dx - 8, o.dy - 12), num.style(12, p.marker), Alignment.bottomRight);
+    }
 
     // --- legend (top-left inside the plot, wide layouts only) (top-left inside the plot, wide layouts only)
     if (narrow && !tight) {

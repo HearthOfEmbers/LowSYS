@@ -349,11 +349,11 @@ class ControlTabs extends StatelessWidget {
     return ValueListenableBuilder<int>(
       valueListenable: sim.controlTab,
       builder: (context, tab, _) {
-        Widget btn(String label, int i) => Expanded(
+        Widget btn(String label, IconData icon, int i) => Expanded(
           child: InkWell(
             onTap: () => sim.controlTab.value = i,
             child: Container(
-              height: 40,
+              height: 48,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 border: Border(
@@ -363,27 +363,29 @@ class ControlTabs extends StatelessWidget {
                   ),
                 ),
               ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  label,
-                  style: t.type.display.style(
-                    13,
-                    tab == i ? p.accent : p.inkMuted,
-                    weight: FontWeight.w700,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 17, color: tab == i ? p.accent : p.inkMuted),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
+                      style: t.type.display.style(11.5, tab == i ? p.accent : p.inkMuted, weight: FontWeight.w700),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
         );
         final tabs = Row(
           children: [
-            btn('LEVERS', 0),
-            btn('LOOPS', 1),
-            btn('BALANCE', 2),
-            btn('TRENDS', 3),
-            btn('FAULTS', 4),
+            btn('LEVERS', Icons.tune, 0),
+            btn('LOOPS', Icons.settings_input_component, 1),
+            btn('BALANCE', Icons.balance, 2),
+            btn('TRENDS', Icons.show_chart, 3),
+            btn('FAULTS', Icons.warning_amber, 4),
           ],
         );
         final header = scrollTabs

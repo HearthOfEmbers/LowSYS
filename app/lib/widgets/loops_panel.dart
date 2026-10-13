@@ -286,21 +286,16 @@ class Faceplate extends StatelessWidget {
                     note: man ? null : 'MAN only',
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          r.typicalSigma <= 0
-                              ? ''
-                              : 'Signal look: σ ${Fmt.sig(u.fromSI(q, r.sigma5min), 2)} (typical ${Fmt.sig(u.fromSI(q, r.typicalSigma), 2)}), digits unchanged for ${r.digitsAge.floor()} s',
-                          style: t.type.label.style(
-                            12.5,
-                            lookOdd ? p.warn : p.inkMuted,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  if (r.typicalSigma > 0) ...[
+                    Row(children: [
+                      Expanded(child: Text('Signal look (5 min σ)', style: t.type.label.style(12.5, p.inkMuted))),
+                      Text('${Fmt.sig(u.fromSI(q, r.sigma5min), 2)}  typical ${Fmt.sig(u.fromSI(q, r.typicalSigma), 2)}', style: t.type.number.style(12.5, lookOdd ? p.warn : p.ink)),
+                    ]),
+                    Row(children: [
+                      Expanded(child: Text('Digits last changed', style: t.type.label.style(12.5, p.inkMuted))),
+                      Text('${r.digitsAge.floor()} s ago', style: t.type.number.style(12.5, r.digitsAge > 120 ? p.warn : p.ink)),
+                    ]),
+                  ],
                   if (lookOdd)
                     Text(
                       ratio < 0.2
@@ -342,7 +337,7 @@ class Faceplate extends StatelessWidget {
                             Text(
                               c4 == null ||
                                       c4.status == CheckStatus.notAvailable
-                                  ? 'Valve curve: collecting data'
+                                  ? 'Expects ${Fmt.value(q, valve.expectedFlow, u)} $unit at OP ${loop.op.toStringAsFixed(1)} %, meter says ${f(r.value)} (the band appears after a full window)'
                                   : 'Expects ${Fmt.value(q, c4.terms['expected'] ?? double.nan, u)} $unit at OP ${(c4.terms['op'] ?? 0).toStringAsFixed(1)} %, meter says ${Fmt.value(q, c4.terms['measured'] ?? double.nan, u)} (band ±${Fmt.value(q, c4.band, u)})',
                               style: t.type.label.style(
                                 12.5,

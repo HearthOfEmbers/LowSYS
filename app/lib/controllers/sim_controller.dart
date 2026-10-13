@@ -94,6 +94,7 @@ class SimController extends ChangeNotifier {
   /// Outcome message of the last run-to-steady-state (null if none or dismissed).
   final ValueNotifier<String?> notice = ValueNotifier<String?>(null);
 
+  static bool perfRecording = false;
   PresetId presetId = Presets.bt;
   double _speed = 10;
   bool _paused = false;
@@ -335,13 +336,36 @@ class SimController extends ChangeNotifier {
     return true;
   }
 
+  /// Wall time (microseconds) of the last frames' engine advance, snapshot and diagram build (perf run only).
+  static final List<int> perfAdvance = [], perfSnapshot = [], perfMccabe = [], perfNotify = [];
+
+  // Loop OPs move every step with noise on; no lever tile shows them, so they must not rebuild the lever panel.
+  static const Set<String> _opLevers = {'feedFlowOp', 'refluxOp', 'boilupOp', 'distillateValve', 'bottomsValve'};
+
+  static bool _sameLevers(Map<String, double> a, Map<String, double> b) {
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (_opLevers.contains(e.key)) continue;
+      if (b[e.key] != e.value) return false;
+    }
+    return true;
+  }
+
   Future<void> _refresh() async {
+    final sw = Stopwatch()..start();
     final s = await runner.snapshot();
+    final t1 = sw.elapsedMicroseconds;
     snapshot.value = s;
+    final t2 = sw.elapsedMicroseconds;
     mccabe.value = _builder.build(s, runner.thermo, showRmin: showRmin);
+    if (perfRecording) {
+      perfSnapshot.add(t1);
+      perfNotify.add(t2 - t1);
+      perfMccabe.add(sw.elapsedMicroseconds - t2);
+    }
     final st = (trays: s.layout.nTrays, feed: s.layout.feedStages.first);
     if (st != structure.value) structure.value = st;
-    if (!mapEquals(s.levers, leverValues.value)) leverValues.value = s.levers;
+    if (!_sameLevers(s.levers, leverValues.value)) leverValues.value = s.levers;
     final br = <int, double>{};
     for (final fa in s.visibleFaults) {
       if (fa.type == FaultType.trayDamage && fa.location.stageFrom != null) {
@@ -399,7 +423,9 @@ class SimController extends ChangeNotifier {
       ); // always allow at least two steps of 0.5 s
       if (_debt > cap) _debt = cap;
       final requested = _debt;
+      final swA = Stopwatch()..start();
       final adv = await runner.advance(_debt, const Duration(milliseconds: 6));
+      if (perfRecording) perfAdvance.add(swA.elapsedMicroseconds);
       _debt -= adv;
       if (dtWall > 0) {
         final inst = adv / dtWall;
