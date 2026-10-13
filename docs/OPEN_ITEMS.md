@@ -25,6 +25,13 @@ Collected by the lead from validation passes. Fix in the docs, then delete the i
 
 ## For the physics lead
 
+- **M4 close-out (validator, engine 1155f40; DEVIATIONS.md "M4 validation").**
+  1. **(7.4) leaves out the entrained tray-1 liquid.** In full hydraulics, e_1 enters the drum at h_1 ((7.6) counts its mass), but (7.4) treats it as if it arrived at h_0. As a result VC-5.4 fails: 6.8e-6 at the B-T design point and 1.9e-5 at +20 % load. *Proposal:* N_cond = [V_1 (H_V − H_1) + Q_C − e_1 (h_1 − h_0)] / (H_V − h_0). With that term the residual is 1.8e-11.
+  2. **The partial condenser's `cwOP` default of 70 % (§7.2) predates the 50 % design.** B-T condenses all of V_1 at CW ≥ ≈ 48.5 %, so at 70 % PV-102 shuts, D_V = 0 and P floats to 94.5 kPa. *Proposal:* a per-preset default below the total-condensation OP. For B-T, 30 % gives D_V 12.6 kmol/h.
+  3. **Vapour product in the balances.** `Kpis.balanceResidual` (ENGINE_API.md: |F z − D x_D − B x_B| / F z) is 0.25 at a partial-condenser steady state. The Energy card (SCOPE.md §M4: "Q_C + D h_D + B h_B out") has no D_V h_V either. *Proposal:* add D_V y_V and D_V h_V,0. `Kpis.energyResidual` already includes D_V h_V,0; the snapshot side is Coder item E50-a.
+  4. **VC-16.6b tuning.** The engine runs PC-101 → PV-102 at Kc 2.0 / Ti 30 s (spec: 1.0 / 30, [impl-tunable]), and it meets the criteria. Ratify it in the §10.7 table.
+  5. **G11 tier.** SCOPE.md says "G11 upgraded to Tier 2" in M4, but ENGINE_API.md §11.8 and the milestone table ship it in Tier 1. Owner decision.
+
 - **M7 decisions taken in the readiness pass (settled; listed so that the owner can overrule them).**
   1. The sandbox presets use E = 0.7 tray counts: `debut` 32 / 16, `deprop` 28 / 11, from FUG N / 0.7 and a Tier-3 feed-tray scan. The v1.0 counts (22 / 12, 20 / 8) were the E = 1 designs and gave 0.943 / 0.942 recoveries at E = 0.7. VC-9.3 keeps 22 / 12 at E = 1.
   2. Default tier 3 for `debut` and `deprop`, with UA_clean, UA_R,clean and the table duty from the Tier-3 steady state. `c4` stays Tier 2.

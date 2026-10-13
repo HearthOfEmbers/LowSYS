@@ -158,6 +158,26 @@ Engine item:
 
 - **V4. Coder: Tier 2, full hydraulics, TC-101 on: `runToSteadyState()` never reaches its 1e-11 polish.** Repro: `Simulator(Presets.byId('bt').copyWith(tier: ThermoTier.t2, hydraulics: HydraulicsMode.full), options: SimOptions(seed: 9))`, `setLever('tc101Enable', 1)`, `runToSteadyState()`. The monitor declares steady at 15 540 s, but the residual then dithers at 5e-11 to 1.1e-10 for good, and the run returns `reached: false` after the full 345 600 s (4 days of sim time). Every 60 s, P_top moves by ±5e-6 Pa and the OPs of PC-101, TC-101 and FC-103 by ±1e-10 (relative), with x and holdups following. This looks like the overhead-pressure secant (`_t2PressureSolve` stops at |Δp| < 0.1 Pa) leaving ≈ 5e-11 relative jitter in P, which PC-101's integral and the TC-101 cascade keep alive. At 7312519 the same run got down to 9.67e-12, just under the tolerance. The only lib change since then is E47 on `pc101.op`, which moves the start-up path, not the steady state. With TC-101 off it reaches 9.6e-12 at 14 820 s. Fix the floor: a tighter or residual-based stop for the P solve, or a polish tolerance that the Tier-2 solve can reach. Expected: `reached: true` at about the same time as with TC-101 off. The VC-20.4 full-hydraulics test now polishes to 1e-9 so that it tests the restore. App impact: "Run to steady state" in the Tier-2 drill configuration runs for the whole 96-h budget.
 
+Close-out at 1155f40 (E50, display T*, V4 fix), clean worktree; later commits not included. Full engine suite at the start: 438 pass, 2 skipped (H9/H10 Tier-2 rows and VC-26.5 drill draws, both M6), 0 fail. New `test/validation/m4_e50_v4_test.dart` (15 tests): 14 pass, 1 fail (E50-a). VC-20.4 Tier-2 full hydraulics is back on the default 1e-11 polish. Suite after: 452 pass, 2 skipped, 1 fail (E50-a).
+
+- E50 (B-T Tier 2, CW 30 %): P 101 325 Pa, D_V 12.62, D 37.18, B 50.20 kmol/h, PV-102 at 25.24 %, Q_C 1174.8 kW. D_V follows (7.5) to 1e-9 at P_design, at 1.113 bar and open loop at 97 kPa. P_down is 0.713 bar(a), D_V,max 50 kmol/h, PC-101 Kc 2 / Ti 30 s, not scheduled. The drum vapour is the bubble-point vapour of x_0 (1e-9), at the bubble T (1e-6 K). Steady closure: total mass 5e-11, benzene 8e-13, energy with D_V H_V 1.7e-11 (independent enthalpies). VC-5.2 including D_V, 3 h from cold with CW and SP steps: < 1e-10. Directions: CW 30 → 40 % gives D_V 12.6 → 4.6 and D 37.2 → 45.2; duty +5 % gives D_V 14.8; SP +10 kPa gives D_V 3.9 and T_cond +3.2 K. VC-16.6b: settle ≤ 600 s, overshoot ≤ 30 %, decay ratio ≤ 0.3. Results at dt 0.5, 2 and 30 s are identical. D_V reaches 0 at CW ≈ 48.5 % (see OPEN_ITEMS for the 70 % default).
+- V4 confirmed fixed. Cold start with TC-101 on reaches the steady state at 25 800 s (declared at 15 540 s; with TC-101 off, 25 680 s). For the next hour the residual stays ≤ 9.4e-12, ΔP ≈ 1e-9 Pa and every OP moves ≤ 7e-9 %. Warm start + TC-101 + feed z 0.55 reaches it at 24 180 s, with FC-103 SP +45 kW.
+- Display T*: each Tier-1 stage T is the Raoult bubble point at p_j (1e-6 K). Taking snapshots leaves the engine state bit-identical.
+- VC-5.4 in full hydraulics: energyResidual 6.8e-6 at design and 1.9e-5 at +20 % load (limit 1e-6). The gap is exactly e_1 (h_1 − h_0) (1.8e-11 without it): a spec gap in (7.4), see OPEN_ITEMS. The test accepts either form.
+
+Engine item:
+
+- **E50-a. Coder: `SimSnapshot.energy` leaves out the vapour product.** Repro: B-T Tier 2 with `condenser.type: partial` and `cwOP` 30, run to steady state. `energy.residual` is 135 408 W (10.4 % of Q_R) = D_V h_V,0, while `kpis.energyResidual` is 1.8e-11. Add a D_V h_V,0 term to `EnergySnapshot` and subtract it in `residual` (`simulator.dart` around line 2404), and show it on the Energy card. Test: "EnergySnapshot (Energy card) residual equals …".
+
+M4 acceptance (SCOPE.md "### M4") at 1155f40: every engine acceptance row has a passing test: VC-10, VC-11, VC-8 Tier 2 (8.1, 8.7, 8.8, 8.9 switching, 8.14), VC-5.2, VC-5.4, VC-16.6 / 16.6b / 16.6c, VC-18.3, VC-27.1–27.4, and dt 0.5 / 2 / 30. Gaps:
+
+1. Energy closure ≤ 1e-6 fails in full hydraulics (spec (7.4)).
+2. E50-a.
+3. `kpis.balanceResidual` is 0.25 with a partial condenser, because its formula has no D_V y_V (spec).
+4. With a partial condenser, C1/C2/C3a and C4 PV-101 are not adapted (coder's known deviation).
+5. SCOPE says "G11 upgraded to Tier 2", but ENGINE_API 11.8 ships it in Tier 1.
+6. The app rows were not run here (Dart only); the coder reports `m4_ui_test` passing.
+
 ## M4 validation: fixes (coder)
 
 - V1 fixed: `ColumnState` now saves and restores the Tier-2 thermo arrays (K~, h, H, tau, stage pressures); a restore rebuilds only the derived values (`Stepper.t2RestoreDerived`: efficiencies, rho/sigma for the hydraulics, inert fraction), so `saveState()` is identical right after a restore and after any number of steps, in full hydraulics too.
