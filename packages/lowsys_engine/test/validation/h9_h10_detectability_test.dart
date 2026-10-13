@@ -380,20 +380,16 @@ void main() {
       }
     });
 
-    // Spec decision 2026-10-12 #5: the event moves the true D by ≈ 2.5
-    // kmol/h (above the C1/C3 bands, below the 2 × band fail line), so the
-    // criterion is C1 or C3 at `check` or worse, held ≥ 60 s, within 20 min
-    // after the event; σ = 0 stays the key evidence.
-    // FINDING (M4 validation, OPEN_ITEMS): 20 min is marginal. LC-101 (Ti
-    // 1800 s) needs ≈ 15 min to move the true D by the 2.5 kmol/h, the 600-s
-    // window mean lags that, and the stuck reading carries the noise of the
-    // instant it froze (±0.5–1 kmol/h, sign by seed). Seeds 1 and 3 meet it at
-    // 1225 / 1235 s (seed 2 at 555 s); in the Tier-2 drill configuration
-    // (full hydraulics, TC-101 on, CAS-slave event) 360 / 125 / 1315 s. The
-    // test asserts 30 min and reports the 20-min figure until the lead
-    // decides.
+    // VALIDATION.md H9.12 (2026-10-12, supersedes spec decision #5's 20 min):
+    // C1 or C3 at `check` or worse, held ≥ 60 s, within 30 min after the
+    // feed event; σ = 0 stays the key evidence. The event moves the true D
+    // by ≈ 2.5 kmol/h (above the C1/C3 bands, below the 2 × band fail line);
+    // LC-101 (Ti 1800 s) needs ≈ 15 min for that, the 600-s window lags it,
+    // and the frozen reading keeps the noise of the instant it froze. Engine
+    // c4e1f17 seeds 1–3: 1225 / 555 / 1235 s (Tier-1 stand-in). The 20-min
+    // result is reported for information.
     test(
-        'H9.12 FT-104 stuck: σ = 0 within 5 min; C1 or C3 at check or worse, held ≥ 60 s, within 30 min after the feed event (spec 20 min reported)',
+        'H9.12 FT-104 stuck: σ = 0 within 5 min; C1 or C3 at check or worse, held ≥ 60 s, within 30 min after the feed event (20-min result reported)',
         () {
       for (final seed in seeds) {
         final sim = drillRun(seed,
@@ -413,7 +409,7 @@ void main() {
         });
         report.writeln(
             'H9.12 seed $seed: σ=0 at $tSigma s, C1/C3 ≥ check held 60 s at ${held.metAt} s '
-            '(spec ≤ 1200: ${held.metAt != null && held.metAt! <= 1200}), fail at $tFail s after the event');
+            '(≤ 20 min, information: ${held.metAt != null && held.metAt! <= 1200}), fail at $tFail s after the event');
         expect(held.metAt, isNotNull,
             reason: 'seed $seed: C1 or C3 ≥ check for 60 s within 30 min');
       }

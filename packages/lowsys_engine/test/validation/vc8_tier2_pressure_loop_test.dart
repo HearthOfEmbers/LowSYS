@@ -20,7 +20,7 @@ Simulator _t2Steady({Map<String, Object?> overrides = const {}}) {
 void main() {
   group('VC-8 Tier 2', () {
     test(
-        '8.1 (T2): L0 and boilup +10: xD up, xB down, Q_R up; P held at SP ± 0.2 kPa (new steady state) with CW < 95 %',
+        '8.1 (T2): L0 and boilup +10: xD up, xB down, Q_R up; P returns to SP ± 0.2 kPa at the new steady state, transient ≤ 5 kPa, CW < 95 %',
         () {
       final sim = _t2Steady();
       final p0 = prof(sim);
@@ -36,14 +36,14 @@ void main() {
       expect(p.xD, greaterThan(p0.xD));
       expect(p.xB, lessThan(p0.xB));
       expect(p.s.kpis.qr, greaterThan(qr0));
-      // "Held" is the steady-state claim (§7.2: CW does not saturate, so P
-      // returns to SP; at the v1.0 70 % design it floated to 1.066 bar). A
-      // step of +6.7 % duty needs ≈ +36 % CW; with Kc 10 / Ti 120 s the
-      // integral needs ≈ 875 kPa·s of error for that, so the transient peak
-      // is ≈ 2.5 kPa, not 0.2 (OPEN_ITEMS.md).
+      // VALIDATION.md VC-8 Tier-2 row 8.1 (2026-10-12): P returns to SP
+      // ± 0.2 kPa at the new steady state (§7.2: CW does not saturate); the
+      // transient peak is ≤ 5 kPa. +6.7 % duty needs ≈ +36 % CW, and with
+      // Kc 10 / Ti 120 s the integral needs ≈ 875 kPa·s of error for that,
+      // so the peak is ≈ 2.5 kPa.
       expect((p.s.kpis.pTop - 101325).abs(), lessThan(200),
           reason: 'P at SP ± 0.2 kPa at the new steady state');
-      expect(pMax, lessThan(5000),
+      expect(pMax, lessThanOrEqualTo(5000),
           reason: 'transient peak ${pMax / 1000} kPa (engine ≈ 2.5)');
       expect(cwMax, lessThan(95), reason: 'CW below 95 % (proto 89.5)');
     });
@@ -213,6 +213,13 @@ void main() {
         runSteady(sim);
         final sp = 101325 + step;
         sim.control.setSp('PC-101', sp);
+        // E48 (ratified, PHYSICS.md §10.7): setSp re-ranges PT-101 to
+        // 0–2 max(P_design, SP), so the +10 kPa step runs on a 222.65 kPa
+        // span (PC-101's gain per Pa −9 %); Kc is not compensated.
+        sim.step();
+        expect(reading(sim.snapshot(), 'PT-101').hi,
+            closeTo(2 * math.max(101325, sp), 1),
+            reason: 'PT-101 span after setSp (engine 222.65 / 202.65 kPa)');
         double? tIn;
         var overshoot = 0.0;
         final excursions = <double>[];
@@ -225,8 +232,8 @@ void main() {
         });
         expect(tIn, isNotNull);
         expect(tIn!, lessThanOrEqualTo(600),
-            reason:
-                'proto ${step > 0 ? pc101.settlePlus : pc101.settleMinus} s');
+            reason: 'proto ${step > 0 ? pc101.settlePlus : pc101.settleMinus} s '
+                '(engine e1d4ae4 300 / 440 s)');
         expect(overshoot / step.abs(), lessThanOrEqualTo(0.30));
         // decay ratio: second positive peak / first
         final peaks = <double>[];
@@ -240,7 +247,7 @@ void main() {
       });
     }
     test(
-        '16.6c flash stability: CW OP 70 → 100 % (PC in MAN) at dt 0.5, 2, 30: P → 0.906 ± 0.005 bar (doc 0.966 is the UA 28.5 design; OPEN_ITEMS), V1 ≤ 1.1× its steady value in every step',
+        '16.6c flash stability: CW OP from the design 50 % to 100 % (PC in MAN) at dt 0.5, 2, 30: P → 0.906 ± 0.005 bar(a) within 1 h, V1 ≤ 1.1× its steady value in every step',
         () {
       for (final dt in [0.5, 2.0, 30.0]) {
         final sim = newSim(btT2(overrides: const {'murphree': 1.0}),
@@ -249,26 +256,27 @@ void main() {
         sim.setLever('refluxFlow', 100 * kmolh);
         final p0 = runSteady(sim, fastForward: false);
         final v1 = p0.vaporUp(1);
+        expect(loopOf(p0.s, 'PC-101').op, closeTo(50, 1),
+            reason: 'dt $dt: starts at the design OP');
         sim.control.setMode('PC-101', LoopMode.man);
-        sim.control.setOp('PC-101', 70);
-        sim.advance(600);
         sim.control.setOp('PC-101', 100);
         var v1Max = 0.0;
         advanceSampling(sim, 3600, dt, (t, s) {
           expectTier2Sane(s, where: 'flash dt $dt @ $t');
           v1Max = math.max(v1Max, Profile(s).vaporUp(1));
         });
-        // Independent: at 100 % CW the condenser gives 29.9/1.0861 =
-        // 27.53 kW/K × (T_sat − 30 °C); ≈ 1281 kW needs T_sat ≈ 76.5 °C, the
-        // bubble point of x_D ≈ 0.995 at ≈ 0.906 bar(a).
+        // VALIDATION.md VC-16.6c (2026-10-12): at 100 % CW the condenser
+        // gives 29.9/1.0861 = 27.53 kW/K × (T_sat − 30 °C); ≈ 1281 kW needs
+        // T_sat ≈ 76.5 °C, the bubble point of x_D ≈ 0.995 at ≈ 0.906 bar(a).
+        // The v1.0 0.966 bar(a) (70 → 100 %) was the UA 28.5 kW/K design.
         final s = sim.snapshot();
         final c = s.condenser!;
         final cwFull =
             c.uaEff / (1 + c.uaEff / (2 * sim.config.condenser.cwMaxFlow * 4180));
         expect(c.qC, closeTo(cwFull * (c.tCond - c.tCwIn), 0.002 * c.qC),
             reason: 'dt $dt: Q_C = (7.3) at 100 % CW');
-        expect(s.kpis.pTop / 1e5, closeTo(vc166c.pBar, 0.005),
-            reason: 'dt $dt (doc ${vc166c.pBarDoc})');
+        expect(s.kpis.pTop / 1e5, closeTo(vc166c.pBar, vc166c.tol),
+            reason: 'dt $dt (engine c4e1f17 0.9056)');
         expect(v1Max / v1, lessThanOrEqualTo(1.1),
             reason: 'dt $dt V1 (proto 1.025–1.029)');
       }

@@ -120,11 +120,11 @@ const vc273 = [
   (3.00, double.nan, 1884.0, 2510.0, 2923.0),
 ];
 
-/// VC-16.6c flash stability, CW 100 % at the VC-11 state. The doc's
-/// 0.966 bar(a) is what UA_clean = 28.5 kW/K (the v1.0 70 % design) gives;
-/// with the specified 29.9 kW/K the condenser needs T_sat ≈ 76.5 °C for
-/// ≈ 1281 kW, i.e. ≈ 0.906 bar(a) (validator re-derivation, OPEN_ITEMS.md).
-const vc166c = (pBarDoc: 0.966, pBar: 0.906);
+/// VC-16.6c flash stability (VALIDATION.md, re-pinned 2026-10-12): CW OP
+/// from the design 50 % to 100 % at the VC-11 state gives 0.906 ± 0.005
+/// bar(a): with UA 29.9 kW/K the condenser needs T_sat ≈ 76.5 °C for
+/// ≈ 1281 kW. The v1.0 0.966 bar(a) belonged to the UA 28.5 kW/K design.
+const vc166c = (pBar: 0.906, tol: 0.005);
 
 /// Condenser design (PHYSICS.md §7.2): UA 29.9 kW/K at 50 % CW, outlet 44.7 °C.
 const condenserDesign = (
@@ -170,11 +170,18 @@ const f15 = [
 ];
 const f15LimitS = 0.58;
 
-/// F11 (§11): ≈ 10 mol inert/h in a 104-mol overhead, y_I ≈ 0.09, f_blanket ≈ 0.27, +5 K subcooling after 1 h.
+/// F11 at s = 1 (PHYSICS.md §11 and VALIDATION.md H2, restated 2026-10-12
+/// as a transient): ≈ 10 mol inert/h into the 104-mol overhead at 1 atm;
+/// PC-101 opens the CW valve, which saturates within 30 min (engine ≈ 17
+/// min); then P rises. At 1 h: P ≈ 139 kPa, y_I ≈ 0.072, f_blanket ≈ 0.22,
+/// extra subcooling ≈ 4.3 K; H2 asks for ≥ 3 K within 1 h.
 const f11 = (
   inertPerHour: 10.0,
   overheadMol: 104.0,
-  yI1h: 0.09,
-  fBlanket1h: 0.27,
-  subcool1h: 5.0
+  tSatMax: 1800.0,
+  pTop1h: 139000.0,
+  yI1h: 0.072,
+  fBlanket1h: 0.22,
+  subcool1h: 4.3,
+  subcoolMinH2: 3.0
 );
