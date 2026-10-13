@@ -20,6 +20,7 @@ void main() {
   } on Object {
     // no writable folder: the sandbox just cannot be saved
   }
+  sim.restoreSettings();
   if (_perfSeconds > 0) _runPerf(sim);
   runApp(LowsysApp(controller: sim));
 }

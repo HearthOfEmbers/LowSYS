@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
+import 'effects/glow.dart';
 
 /// Plot area of the McCabe-Thiele chart inside a panel of [size] (shared with tap picking).
 Rect mccabePlotRect(Size size) {
@@ -127,13 +128,74 @@ class McCabePainter extends CustomPainter {
             ..strokeWidth = 1.4);
     }
 
+    // --- Tier 2: the band between the curve at P_top and at P_bottom (a real column has no single curve)
+    final tier2 = snap.tier != ThermoTier.t1;
+    final glow = GlowBudget.of(theme);
+    final bot = d.equilibriumBottom;
+    if (bot != null && bot.length == d.equilibriumTop.length) {
+      var width = 0.0;
+      for (var i = 0; i < bot.length; i++) {
+        width = math.max(width, (bot[i].y - d.equilibriumTop[i].y).abs());
+      }
+      if (width > 1e-4) {
+        final band = Path();
+        for (var i = 0; i < d.equilibriumTop.length; i++) {
+          final o = _pt(plot, d.equilibriumTop[i].x, d.equilibriumTop[i].y);
+          i == 0 ? band.moveTo(o.dx, o.dy) : band.lineTo(o.dx, o.dy);
+        }
+        for (var i = bot.length - 1; i >= 0; i--) {
+          final o = _pt(plot, bot[i].x, bot[i].y);
+          band.lineTo(o.dx, o.dy);
+        }
+        band.close();
+        canvas.drawPath(band, Paint()..color = p.eqCurve.withValues(alpha: 0.2));
+      }
+    }
+
     // --- equilibrium curve
-    _poly(canvas, plot, d.equilibriumTop, Paint()
+    final eqPaint = Paint()
       ..color = p.eqCurve
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2
       ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round);
+      ..strokeJoin = StrokeJoin.round;
+    if (glow.left > 0) {
+      final path = Path();
+      for (var i = 0; i < d.equilibriumTop.length; i++) {
+        final o = _pt(plot, d.equilibriumTop[i].x, d.equilibriumTop[i].y);
+        i == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+      }
+      strokeGlow(canvas, path, eqPaint, glow);
+    } else {
+      _poly(canvas, plot, d.equilibriumTop, eqPaint);
+    }
+
+    // --- Tier 2: local equilibrium points (x_j, y*_j) and the solid, curved operating locus
+    if (tier2) {
+      final loc = Paint()
+        ..color = p.pseudoEq
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      for (var i = 0; i < d.localEquilibrium.length; i++) {
+        if (narrow && i % 3 != 0) continue;
+        final q = d.localEquilibrium[i];
+        canvas.drawCircle(_pt(plot, q.x, q.y), narrow ? 1.8 : 2.4, loc);
+      }
+      final lp = Path();
+      for (var i = 0; i < d.operatingLocus.length; i++) {
+        final o = _pt(plot, d.operatingLocus[i].x, d.operatingLocus[i].y);
+        i == 0 ? lp.moveTo(o.dx, o.dy) : lp.lineTo(o.dx, o.dy);
+      }
+      strokeGlow(
+          canvas,
+          lp,
+          Paint()
+            ..color = p.opLine
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.8
+            ..strokeJoin = StrokeJoin.round,
+          glow);
+    }
 
     // --- actual operating locus (dots)
     final dot = Paint()..color = p.opLine;
@@ -297,7 +359,8 @@ class McCabePainter extends CustomPainter {
     if (!compact) {
       final items = [
         ('equilibrium', p.eqCurve, false),
-        ('operating (CMO)', p.opLineCmo, true),
+        (tier2 ? 'textbook CMO lines' : 'operating (CMO)', p.opLineCmo, true),
+        if (tier2) ('actual operating locus', p.opLine, false),
         ('q-line', p.qLine, false),
         ('stages', p.stepLine, false),
       ];

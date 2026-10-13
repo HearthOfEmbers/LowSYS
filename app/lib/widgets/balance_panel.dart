@@ -3,6 +3,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
 import '../theme/lowsys_theme.dart';
+import 'c6_card.dart';
 import 'loops_panel.dart' show checkColor;
 
 /// Balance tab: the cross-checks of PHYSICS.md 14.6, computed from the readings only (so they work in plant
@@ -47,8 +48,22 @@ class BalancePanel extends StatelessWidget {
               return 'Light component in ${n('in')}, out ${n('out')} · D/F meters ${(tm['dfMeters'] ?? double.nan).toStringAsFixed(3)}, analysers ${(tm['dfAnalysers'] ?? double.nan).toStringAsFixed(3)} · off by ${flow(c.residual)} $fu (band $band)';
             case 'C3':
               return 'Vapour to the top: from boilup ${n('fromBoilup')} · from reflux + distillate ${n('fromReflux')} · difference ${flow(c.residual)} $fu (band $band)';
+            case 'C3a':
+              String kw(String k) => tm[k]?.isNaN ?? true ? '—' : _kw(u, tm[k]!);
+              return 'Condenser ${kw('dutyCw')} ≈ ${n('fromCondenser')} of vapour · reflux + distillate ${n('fromReflux')} · difference ${flow(c.residual)} $fu (band $band)';
+            case 'C3b':
+              String kw2(String k) => tm[k]?.isNaN ?? true ? '—' : _kw(u, tm[k]!);
+              return 'Reboiler ${kw2('reboiler')} + feed ${kw2('feed')} = condenser ${kw2('condenser')} + products ${kw2('products')} · unaccounted ${_kw(u, c.residual)} (band ±${_kw(u, c.band)})';
+            case 'C7':
+              final top = c.id.endsWith('top');
+              return '${top ? 'Top: reflux temperature + subcooling' : 'Bottom: sump temperature'} vs the bubble point of the analysed product at the measured pressure ${_tK(u, tm['bubble'] ?? double.nan)} · off by ${c.residual.toStringAsFixed(2)} K (band ±${c.band.toStringAsFixed(1)} K)';
             case 'C4':
               final v = c.id.split(':').last;
+              if (v == 'FV-103' || v == 'PV-101') {
+                final qty = v == 'FV-103' ? Quantity.energyRate : Quantity.volumeFlowLiquid;
+                String m(double x) => '${Fmt.value(qty, x, u)} ${u.symbol(qty)}';
+                return '$v: OP ${(tm['op'] ?? 0).toStringAsFixed(1)} % expects ${m(tm['expected'] ?? double.nan)}; meter says ${m(tm['measured'] ?? double.nan)} (off by ${m(c.residual)}, band ±${m(c.band)})';
+              }
               return '$v: OP ${(tm['op'] ?? 0).toStringAsFixed(1)} % expects ${n('expected')}; meter says ${n('measured')} (${flow(c.residual)}, band $band)';
             case 'C5':
               return 'Level moved ${(tm['measured'] ?? 0).toStringAsFixed(2)} % · flows predict ${(tm['predicted'] ?? 0).toStringAsFixed(2)} % · gap ${c.residual.toStringAsFixed(2)} (band ±${c.band.toStringAsFixed(1)} %)';
@@ -64,6 +79,12 @@ class BalancePanel extends StatelessWidget {
               return 'C2  Component balance';
             case 'C3':
               return 'C3  Top vapour';
+            case 'C3a':
+              return 'C3a  Top vapour from the condenser duty';
+            case 'C3b':
+              return 'C3b  Column energy balance';
+            case 'C7':
+              return 'C7  Bubble point (${c.id.split(':').last})';
             case 'C4':
               return 'C4  Valve curve ${c.id.split(':').last}';
             case 'C5':
@@ -108,7 +129,13 @@ class BalancePanel extends StatelessWidget {
               'Every check uses meters and analysers only. A fault larger than about twice the band is unambiguous.',
               style: t.type.label.style(12, p.inkMuted),
             ),
-            for (final c in s.crossChecks)
+            ...() {
+              final c6 = s.crossChecks.where((c) => c.id.startsWith('C6:')).toList();
+              return [
+                if (c6.isNotEmpty) TrayTemperatureCard(checks: c6),
+              ];
+            }(),
+            for (final c in s.crossChecks.where((c) => !c.id.startsWith('C6:')))
               InkWell(
                 onTap: () => sim.openMath(ExplainCheck(c.id)),
                 child: Container(
@@ -180,3 +207,9 @@ class BalancePanel extends StatelessWidget {
     );
   }
 }
+
+String _kw(UnitSystem u, double w) =>
+    w.isNaN ? '—' : '${Fmt.value(Quantity.energyRate, w, u)} ${u.symbol(Quantity.energyRate)}';
+
+String _tK(UnitSystem u, double k) =>
+    k.isNaN ? '—' : '${Fmt.value(Quantity.temperature, k, u)} ${u.symbol(Quantity.temperature)}';

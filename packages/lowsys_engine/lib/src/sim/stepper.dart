@@ -743,7 +743,6 @@ class Stepper {
   bool dutyRequestExceeds = false;
   double _pNew = 101325;
   double _tGuess = 350,
-      _tsatT = 350,
       _qcT = 0,
       _ncondT = 0,
       _nventT = 0,
@@ -1020,7 +1019,6 @@ class Stepper {
       final pc = p * (1 - yI);
       final ts = t2.bubbleAt(pc, s.x, 0, _tGuess, _yb, 0, _kb, 0, health);
       _tGuess = ts;
-      _tsatT = ts;
       final qc = mcw > 0
           ? math.max(0.0, ua * (ts - tIn) / (1 + ua / (2 * mcw * _cpWater)))
           : 0.0;

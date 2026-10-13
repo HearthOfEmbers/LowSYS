@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
+import '../painters/profile_painter.dart' show TierGhost;
 import 'save_store.dart';
 
 /// Speeds offered in the TimeBar; 0 is pause.
@@ -44,8 +45,12 @@ class SimController extends ChangeNotifier {
   final ValueNotifier<int> diagramTab = ValueNotifier<int>(0);
   final ValueNotifier<int> profileKind = ValueNotifier<int>(0);
 
-  /// Control tab (0 Levers, 1 Loops, 2 Balance, 3 Trends, 4 Faults).
+  /// Control tab (0 Levers, 1 Loops, 2 Balance, 3 Trends, 4 Faults, 5 Energy).
   final ValueNotifier<int> controlTab = ValueNotifier<int>(0);
+
+  /// Active theme id (Blueprint or Control Room, SCOPE.md 7.2) and the Control Room's composition shading option.
+  final ValueNotifier<String> themeId = ValueNotifier<String>('blueprint');
+  final ValueNotifier<bool> compositionShading = ValueNotifier<bool>(false);
 
   /// Display unit system (SCOPE.md 4: SI / US field, switchable at runtime).
   final ValueNotifier<UnitSystem> units = ValueNotifier<UnitSystem>(
@@ -135,6 +140,26 @@ class SimController extends ChangeNotifier {
     _loaded = true;
     await _refresh();
     notifyListeners();
+  }
+
+  Future<void> setTheme(String id) async {
+    themeId.value = id;
+    try {
+      await saveStore?.write('settings.theme', id);
+    } on Object {
+      // settings are a convenience
+    }
+  }
+
+  Future<void> restoreSettings() async {
+    final store = saveStore;
+    if (store == null) return;
+    try {
+      final id = await store.read('settings.theme');
+      if (id != null && id.isNotEmpty) themeId.value = id;
+    } on Object {
+      // ignore
+    }
   }
 
   void toggleUnits() {
@@ -250,6 +275,47 @@ class SimController extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------- M3 operator actions
+
+  /// V and L of the tier just left (ghost ticks on the V and L profiles, PHYSICS.md 14.5).
+  final ValueNotifier<TierGhost?> tierGhost = ValueNotifier<TierGhost?>(null);
+
+  /// Thermodynamic tier switch (PHYSICS.md 13.5): T1 textbook (CMO) or T2 ideal + energy balances.
+  Future<void> setTier(ThermoTier t) async {
+    if (!_loaded) return;
+    final before = snapshot.value;
+    if (before != null && before.tier == t) return;
+    await runner.setTier(t);
+    if (before != null) {
+      tierGhost.value = TierGhost(
+        before.tier == ThermoTier.t1 ? 'Tier 1' : 'Tier 2',
+        List<double>.from(before.stages.vaporUp),
+        List<double>.from(before.stages.liquidDown),
+      );
+    }
+    await _refresh();
+    notifyListeners();
+  }
+
+  /// Loads another preset at its steady state, keeping a running scenario (G7).
+  Future<void> loadPreset(String id, {ThermoTier? tier}) async {
+    if (!_loaded) return;
+    await runner.loadPreset(id, tier: tier?.name);
+    presetId = id;
+    await _refresh();
+    notifyListeners();
+  }
+
+  /// "Set reference" of the C6 temperature profile.
+  Future<void> setTemperatureReference() async {
+    await runner.setTemperatureReference();
+    await _refresh();
+  }
+
+  /// F14: open the trap bypass.
+  Future<void> openTrapBypass() async {
+    await runner.openTrapBypass();
+    await _refresh();
+  }
 
   Future<void> setLoopMode(LoopTag tag, LoopMode mode) async {
     try {
@@ -494,6 +560,9 @@ class SimController extends ChangeNotifier {
     leverValues.dispose();
     mccabe.dispose();
     units.dispose();
+    themeId.dispose();
+    tierGhost.dispose();
+    compositionShading.dispose();
     diagramTab.dispose();
     profileKind.dispose();
     controlTab.dispose();

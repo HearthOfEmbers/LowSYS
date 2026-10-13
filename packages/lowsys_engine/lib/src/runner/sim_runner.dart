@@ -42,6 +42,12 @@ abstract class SimRunner {
   Future<void> setCheckWindow(double seconds);
   Future<void> setTemperatureReference();
 
+  /// Replaces the column by another preset at its steady state (G7, the Learn screen's presets).
+  Future<void> loadPreset(String presetId, {String? tier});
+
+  /// Opens the failed steam trap bypass (F14, PHYSICS.md 11).
+  Future<void> openTrapBypass();
+
   /// Starts a scenario; [seed] defaults to the options seed.
   Future<void> startScenario(ScenarioDef def, {int? seed});
   Future<void> takeHint(int index);

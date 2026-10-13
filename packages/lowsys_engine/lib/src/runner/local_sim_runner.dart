@@ -87,7 +87,11 @@ class LocalSimRunner implements SimRunner {
       case 'FC-102':
         sim.setLever('refluxFlow', sp);
       case 'FC-103':
-        sim.setLever('boilup', sp);
+        sim.setLever(sim.tier == ThermoTier.t1 ? 'boilup' : 'reboilerDuty', sp);
+      case 'PC-101':
+        sim.setLever('pTop', sp);
+      case 'TC-101':
+        sim.setLever('tc101Sp', sp);
       default:
         sim.control.setSp(tag, sp);
     }
@@ -135,6 +139,11 @@ class LocalSimRunner implements SimRunner {
   Future<void> setCheckWindow(double seconds) async => sim.setCheckWindow(seconds);
   @override
   Future<void> setTemperatureReference() async => sim.setTemperatureReference();
+  @override
+  Future<void> loadPreset(String presetId, {String? tier}) async =>
+      sim.loadPreset(presetId, tier: tier);
+  @override
+  Future<void> openTrapBypass() async => sim.openTrapBypass();
   @override
   Future<void> startScenario(ScenarioDef def, {int? seed}) async => sim.startScenario(def, seed: seed);
   @override

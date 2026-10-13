@@ -4,8 +4,10 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../theme/lowsys_theme.dart';
 import 'balance_panel.dart';
+import 'energy_panel.dart';
 import 'lever_panel.dart';
 import 'loops_panel.dart';
+import 'process_fault_card.dart';
 import 'trends_panel.dart';
 
 /// Faults tab (sandbox): inject F04-F07, see active faults and clear them (SCOPE.md 5, 3.2).
@@ -320,6 +322,7 @@ class _FaultPanelState extends State<FaultPanel> {
                 ),
               ),
             ),
+            if (s.tier != ThermoTier.t1) const ProcessFaultCard(),
             const InstrumentFaultCard(),
           ],
         );
@@ -349,7 +352,7 @@ class ControlTabs extends StatelessWidget {
     return ValueListenableBuilder<int>(
       valueListenable: sim.controlTab,
       builder: (context, tab, _) {
-        Widget btn(String label, IconData icon, int i) => Expanded(
+        Widget btn(String label, IconData icon, int i) => _TabSlot(
           child: InkWell(
             onTap: () => sim.controlTab.value = i,
             child: Container(
@@ -371,7 +374,7 @@ class ControlTabs extends StatelessWidget {
                     fit: BoxFit.scaleDown,
                     child: Text(
                       label,
-                      style: t.type.display.style(11.5, tab == i ? p.accent : p.inkMuted, weight: FontWeight.w700),
+                      style: t.type.display.style(12, tab == i ? p.accent : p.inkMuted, weight: FontWeight.w700),
                     ),
                   ),
                 ],
@@ -379,14 +382,27 @@ class ControlTabs extends StatelessWidget {
             ),
           ),
         );
-        final tabs = Row(
-          children: [
-            btn('LEVERS', Icons.tune, 0),
-            btn('LOOPS', Icons.settings_input_component, 1),
-            btn('BALANCE', Icons.balance, 2),
-            btn('TRENDS', Icons.show_chart, 3),
-            btn('FAULTS', Icons.warning_amber, 4),
-          ],
+        final tabs = LayoutBuilder(
+          builder: (context, c) {
+            final wide = c.maxWidth >= 6 * 72;
+            final row = Row(
+              children: [
+                btn('LEVERS', Icons.tune, 0),
+                btn('LOOPS', Icons.settings_input_component, 1),
+                btn('BALANCE', Icons.balance, 2),
+                btn('TRENDS', Icons.show_chart, 3),
+                btn('FAULTS', Icons.warning_amber, 4),
+                btn('ENERGY', Icons.local_fire_department, 5),
+              ],
+            );
+            // six tabs of 12 sp text need 72 dp each; narrower panels scroll the strip
+            return wide
+                ? row
+                : SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(width: 6 * 72.0, child: row),
+                  );
+          },
         );
         final header = scrollTabs
             ? Column(children: [if (handle != null) handle!, tabs])
@@ -396,6 +412,7 @@ class ControlTabs extends StatelessWidget {
           1 => LoopsPanel(controller: controller, header: header),
           2 => BalancePanel(controller: controller, header: header),
           3 => TrendsPanel(controller: controller, header: header),
+          5 => EnergyPanel(controller: controller, header: header),
           _ => FaultPanel(controller: controller, header: header),
         };
         if (scrollTabs) return content;
@@ -629,4 +646,12 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
       ),
     );
   }
+}
+
+/// One tab of the control strip: fills its share of the row.
+class _TabSlot extends StatelessWidget {
+  final Widget child;
+  const _TabSlot({required this.child});
+  @override
+  Widget build(BuildContext context) => Expanded(child: child);
 }

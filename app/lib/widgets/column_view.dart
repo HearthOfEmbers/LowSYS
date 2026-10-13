@@ -55,7 +55,7 @@ class ColumnView extends StatelessWidget {
             ),
             RepaintBoundary(
               child: CustomPaint(
-                painter: ColumnLivePainter(snapshot: sim.snapshot, selected: sim.selectedStage, anim: scope.anim, theme: t, units: sim.units),
+                painter: ColumnLivePainter(snapshot: sim.snapshot, selected: sim.selectedStage, anim: scope.anim, theme: t, units: sim.units, shading: sim.compositionShading),
               ),
             ),
           ],

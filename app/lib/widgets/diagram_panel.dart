@@ -158,6 +158,7 @@ class ProfilesChart extends StatelessWidget {
                           units: sim.units,
                           kind: kind,
                           theme: t,
+                          ghost: sim.tierGhost,
                         ),
                       ),
                     ),

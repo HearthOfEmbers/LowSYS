@@ -45,7 +45,7 @@ class _SimScreenState extends State<SimScreen> with SingleTickerProviderStateMix
     final dt = ((elapsed - _last).inMicroseconds / 1e6).clamp(0.0, 0.1);
     _last = elapsed;
     final s = scope.sim.snapshot.value;
-    final factor = s == null ? 1.0 : s.kpis.boilup / (150 / 3.6);
+    final factor = s == null || !s.kpis.boilup.isFinite ? 1.0 : s.kpis.boilup / (150 / 3.6);
     scope.anim.tick(dt, factor, paused: scope.sim.paused && !scope.sim.runningToSteady);
     scope.sim.onTick(elapsed);
   }
