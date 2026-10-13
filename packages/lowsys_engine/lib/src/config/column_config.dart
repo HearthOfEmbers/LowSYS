@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../core/ids.dart';
+import '../data/packings_json.dart';
 import 'tray_geometry.dart';
 
 Float64List _f64(Object? l) => Float64List.fromList(
@@ -337,6 +338,17 @@ class ControlConfig {
     this.tc101Tray = 14,
   });
 
+  ControlConfig copyWith({List<int>? temperatureTrays, int? tc101Tray}) => ControlConfig(
+        levelKc: levelKc,
+        levelTi: levelTi,
+        drumLevelSp: drumLevelSp,
+        sumpLevelSp: sumpLevelSp,
+        distillateMax: distillateMax,
+        bottomsMax: bottomsMax,
+        temperatureTrays: temperatureTrays ?? this.temperatureTrays,
+        tc101Tray: tc101Tray ?? this.tc101Tray,
+      );
+
   static const List<int> _btTrays = [1, 4, 7, 10, 12, 14, 17, 20];
 
   /// The instrumented trays for a column of [n] trays: each B-T entry keeps its fractional height, the result is
@@ -412,6 +424,49 @@ class KeyComponents {
   int get hashCode => Object.hash(lk, hk);
 }
 
+/// One alternative set of sections selectable with lever `internals` (ENGINE_API.md 4, PHYSICS.md 13.4; M8).
+@immutable
+class InternalsTemplate {
+  final int id;
+  final String label;
+  final List<SectionConfig> sections;
+  final int feedStage;
+  final List<int> temperatureTrays;
+  const InternalsTemplate(
+      {required this.id,
+      required this.label,
+      required this.sections,
+      required this.feedStage,
+      required this.temperatureTrays});
+
+  factory InternalsTemplate.fromJson(Map<String, Object?> j) => InternalsTemplate(
+        id: (j['id']! as num).toInt(),
+        label: j['label']! as String,
+        sections: [
+          for (final s in (j['sections']! as List<Object?>)) SectionConfig.fromJson(s! as Map<String, Object?>)
+        ],
+        feedStage: (j['feedStage']! as num).toInt(),
+        temperatureTrays: [for (final t in (j['temperatureTrays']! as List<Object?>)) (t! as num).toInt()],
+      );
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'label': label,
+        'sections': [for (final s in sections) s.toJson()],
+        'feedStage': feedStage,
+        'temperatureTrays': temperatureTrays,
+      };
+}
+
+/// A packed bed placed in the stage chain: 1-based [index] from the top, its section, and its stages [first]..[last].
+@immutable
+class BedLayout {
+  final int index, sectionIndex, first, last;
+  final PackedSection section;
+  const BedLayout(this.index, this.sectionIndex, this.first, this.last, this.section);
+  int get segments => last - first + 1;
+}
+
 class ColumnConfig {
   final PresetId presetId;
   final String displayName;
@@ -437,6 +492,11 @@ class ColumnConfig {
 
   /// Multicomponent keys (`debut`, `deprop`); null for binaries.
   final KeyComponents? keys;
+
+  /// M8: alternative section sets (lever `internals`) and the id of the active one (-1: none; `sections` always
+  /// holds the active template's sections).
+  final List<InternalsTemplate> internalsTemplates;
+  final int internals;
 
   /// Key indices used by the analysers and KPIs: the declared keys, or (0, 1) for a binary.
   KeyComponents get effectiveKeys => keys ?? const KeyComponents(0, 1);
@@ -469,6 +529,8 @@ class ColumnConfig {
     this.tier3Model = Tier3Model.sameAsTier2,
     this.tier1CannotRepresent = false,
     this.keys,
+    this.internalsTemplates = const [],
+    this.internals = -1,
   });
 
   factory ColumnConfig.fromJson(Map<String, Object?> j) {
@@ -515,6 +577,11 @@ class ColumnConfig {
               final comps = [for (final c in (j['components']! as List<Object?>)) c! as String];
               return KeyComponents(comps.indexOf(k['lk']! as String), comps.indexOf(k['hk']! as String));
             })(),
+      internalsTemplates: [
+        for (final t in (j['internalsTemplates'] as List<Object?>?) ?? const [])
+          InternalsTemplate.fromJson(t! as Map<String, Object?>)
+      ],
+      internals: (j['internals'] as num?)?.toInt() ?? -1,
     );
   }
 
@@ -536,14 +603,61 @@ class ColumnConfig {
         'tier3Model': tier3Model.name,
         if (tier1CannotRepresent) 'tier1CannotRepresent': true,
         if (keys != null) 'keys': {'lk': components[keys!.lk], 'hk': components[keys!.hk]},
+        if (internalsTemplates.isNotEmpty) 'internalsTemplates': [for (final t in internalsTemplates) t.toJson()],
+        if (internalsTemplates.isNotEmpty) 'internals': internals,
         'initialLevers': initialLevers,
       };
 
   /// Number of equilibrium trays/segments N (excluding drum and sump).
   int get trayCount => sections.fold(0, (a, s) => a + s.stageCount);
 
-  /// The first (and in M1 only) tray section.
+  /// The first tray section (throws for an all-packed column; see [hasTrays]).
   TraySection get traySection => sections.whereType<TraySection>().first;
+
+  bool get hasTrays => sections.any((s) => s is TraySection);
+  bool get hasPacked => sections.any((s) => s is PackedSection);
+
+  /// Index in [sections] of the first tray section, or -1.
+  int get traySectionIndex => sections.indexWhere((s) => s is TraySection);
+
+  /// Tray geometry the hydraulic solver uses: the tray section's, or (all-packed) a default one at the first bed's
+  /// diameter (unused: no tray stage exists).
+  TrayGeometry get hydraulicsGeometry => hasTrays
+      ? traySection.geometry
+      : TrayGeometry(diameter: sections.whereType<PackedSection>().first.diameter);
+
+  TrayType get hydraulicsTrayType => hasTrays ? traySection.type : TrayType.sieve;
+
+  /// The packed beds from the top, with their stage ranges (stages count from 1 across sections, PHYSICS.md 6.1).
+  List<BedLayout> get beds {
+    final out = <BedLayout>[];
+    var stage = 1;
+    for (var i = 0; i < sections.length; i++) {
+      final s = sections[i];
+      if (s is PackedSection) {
+        out.add(BedLayout(out.length + 1, i, stage, stage + s.stageCount - 1, s));
+      }
+      stage += s.stageCount;
+    }
+    return out;
+  }
+
+  /// Stages (1..N) a feed may enter: every tray and the top segment of every bed (PHYSICS.md 6.1).
+  List<int> get feedableStages {
+    final out = <int>[];
+    var stage = 1;
+    for (final s in sections) {
+      if (s is PackedSection) {
+        out.add(stage);
+      } else {
+        for (var k = 0; k < s.stageCount; k++) {
+          out.add(stage + k);
+        }
+      }
+      stage += s.stageCount;
+    }
+    return out;
+  }
 
   int get nc => components.length;
 
@@ -563,9 +677,13 @@ class ColumnConfig {
       if (tier1Props == null) p.add('Tier 1 needs tier1Props');
     }
     if (feeds.isEmpty) p.add('At least one feed is required');
+    final feedable = feedableStages;
     for (final f in feeds) {
-      if (f.stage < 1 || f.stage > n)
+      if (f.stage < 1 || f.stage > n) {
         p.add('Feed stage ${f.stage} outside 1..$n');
+      } else if (!feedable.contains(f.stage)) {
+        p.add('Feed stage ${f.stage} is inside a packed bed: a feed enters a tray or the top segment of a bed');
+      }
       if (f.z.length != components.length) {
         p.add('Feed composition length mismatch');
       } else {
@@ -576,7 +694,13 @@ class ColumnConfig {
     }
     if (murphree <= 0 || murphree > 1) p.add('murphree must be in (0, 1]');
     for (final s in sections) {
-      if (s is TraySection) s.geometry.validate(p, 'section');
+      if (s is TraySection) {
+        s.geometry.validate(p, 'section');
+      } else if (s is PackedSection) {
+        if (PackingData.tryById(s.packingId) == null) p.add('Unknown packing "${s.packingId}"');
+        if (s.bedHeight < 0.5 || s.bedHeight > 15) p.add('bedHeight must be 0.5..15 m (got ${s.bedHeight})');
+        if (!(s.diameter > 0)) p.add('bed diameter must be > 0');
+      }
     }
     if (tier == ThermoTier.t1 && condenser.type == CondenserType.partial) {
       p.add('A partial condenser needs Tier 2 or 3');
@@ -605,6 +729,8 @@ class ColumnConfig {
     Tier3Model? tier3Model,
     bool? tier1CannotRepresent,
     KeyComponents? keys,
+    List<InternalsTemplate>? internalsTemplates,
+    int? internals,
   }) =>
       ColumnConfig(
         presetId: presetId ?? this.presetId,
@@ -625,7 +751,21 @@ class ColumnConfig {
         tier3Model: tier3Model ?? this.tier3Model,
         tier1CannotRepresent: tier1CannotRepresent ?? this.tier1CannotRepresent,
         keys: keys ?? this.keys,
+        internalsTemplates: internalsTemplates ?? this.internalsTemplates,
+        internals: internals ?? this.internals,
       );
+
+  /// The configuration with internals template [id] active (PHYSICS.md 13.4): its sections, feed stage and
+  /// instrumented trays replace the current ones.
+  ColumnConfig withInternals(int id) {
+    final t = internalsTemplates.firstWhere((t) => t.id == id,
+        orElse: () => throw ConfigException('Unknown internals template $id'));
+    return copyWith(
+        sections: t.sections,
+        feeds: [feeds.first.copyWith(stage: t.feedStage), ...feeds.skip(1)],
+        control: control.copyWith(temperatureTrays: t.temperatureTrays),
+        internals: id);
+  }
 
   /// Convenience for tests and the app: same column with [trays] trays and the feed on [feedStage].
   ColumnConfig withTrays(int trays, {int? feedStage}) {
@@ -668,6 +808,10 @@ class ColumnConfig {
           }
         }
       }
+    }
+    if (overrides.keys.any((k) => k == 'sections' || k.startsWith('sections['))) {
+      json.remove('internalsTemplates');
+      json.remove('internals');
     }
     return ColumnConfig.fromJson(json);
   }

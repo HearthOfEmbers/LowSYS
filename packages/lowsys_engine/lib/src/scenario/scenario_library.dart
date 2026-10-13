@@ -21,6 +21,7 @@ abstract final class Scenarios {
     'G12_turndown': g12Json,
     'G14_thermosyphon': g14Json,
     'G13_debutanizer_fug': g13Json,
+    'G15_packing_retrofit': g15Json,
   };
 
   /// Tier 2 drills: defined and testable (draws, scoring), playable from M4/M6.
@@ -33,6 +34,7 @@ abstract final class Scenarios {
     'H4_reboiler': h4Json,
     'H5_bottoms_swings': h5Json,
     'H6_offspec_overhead': h6Json,
+    'H7_packed_bed': h7Json,
   };
 
   /// Scenarios playable in this build.

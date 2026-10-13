@@ -37,6 +37,9 @@ class EffectiveParams {
   /// F15: factor on the absolute steam header pressure.
   double epsI = 0, refluxCapScale = 1, fFlooded = 0, headerScale = 1;
 
+  /// F21 (maldistribution split f = 0.6 s) and F23 (crush severity s) per packed bed, index = bed - 1 (M8).
+  final Float64List bedMal = Float64List(8), bedCrush = Float64List(8);
+
   /// F17 and F18 (M6): added loss coefficients of the thermosyphon inlet and outlet lines.
   double kInAdd = 0, kOutAdd = 0;
 
@@ -62,6 +65,8 @@ class EffectiveParams {
     headerScale = 1;
     kInAdd = 0;
     kOutAdd = 0;
+    bedMal.fillRange(0, 8, 0);
+    bedCrush.fillRange(0, 8, 0);
     for (var j = 0; j < n; j++) {
       holeScale[j] = 1;
       apronScale[j] = 1;

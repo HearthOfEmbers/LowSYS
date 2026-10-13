@@ -32,6 +32,9 @@ enum FaultType {
 class FaultLocation {
   final int? stageFrom, stageTo;
   final int? feedIndex;
+
+  /// Packed bed, 1-based from the top (F21, F23; M8).
+  final int? bed;
   final String? tagName;
 
   /// Equipment id for the Tier-2 faults: `feed`, `condenser`, `reflux`, `reboiler`, `overhead`, `steam`.
@@ -40,6 +43,7 @@ class FaultLocation {
       {this.stageFrom,
       this.stageTo,
       this.feedIndex,
+      this.bed,
       this.tagName,
       this.equipmentId});
 
@@ -47,6 +51,7 @@ class FaultLocation {
   const FaultLocation.stages(int from, int to)
       : this._(stageFrom: from, stageTo: to);
   const FaultLocation.feed(int index) : this._(feedIndex: index);
+  const FaultLocation.bed(int bed) : this._(bed: bed);
   const FaultLocation.tag(String tag) : this._(tagName: tag);
   const FaultLocation.equipment(String id) : this._(equipmentId: id);
   const FaultLocation.whole() : this._(stageFrom: 1, stageTo: 1000);
@@ -58,6 +63,7 @@ class FaultLocation {
         if (stageFrom != null) 'from': stageFrom,
         if (stageTo != null) 'to': stageTo,
         if (feedIndex != null) 'feed': feedIndex,
+        if (bed != null) 'bed': bed,
         if (tagName != null) 'tag': tagName,
         if (equipmentId != null) 'equipment': equipmentId,
       };
@@ -66,6 +72,7 @@ class FaultLocation {
         stageFrom: (j['from'] as num?)?.toInt(),
         stageTo: (j['to'] as num?)?.toInt(),
         feedIndex: (j['feed'] as num?)?.toInt(),
+        bed: (j['bed'] as num?)?.toInt(),
         tagName: j['tag'] as String?,
         equipmentId: j['equipment'] as String?,
       );
@@ -75,7 +82,7 @@ class FaultLocation {
       ? (stageFrom == stageTo
           ? 'tray $stageFrom'
           : (stageTo! >= 1000 ? 'all trays' : 'trays $stageFrom-$stageTo'))
-      : (feedIndex != null ? 'feed' : (tagName ?? equipmentId ?? ''));
+      : (feedIndex != null ? 'feed' : (bed != null ? 'bed $bed' : (tagName ?? equipmentId ?? '')));
 }
 
 /// A fault to inject (ENGINE_API.md 9). Severity s_f in (0, 1]; current severity follows PHYSICS.md (11.1).
@@ -183,6 +190,10 @@ String faultLabel(FaultType t) {
       return 'Thermosyphon inlet restriction (F17)';
     case FaultType.tsOutletRestriction:
       return 'Thermosyphon outlet restriction (F18)';
+    case FaultType.packingMaldistribution:
+      return 'Packing maldistribution (F21)';
+    case FaultType.packingCrush:
+      return 'Packing crushed (F23)';
     default:
       return t.name;
   }

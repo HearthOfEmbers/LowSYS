@@ -10,6 +10,7 @@ import '../faults/fault_effects.dart';
 import '../faults/fault_manager.dart';
 import '../math/banded_solver.dart';
 import '../model/column_state.dart';
+import '../model/packed_model.dart';
 import '../model/thermosyphon.dart';
 import '../model/tray_hydraulics.dart';
 import '../thermo/component.dart' show WaterProps;
@@ -129,6 +130,21 @@ class Stepper {
   double get rhoL => thermo.rhoL;
   double get rhoV => thermo.rhoV;
 
+  /// Packed sections (M8), shared with the hydraulic solver; null for an all-tray column.
+  PackedModel? get pk => hyd.pk;
+  bool _isPk(int j) {
+    final p = hyd.pk;
+    return p != null && p.bedOf[j] >= 0;
+  }
+
+  /// Refreshes the packed arrays from the state (ideal hydraulics: phi = 0, no dP, no modifiers).
+  void pkRefresh() {
+    final p = hyd.pk;
+    if (p == null) return;
+    hyd.tier2Props = tier2;
+    p.update(s, ep, hyd.rhoLs, hyd.rhoVs, hyd.sigmas, tier2: tier2, ideal: !full);
+  }
+
   // ---------------------------------------------------------------- derived state
 
   /// Liquid molar volume of stage [j] from its composition (m3/mol).
@@ -225,6 +241,7 @@ class Stepper {
 
   /// Murphree efficiency of tray [j]: E (1 - b_V) min(1, h_cl / 5 mm), PHYSICS.md (4.2).
   double _effOf(int j) {
+    if (_isPk(j)) return hyd.pk!.emv[j];
     final sB = _sB(j);
     final hcl = s.holdup[j] * s.vLiq[j] / (aActiveAt[j] * math.max(1 - sB, 0.02));
     final f = hcl >= 0.005 ? 1.0 : (hcl <= 0 ? 0.0 : hcl / 0.005);
@@ -233,6 +250,8 @@ class Stepper {
 
   /// Refresh efficiencies and the vapour/equilibrium arrays from the current liquid state.
   void refreshVapour() {
+    hyd.pk?.resetFilters();
+    pkRefresh();
     if (tier2) {
       t2Thermo(s.pTop);
       return;
@@ -250,7 +269,12 @@ class Stepper {
   void refreshHydraulics(double dt) {
     faults.apply(s.time, ep, inp.z);
     hyd.pTop = s.pTop;
-    if (full) hyd.update(s, ep, dt);
+    hyd.tier2Props = tier2;
+    if (full) {
+      hyd.update(s, ep, dt);
+    } else {
+      pkRefresh();
+    }
   }
 
   /// Initialises psi and the filtered liquid load from the current state (switching to full hydraulics).
@@ -311,6 +335,11 @@ class Stepper {
     }
     _computeVapour(s.x, s.y, s.yStar);
     for (var j = 1; j <= N; j++) {
+      if (_isPk(j)) {
+        s.alphaE[j] = 0;
+        s.holdup[j] = hyd.pk!.initialHoldup(s, j, hyd.rhoLs);
+        continue;
+      }
       final ae = _alphaE(j);
       s.alphaE[j] = ae;
       final vl = s.vLiq[j];
@@ -445,6 +474,7 @@ class Stepper {
     }
     if (full) {
       // PHYSICS.md 5: hydraulic coefficients at state n, then the filter states (12.4 step 4)
+      hyd.tier2Props = tier2;
       hyd.update(s, ep, dt);
       for (var j = 1; j <= N; j++) {
         s.psi[j] += (hyd.psiEq[j] - s.psi[j]) * dt / (tauPsi + dt);
@@ -455,14 +485,19 @@ class Stepper {
         s.alphaE[j] = hyd.alphaE[j];
         s.entrain[j] = hyd.entrain[j];
         s.bypass[j] = hyd.bypass[j];
+        if (_isPk(j)) {
+          s.eff[j] = hyd.pk!.emv[j];
+          continue;
+        }
         s.eff[j] = inp.murphree *
             (1 - ep.brokenS[j]) *
             math.min(1.0, hyd.hcl[j] / 0.005);
       }
     } else {
+      pkRefresh();
       for (var j = 1; j <= N; j++) {
         s.eff[j] = _effOf(j);
-        s.alphaE[j] = _alphaE(j);
+        s.alphaE[j] = _isPk(j) ? 0.0 : _alphaE(j);
       }
     }
     s.eff[N + 1] = 1.0;
@@ -510,6 +545,37 @@ class Stepper {
           s.vapor[j + 1] -
           s.vapor[j] -
           eJ;
+      if (_isPk(j)) {
+        // packed segment: implicit holdup step with the outflow L = c M^3 of (6.4), phi frozen at state n
+        final cf = hyd.pk!.coef[j];
+        final mn0 = s.holdup[j];
+        double gP(double m) => m - mn0 - dt * (inflow - cf * m * m * m);
+        var lo = 0.0, hi = mn0 + dt * math.max(inflow, 0.0) + 1e-9;
+        double mP;
+        if (gP(0.0) >= 0) {
+          mP = 0.0;
+        } else {
+          mP = mn0.clamp(lo, hi);
+          for (var it = 0; it < 100; it++) {
+            final g = gP(mP);
+            if (g > 0) {
+              hi = mP;
+            } else {
+              lo = mP;
+            }
+            var mn2 = mP - g / (1 + 3 * dt * cf * mP * mP);
+            if (!(mn2 > lo && mn2 < hi)) mn2 = 0.5 * (lo + hi);
+            final done = (mn2 - mP).abs() < 1e-13 * math.max(1.0, mP);
+            mP = mn2;
+            if (done) break;
+          }
+        }
+        _mhat[j] = mP;
+        s.liquid[j] = cf * mP * mP * mP;
+        lPrev2 = lPrev;
+        lPrev = s.liquid[j];
+        continue;
+      }
       final vl = s.vLiq[j];
       final ae = s.alphaE[j];
       final aa = full ? hyd.aAct[j] : aActiveAt[j];
@@ -632,6 +698,8 @@ class Stepper {
       }
     }
 
+    hyd.pk?.advanceFilters(dt);
+
     // --- accounting for conservation tests (VC-5)
     debug
       ..dt = dt
@@ -671,7 +739,9 @@ class Stepper {
   }
 
   /// Murphree efficiency of tray [j] from the state (full hydraulics: with the broken-deck factor).
-  double _effNow(int j) => full
+  double _effNow(int j) => _isPk(j)
+      ? hyd.pk!.emv[j]
+      : full
       ? inp.murphree *
           (1 - ep.brokenS[j]) *
           math.min(
@@ -1074,7 +1144,7 @@ class Stepper {
   void _t2Capacity() {
     for (var j = 1; j <= nTrays + 1; j++) {
       _cj[j] = s.holdup[j] * t2.cpLAt(s.t[j], s.x, j * nc) +
-          (j <= nTrays ? 75.0 * aTotalAt[j] * 500.0 : 0.0);
+          (j <= nTrays ? (_isPk(j) ? hyd.pk!.metal[j] : 75.0 * aTotalAt[j] * 500.0) : 0.0);
     }
   }
 
@@ -1295,6 +1365,13 @@ class Stepper {
     bus.drumLevelPct = 100 * s.holdup[0] * s.vLiq[0] / drumVolume;
     bus.sumpLevelPct = 100 * s.holdup[N + 1] * s.vLiq[N + 1] / sumpVolume;
     bus.columnDp = full ? hyd.pressureDropTotal : 0.0;
+    final pkm = hyd.pk;
+    if (pkm != null) {
+      if (bus.bedDp.length != pkm.beds.length) bus.bedDp = Float64List(pkm.beds.length);
+      for (var b = 0; b < pkm.beds.length; b++) {
+        bus.bedDp[b] = full ? pkm.bedDp[b] : 0.0;
+      }
+    }
     bus.setCuts(ep.zEff, s.x, 0, (N + 1) * nc, nc);
     control.modelFull = full;
     if (tier2) {
@@ -1307,6 +1384,10 @@ class Stepper {
       var maxFlood = 0.0, maxWeep = 0.0;
       var dcLim = false;
       for (var j = 1; j <= N; j++) {
+        if (_isPk(j)) {
+          maxFlood = math.max(maxFlood, pkm!.phi[j]);
+          continue;
+        }
         maxFlood = math.max(maxFlood,
             math.max(hyd.phi[j], math.max(hyd.dcFrac[j], hyd.fill[j])));
         maxWeep = math.max(maxWeep, hyd.weepW[j]);

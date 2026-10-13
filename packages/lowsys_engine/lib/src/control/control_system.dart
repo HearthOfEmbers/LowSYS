@@ -26,6 +26,9 @@ class MeasurementBus {
   /// Pa; zero with ideal hydraulics.
   double columnDp = 0;
 
+  /// Pa per packed bed (PDT-(101 + b)), M8; zero with ideal hydraulics.
+  Float64List bedDp = Float64List(0);
+
   /// Light-component mole fractions: feed (effective), distillate, bottoms.
   double feedLight = 0.5, xD = 0.98, xB = 0.02;
 
@@ -72,6 +75,7 @@ class MeasurementBus {
         'drum.levelPct' => drumLevelPct,
         'sump.levelPct' => sumpLevelPct,
         'columnDp' => columnDp,
+        _ when ref.startsWith('bedDp[') => bedDp[int.parse(ref.substring(6, ref.length - 1))],
         'stream.feed.x[0]' => feedLight,
         'stream.distillate.heavy' => dHeavy,
         'stream.bottoms.x[0]' => bLight,
@@ -110,6 +114,9 @@ class ControlDesign {
   /// PC-101 gain with a total condenser (%OP per % span).
   final double pcKc;
   final int nTrays, tc101Tray;
+
+  /// Number of packed beds (M8): PDT-(101 + b) per bed.
+  final int nBeds;
   /// Partial condenser (PHYSICS.md 7.2, 10.7): PC-101 drives the vapour-product valve PV-102 (full scale [dvMax] mol/s,
   /// start OP [dvOp] %) and the CW valve sits at [cwManualOp] %.
   final bool partial;
@@ -139,6 +146,7 @@ class ControlDesign {
     this.qMax0 = 2.17e6,
     this.cwDesign = 50,
     this.nTrays = 20,
+    this.nBeds = 0,
     this.tc101Tray = 14,
     this.trays = const [1, 4, 7, 10, 12, 14, 17, 20],
     required this.feedFlow,
@@ -206,6 +214,9 @@ class ControlSystem {
   double cwManualOp = 30, meanDv = 0;
   late Instrument pt101, pt201, ti100, ti201, ti202, ft201, tiSump;
   final List<Instrument> trayTis = [];
+
+  /// Bed differential-pressure transmitters PDT-102, PDT-103, ... (M8).
+  final List<Instrument> pdtBeds = [];
   final List<int> trayIds = [];
   late ControlLoop pc101, tc101;
 
@@ -386,6 +397,24 @@ class ControlSystem {
           resolution: 10,
         ),
         seed: seed);
+    final bedPdts = [
+      for (var b = 0; b < d.nBeds; b++)
+        Instrument(
+            InstrumentSpec(
+              tag: 'PDT-${102 + b}',
+              type: InstrumentType.pdt,
+              measures: 'bedDp[$b]',
+              quantity: Quantity.pressureDelta,
+              lo: 0,
+              hi: 10000,
+              tauM: 2,
+              sigmaS: 1.0,
+              tauS: 5,
+              sigmaE: 0.02,
+              resolution: 1,
+            ),
+            seed: seed)
+    ];
     final at100 = at('AT-100', 'stream.feed.x[0]', 1.0, 0);
     final at101 = at('AT-101', 'stream.distillate.heavy', 0.10, 100);
     final at102 = at('AT-102', 'stream.bottoms.x[0]', 0.10, 200);
@@ -398,6 +427,7 @@ class ControlSystem {
       lt101,
       lt102,
       pdt101,
+      ...bedPdts,
       at100,
       at101,
       at102
@@ -584,6 +614,7 @@ class ControlSystem {
       ..pc101 = pc101
       ..tc101 = tc101
       ..pDesign = pDes;
+    cs.pdtBeds.addAll(bedPdts);
     cs.trayTis.addAll(trayTis);
     cs.trayIds.addAll(d.trays);
     cs.trayCount = d.nTrays;
@@ -646,6 +677,9 @@ class ControlSystem {
     lt101.reset(bus.drumLevelPct, t);
     lt102.reset(bus.sumpLevelPct, t);
     pdt101.reset(bus.columnDp, t);
+    for (var b = 0; b < pdtBeds.length; b++) {
+      pdtBeds[b].reset(bus.bedDp[b], t);
+    }
     at100.reset(bus.feedLight, t);
     at101.reset(bus.dHeavy, t);
     at102.reset(bus.bLight, t);
@@ -987,6 +1021,10 @@ class ControlSystem {
     lt101.update(dt, bus.drumLevelPct, tStart);
     lt102.update(dt, bus.sumpLevelPct, tStart);
     pdt101.update(dt, bus.columnDp, tStart);
+    for (var b = 0; b < pdtBeds.length; b++) {
+      pdtBeds[b].update(dt, bus.bedDp[b], tStart);
+      _pushInstrument(pdtBeds[b]);
+    }
     final hc = bus.feedX.isNotEmpty;
     at100.updateAnalyser(dt, bus.feedLight, t, c: hc ? bus.feedX : null);
     at101.updateAnalyser(dt, bus.dHeavy, t, c: hc ? bus.dX : null);
