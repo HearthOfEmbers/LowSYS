@@ -1,5 +1,7 @@
 # LowSYS status and coordinator handoff
 
+Status: IN PROGRESS
+
 Last updated 2026-10-12 by the outgoing coordinator.
 
 ## What exists
