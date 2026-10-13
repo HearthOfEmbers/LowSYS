@@ -2,6 +2,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../config/column_config.dart';
 import '../config/tray_geometry.dart';
 import '../control/control_system.dart';
 import '../core/ids.dart';
@@ -10,7 +11,9 @@ import '../faults/fault_manager.dart';
 import '../math/banded_solver.dart';
 import '../model/column_state.dart';
 import '../model/tray_hydraulics.dart';
+import '../thermo/component.dart' show WaterProps;
 import '../thermo/tier1_constant_alpha.dart';
+import '../thermo/tier2_raoult.dart';
 
 /// One fixed step of the Tier 1 column, PHYSICS.md 12.4 in order, no allocation.
 ///
@@ -24,6 +27,11 @@ class Stepper {
   final int n;
   final int nc;
   final Tier1ConstantAlpha thermo;
+
+  /// Tier-2 Raoult model (PHYSICS.md 3), used while [tier2] is true.
+  final Tier2Raoult t2;
+  final CondenserConfig cond;
+  final ReboilerConfig reb;
   final ColumnState s;
   final StepInputs inp;
   final ControlSystem control;
@@ -41,6 +49,9 @@ class Stepper {
   /// True for full hydraulics (PHYSICS.md 5); false for ideal (M1) hydraulics.
   bool full;
 
+  /// True while the column runs Tier 2 (energy balances and pressure dynamics, PHYSICS.md 4.5, 7, 8).
+  bool tier2;
+
   // Geometry (PHYSICS.md 5.1)
   final double aActive;
   final double weirLength;
@@ -48,6 +59,10 @@ class Stepper {
   final double bennettC;
   final double drumVolume;
   final double sumpVolume;
+  final double aTotal;
+
+  /// Design reflux flow (mol/s): the capacity of the reflux pump for fault F12 (PHYSICS.md 11).
+  double refluxCapacity;
 
   /// Time constants of the entrainment fraction and filtered liquid load (PHYSICS.md 5.5, 5.6).
   static const double tauPsi = 5.0, tauLbar = 10.0;
@@ -68,6 +83,9 @@ class Stepper {
 
   Stepper({
     required this.thermo,
+    required this.t2,
+    required this.cond,
+    required this.reb,
     required this.s,
     required this.inp,
     required this.control,
@@ -77,6 +95,8 @@ class Stepper {
     required this.ep,
     required this.faults,
     required this.full,
+    this.tier2 = false,
+    required this.refluxCapacity,
     required TrayGeometry geometry,
     required this.drumVolume,
     required this.sumpVolume,
@@ -85,6 +105,7 @@ class Stepper {
         n = s.n,
         nc = s.nc,
         aActive = geometry.areaActive,
+        aTotal = geometry.areaTotal,
         weirLength = geometry.weirLength,
         weirHeight = geometry.weirHeight,
         bennettC = geometry.bennettC,
@@ -111,6 +132,11 @@ class Stepper {
 
   /// Liquid molar volume of stage [j] from its composition (m3/mol).
   double _vLiq(int j) {
+    if (tier2) {
+      var tj = j == 0 ? s.tRefl : s.t[j];
+      if (!(tj > 200)) tj = 350;
+      return t2.liquidMolarVolumeAt(tj, s.x, j * nc);
+    }
     var mm = 0.0;
     for (var i = 0; i < nc; i++) {
       mm += s.x[j * nc + i] * thermo.mw[i];
@@ -154,7 +180,20 @@ class Stepper {
           _xn[i] = 1.0 / nc;
         }
       }
-      thermo.equilibrium(_xn, 0, _yy, 0);
+      if (tier2) {
+        var ss = 0.0;
+        for (var i = 0; i < nc; i++) {
+          _yy[i] = s.kt[off + i] * _xn[i];
+          ss += _yy[i];
+        }
+        if (ss > 0) {
+          for (var i = 0; i < nc; i++) {
+            _yy[i] /= ss;
+          }
+        }
+      } else {
+        thermo.equilibrium(_xn, 0, _yy, 0);
+      }
       if (ysOut != null) {
         for (var i = 0; i < nc; i++) {
           ysOut[off + i] = _yy[i];
@@ -192,6 +231,10 @@ class Stepper {
 
   /// Refresh efficiencies and the vapour/equilibrium arrays from the current liquid state.
   void refreshVapour() {
+    if (tier2) {
+      t2Thermo(s.pTop);
+      return;
+    }
     for (var j = 1; j <= nTrays; j++) {
       s.eff[j] = _effOf(j);
     }
@@ -204,6 +247,7 @@ class Stepper {
   /// snapshot and the explain API; the step does the same before it advances).
   void refreshHydraulics(double dt) {
     faults.apply(s.time, ep, inp.z);
+    hyd.pTop = s.pTop;
     if (full) hyd.update(s, ep, dt);
   }
 
@@ -242,6 +286,9 @@ class Stepper {
       for (var i = 0; i < nc; i++) {
         s.x[j * nc + i] = inp.z[i];
       }
+    }
+    if (tier2) _t2ColdStart();
+    for (var j = 0; j < n; j++) {
       s.vLiq[j] = _vLiq(j);
     }
     // CMO flows
@@ -279,6 +326,7 @@ class Stepper {
     }
     refreshFromHoldups();
     refreshVapour();
+    if (tier2) t2Thermo(s.pTop);
     for (var j = 0; j < n; j++) {
       s.entrain[j] = 0;
       s.bypass[j] = 0;
@@ -286,6 +334,10 @@ class Stepper {
       s.lbar[j] = s.liquid[j];
     }
     if (full) initHydraulicState();
+    if (tier2) {
+      t2Thermo(s.pTop);
+      t2InitInventory();
+    }
     // sump / drum level measurements
     bus.drumLevelPct = 100 * s.holdup[0] * s.vLiq[0] / drumVolume;
     bus.sumpLevelPct = 100 * s.holdup[N + 1] * s.vLiq[N + 1] / sumpVolume;
@@ -298,9 +350,10 @@ class Stepper {
     for (var i = 0; i < nc; i++) {
       mwv += s.y[(j + 1) * nc + i] * thermo.mw[i];
     }
-    final qin = s.vapor[j + 1] * mwv / (1000 * rhoV);
+    final rV = hyd.rhoVs[j], rL = hyd.rhoLs[j];
+    final qin = s.vapor[j + 1] * mwv / (1000 * rV);
     final us = qin / aActive;
-    final ks = us * math.sqrt(rhoV / (rhoL - rhoV));
+    final ks = us * math.sqrt(rV / (rL - rV));
     return ks <= 0 ? 1.0 : math.exp(-12.55 * math.pow(ks, 0.91));
   }
 
@@ -343,6 +396,7 @@ class Stepper {
     control.applyFaults(faults.controlSpecs);
 
     // --- 2. control fast layer (PHYSICS.md 10.1): mean valve flows over the step
+    if (tier2) _t2Utilities();
     control.ratioMode = inp.ratioMode;
     control.ratio = inp.refluxRatio;
     control.runFastLayer(dt, s.time);
@@ -354,27 +408,32 @@ class Stepper {
     var L0 = mf[1];
     s.feedAct = F;
     s.refluxAct = L0;
-    s.boilupAct = VB;
+    s.boilupAct = tier2 ? 0.0 : VB;
 
     // --- 6. vapour profile, Tier 1 CMO (PHYSICS.md 4.4) with sump starvation (8.1)
     final mMin = 0.05 * sumpVolume / s.vLiq[N + 1];
     final sSump = mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0;
-    s.vapor[N + 1] = VB * sSump;
-    for (var j = N; j >= 1; j--) {
-      s.vapor[j] =
-          math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
-    }
+    if (!tier2) {
+      s.vapor[N + 1] = VB * sSump;
+      for (var j = N; j >= 1; j--) {
+        s.vapor[j] =
+            math.max(0.0, s.vapor[j + 1] + (j == fs ? (1 - q) * F : 0.0));
+      }
 
-    // --- 3./4. normalised K (4.4), efficiencies, froth density
-    for (var j = 0; j < n; j++) {
-      var den = 0.0;
-      for (var i = 0; i < nc; i++) {
-        den += thermo.alpha[i] * s.x[j * nc + i];
+      // --- 3./4. normalised K (4.4), efficiencies, froth density
+      for (var j = 0; j < n; j++) {
+        var den = 0.0;
+        for (var i = 0; i < nc; i++) {
+          den += thermo.alpha[i] * s.x[j * nc + i];
+        }
+        if (den <= 0) den = 1.0;
+        for (var i = 0; i < nc; i++) {
+          _kt[j * nc + i] = thermo.alpha[i] / den;
+        }
       }
-      if (den <= 0) den = 1.0;
-      for (var i = 0; i < nc; i++) {
-        _kt[j * nc + i] = thermo.alpha[i] / den;
-      }
+    } else {
+      _kt.setAll(0, s.kt);
+      hyd.pTop = s.pTop;
     }
     if (full) {
       // PHYSICS.md 5: hydraulic coefficients at state n, then the filter states (12.4 step 4)
@@ -401,19 +460,29 @@ class Stepper {
     s.eff[N + 1] = 1.0;
     s.eff[0] = 1.0;
 
+    // --- 5./6. Tier 2: feed enthalpy, energy-balance vapour profile and the implicit pressure solve (4.5, 7.4)
+    var hF = 0.0;
+    if (tier2) {
+      hF = _t2FeedEnthalpy(z);
+      _t2PressureSolve(dt, VB, L0, F, hF, fs, sSump);
+    }
+
     // reflux and distillate pumps cannot take more than the drum holds (7.3)
-    final v1 = s.vapor[1];
+    final v1 = tier2 ? s.nCond : s.vapor[1];
     final e1 = full ? s.entrain[1] : 0.0;
     final availD = s.holdup[0] / dt + v1 + e1;
+    final pumpCap = tier2 && ep.refluxCapScale < 1
+        ? refluxCapacity * ep.refluxCapScale
+        : double.infinity;
     final totD = L0 + D;
-    if (totD > availD) {
-      final f = totD > 0 ? availD / totD : 0.0;
-      L0 *= f;
+    if (totD > availD || L0 > pumpCap) {
+      final f = totD > 0 ? math.min(1.0, availD / totD) : 0.0;
+      L0 = math.min(L0 * f, pumpCap);
       D *= f;
       control.fv102.cap = L0;
       control.lv101.cap = D;
     } else {
-      control.fv102.cap = double.infinity;
+      control.fv102.cap = pumpCap;
       control.lv101.cap = double.infinity;
     }
     s.liquid[0] = L0;
@@ -566,7 +635,9 @@ class Stepper {
       debug.feedRate[i] = F * z[i];
       debug.distillateRate[i] = D * _mnew[i] / _mhat[0];
       debug.bottomsRate[i] = B * _mnew[(N + 1) * nc + i] / _mhat[N + 1];
+      debug.ventRate[i] = 0;
     }
+    if (tier2) _t2InventoryUpdate(dt, F);
 
     // --- 11. new state
     for (var k = 0; k < _mnew.length; k++) {
@@ -578,25 +649,33 @@ class Stepper {
       s.m[k] = v;
     }
     refreshFromHoldups();
+    if (tier2) {
+      t2Thermo(_pNew);
+      _t2Diagnostics(F, D, B, hF);
+      return;
+    }
     for (var j = 1; j <= N; j++) {
-      s.eff[j] = full
-          ? inp.murphree *
-              (1 - ep.brokenS[j]) *
-              math.min(
-                  1.0,
-                  s.holdup[j] *
-                      s.vLiq[j] /
-                      (aActive * math.max(1 - ep.brokenS[j], 0.02)) /
-                      0.005)
-          : _effOf(j);
+      s.eff[j] = _effNow(j);
     }
     _computeVapour(s.x, s.y, s.yStar);
   }
 
+  /// Murphree efficiency of tray [j] from the state (full hydraulics: with the broken-deck factor).
+  double _effNow(int j) => full
+      ? inp.murphree *
+          (1 - ep.brokenS[j]) *
+          math.min(
+              1.0,
+              s.holdup[j] *
+                  s.vLiq[j] /
+                  (aActive * math.max(1 - ep.brokenS[j], 0.02)) /
+                  0.005)
+      : _effOf(j);
+
   void _componentPass(double dt, double F, int fs, double D, double B,
       double L0, Float64List z) {
     final N = nTrays;
-    final v1 = s.vapor[1];
+    final v1 = tier2 ? s.nCond : s.vapor[1];
     for (var i = 0; i < nc; i++) {
       // drum row (total condenser, PHYSICS.md 12.3)
       _g[0] = 0;
@@ -642,6 +721,414 @@ class Stepper {
     }
   }
 
+  // ---------------------------------------------------------------- Tier 2 (M4)
+
+  /// Live outputs of the last Tier-2 step (snapshot, instruments, alarms).
+  double qMax = 0,
+      qMax0 = 0,
+      steamT = 0,
+      uaRebEff = 0,
+      qDelivered = 0,
+      uaCondEff = 0,
+      cwFlow = 0,
+      cwOutT = 0,
+      cwInT = 0,
+      fBlanket = 0,
+      yIner = 0,
+      subcool = 0,
+      energyResidual = 0,
+      feedTemp = 0,
+      feedH = 0,
+      steamHeaderAbs = 0;
+  bool dutyRequestExceeds = false;
+  double _pNew = 101325;
+  double _tGuess = 350,
+      _tsatT = 350,
+      _qcT = 0,
+      _ncondT = 0,
+      _nventT = 0,
+      _nreliefT = 0;
+  late final Float64List _cj = Float64List(s.n);
+  late final Float64List _yb = Float64List(nc), _kb = Float64List(nc);
+  double _sSumpNow = 1.0;
+
+  double feedEnthalpyFor(Float64List z) => _t2FeedEnthalpy(z);
+
+  /// Back to the constant Tier-1 properties for the hydraulics.
+  void restoreTier1Props() {
+    for (var j = 0; j < n; j++) {
+      hyd.rhoLs[j] = thermo.rhoL;
+      hyd.rhoVs[j] = thermo.rhoV;
+      hyd.sigmas[j] = thermo.sigma;
+    }
+  }
+
+  /// True once the relief valve has lifted (safety metric).
+  bool reliefLifted = false;
+
+  /// Prepares Tier-2 start values: utilities and the initial cooling-water flow.
+  void prepareTier2() {
+    _t2Utilities();
+    cwFlow = control.pv101.fMax * control.pv101.g(control.pv101.position);
+    cwInT = inp.cwInT;
+    cwOutT = cwInT + 14.7;
+  }
+
+  /// Copies the Tier-2 true values to the measurement bus.
+  void fillBusT2() {
+    if (!tier2) return;
+    bus.pTop = s.pTop;
+    bus.steamGauge = math.max(0.0, inp.steamHeaderP * ep.headerScale - 101325.0);
+    bus.tRefl = s.tRefl;
+    bus.cwIn = cwInT > 0 ? cwInT : inp.cwInT;
+    bus.cwOut = cwOutT > 0 ? cwOutT : bus.cwIn + 14.7;
+    bus.cwVol = cwFlow / ControlSystem.rhoWater;
+    bus.stageT = s.t;
+  }
+
+  /// Start-of-step utilities (PHYSICS.md 8.2, 10.3): steam temperature, Q_max, the valve scale and caps.
+  void _t2Utilities() {
+    steamHeaderAbs = inp.steamHeaderP * ep.headerScale;
+    steamT = WaterProps.saturationT(math.max(steamHeaderAbs, 20000.0));
+    final tB = s.t[nTrays + 1];
+    final rf = ep.rebFoulS * 1.5 / reb.uaClean;
+    uaRebEff = reb.uaClean / (1 + reb.uaClean * rf) * (1 - ep.fFlooded);
+    qMax0 = math.max(0.0, reb.uaClean * (steamT - tB));
+    qMax = math.max(0.0, uaRebEff * (steamT - tB));
+    control.fv103.fMax = math.max(qMax0, 1.0);
+    control.fv103.cap = qMax;
+    control.pv101.fMax = inp.cwMaxFlow;
+    control.cwScale = ep.cwFlowScale;
+    control.fv102.cap =
+        ep.refluxCapScale < 1 ? refluxCapacity * ep.refluxCapScale : double.infinity;
+  }
+
+  double _t2FeedEnthalpy(Float64List z) {
+    final fs = inp.feedStage;
+    feedTemp = inp.feedT + ep.feedDt;
+    final pF = s.pStage[fs] > 0 ? s.pStage[fs] : s.pTop;
+    if (inp.feedSat) {
+      final tb = t2.bubbleAt(pF, z, 0, inp.feedT > 200 ? inp.feedT : s.t[fs],
+          _yb, 0, _kb, 0, health);
+      inp.feedT = tb;
+      feedTemp = tb + ep.feedDt;
+    }
+    feedH = t2.feedEnthalpy(feedTemp, pF, z);
+    return feedH;
+  }
+
+  /// Cold-start thermo state: every stage at the bubble point of the feed at the design pressure.
+  void _t2ColdStart() {
+    final pt = inp.pTopInit;
+    s.pTop = pt;
+    s.nI = 0;
+    final t =
+        t2.bubbleAt(pt, s.x, 0, t2.coldGuess(s.x, 0), _yb, 0, _kb, 0, health);
+    final sSum = t2.lastS, den = t2.lastDen;
+    for (var j = 0; j < n; j++) {
+      s.t[j] = t;
+      s.pStage[j] = pt;
+      s.tau[j] = j == 0 ? 0.0 : sSum / (pt * den);
+      for (var i = 0; i < nc; i++) {
+        s.kt[j * nc + i] = _kb[i] / sSum;
+      }
+    }
+    s.tSat0 = t;
+    s.tRefl = t - inp.refluxSub;
+    s.t[0] = t;
+    _tGuess = t;
+    for (var j = 0; j < n; j++) {
+      s.vLiq[j] = _vLiq(j);
+      var mwl = 0.0;
+      for (var i = 0; i < nc; i++) {
+        mwl += s.x[j * nc + i] * t2.mw[i];
+      }
+      hyd.rhoLs[j] = mwl / 1000 / s.vLiq[j];
+      hyd.sigmas[j] = thermo.sigma;
+      for (var i = 0; i < nc; i++) {
+        _yy[i] = _yb[i];
+      }
+      hyd.rhoVs[j] = t2.vaporDensity(t, pt, _yy);
+    }
+  }
+
+  /// Initialises the vapour inventory from the pressure: n_V = P V / (R T_0,sat), n_V,i = n_V y_1 (PHYSICS.md 13.5).
+  void t2InitInventory() {
+    final nv = s.pTop * cond.overheadVolume / (gasR * s.tSat0);
+    for (var i = 0; i < nc; i++) {
+      s.nVi[i] = nv * s.y[nc + i];
+    }
+    s.nI = 0;
+  }
+
+  /// Condensable vapour inventory (mol).
+  double get overheadMoles {
+    var v = 0.0;
+    for (var i = 0; i < nc; i++) {
+      v += s.nVi[i];
+    }
+    return v;
+  }
+
+  /// Thermo update at the end of a step (PHYSICS.md 12.4 step 11) and at tier switches: bubble point of every
+  /// stage, K~ (4.3), tau (4.5), vapour compositions, enthalpies and the hydraulic properties (3.5).
+  void t2Thermo(double pNew) {
+    final N = nTrays;
+    s.pTop = pNew;
+    final nv = overheadMoles;
+    yIner = nv + s.nI > 0 ? s.nI / (nv + s.nI) : 0.0;
+    fBlanket = math.min(0.95, 3 * yIner);
+    subcool = inp.refluxSub + 20 * fBlanket;
+    final pc = pNew * (1 - yIner);
+    // drum
+    final tg = (s.tSat0 > 200) ? s.tSat0 : t2.coldGuess(s.x, 0);
+    s.tSat0 = t2.bubbleAt(pc, s.x, 0, tg, _yb, 0, _kb, 0, health);
+    var sSum = t2.lastS;
+    for (var i = 0; i < nc; i++) {
+      s.kt[i] = _kb[i] / sSum;
+      s.yStar[i] = _yb[i];
+    }
+    s.tRefl = s.tSat0 - subcool;
+    s.t[0] = s.tSat0;
+    s.pStage[0] = pc;
+    s.tau[0] = 0;
+    final p1 = full ? hyd.pressure[1] : pNew;
+    for (var j = 1; j <= N + 1; j++) {
+      final pj = pNew + (full ? hyd.pressure[j] - p1 : 0.0);
+      s.pStage[j] = pj;
+      final tj = t2.bubbleAt(pj, s.x, j * nc, s.t[j] > 200 ? s.t[j] : s.tSat0,
+          s.yStar, j * nc, _kb, 0, health);
+      s.t[j] = tj;
+      sSum = t2.lastS;
+      s.tau[j] = sSum / (pj * t2.lastDen);
+      for (var i = 0; i < nc; i++) {
+        s.kt[j * nc + i] = _kb[i] / sSum;
+      }
+    }
+    for (var j = 0; j < n; j++) {
+      s.vLiq[j] = _vLiq(j);
+    }
+    for (var j = 1; j <= N; j++) {
+      s.eff[j] = _effNow(j);
+    }
+    s.eff[N + 1] = 1.0;
+    s.eff[0] = 1.0;
+    _computeVapour(s.x, s.y, s.yStar);
+    s.hLiq[0] = t2.hLAt(s.tRefl, s.x, 0);
+    s.hVap[0] = t2.hVAt(s.tSat0, s.y, 0);
+    for (var j = 1; j <= N + 1; j++) {
+      s.hLiq[j] = t2.hLAt(s.t[j], s.x, j * nc);
+      s.hVap[j] = t2.hVAt(s.t[j], s.y, j * nc);
+    }
+    // physical properties for the hydraulics (3.5)
+    for (var j = 0; j < n; j++) {
+      var mwl = 0.0;
+      for (var i = 0; i < nc; i++) {
+        mwl += s.x[j * nc + i] * t2.mw[i];
+        _xn[i] = s.x[j * nc + i];
+      }
+      hyd.rhoLs[j] = mwl / 1000 / s.vLiq[j];
+      hyd.sigmas[j] = t2.surfaceTension(j == 0 ? s.tRefl : s.t[j], _xn);
+    }
+    for (var j = 1; j <= N + 1; j++) {
+      for (var i = 0; i < nc; i++) {
+        _yy[i] = s.y[j * nc + i];
+      }
+      hyd.rhoVs[j] = t2.vaporDensity(s.t[j], s.pStage[j], _yy);
+    }
+    hyd.rhoVs[0] = hyd.rhoVs[1];
+  }
+
+  /// Heat capacity C_j (liquid plus tray metal) of every stage for the storage term (4.5).
+  void _t2Capacity() {
+    final metal = 75.0 * aTotal * 500.0;
+    for (var j = 1; j <= nTrays + 1; j++) {
+      _cj[j] = s.holdup[j] * t2.cpLAt(s.t[j], s.x, j * nc) +
+          (j <= nTrays ? metal : 0.0);
+    }
+  }
+
+  /// Quasi-steady energy balance vapour sweep, bottom up (PHYSICS.md 4.5): fills s.vapor for a top pressure [pNew].
+  void _t2Sweep(double pNew, double dt, double qR, double l0, double f,
+      double hF, int fs) {
+    final N = nTrays;
+    final dP = pNew - s.pTop;
+    final hRefl = s.hLiq[0];
+    // sump (4.7)
+    {
+      final hB = s.hLiq[N + 1];
+      final lN = s.liquid[N];
+      final fN = full ? s.bypass[N] : 0.0;
+      final lN1 = N >= 2 ? s.liquid[N - 1] : l0;
+      final hN = s.hLiq[N];
+      final hN1 = N >= 2 ? s.hLiq[N - 1] : hRefl;
+      final num = lN * (hN - hB) +
+          (fN > 0 ? fN * lN1 * (hN1 - hB) : 0.0) +
+          qR -
+          _cj[N + 1] * s.tau[N + 1] * dP / dt;
+      s.vapor[N + 1] = _sSumpNow * math.max(0.0, num / (s.hVap[N + 1] - hB));
+    }
+    for (var j = N; j >= 1; j--) {
+      final hj = s.hLiq[j];
+      final lUp = j == 1 ? l0 : s.liquid[j - 1];
+      final hUp = j == 1 ? hRefl : s.hLiq[j - 1];
+      final fj = full ? s.bypass[j] : 0.0;
+      var num = (1 - fj) * lUp * (hUp - hj) +
+          s.vapor[j + 1] * (s.hVap[j + 1] - hj);
+      if (full && j >= 2) {
+        final fp = s.bypass[j - 1];
+        if (fp > 0) {
+          final lUp2 = j == 2 ? l0 : s.liquid[j - 2];
+          final hUp2 = j == 2 ? hRefl : s.hLiq[j - 2];
+          num += fp * lUp2 * (hUp2 - hj);
+        }
+      }
+      if (j == fs) num += f * (hF - hj);
+      if (full && j + 1 <= N) num += s.entrain[j + 1] * (s.hLiq[j + 1] - hj);
+      num -= _cj[j] * s.tau[j] * dP / dt;
+      s.vapor[j] = math.max(0.0, num / (s.hVap[j] - hj));
+    }
+  }
+
+  static const double _cpWater = 4180.0;
+
+  /// The implicit overhead pressure solve (PHYSICS.md 7.4): secant on the vapour-inventory residual, with the
+  /// energy-balance sweep re-run for every trial pressure. Leaves the final sweep in s.vapor.
+  void _t2PressureSolve(double dt, double qR, double l0, double f, double hF,
+      int fs, double sSump) {
+    _sSumpNow = sSump;
+    _t2Capacity();
+    final nV0 = overheadMoles;
+    final nI0 = s.nI;
+    final yI = nV0 + nI0 > 0 ? nI0 / (nV0 + nI0) : 0.0;
+    final fb = math.min(0.95, 3 * yI);
+    final rfC = ep.condFoulS * 1.5 / cond.uaClean;
+    final lvl = drumLevelPct;
+    final flood = lvl > 100 ? math.max(0.2, 1 - (lvl - 100) / 30) : 1.0;
+    final ua = cond.uaClean / (1 + cond.uaClean * rfC) * (1 - fb) * flood;
+    uaCondEff = ua;
+    final mcw = control.meanCw;
+    cwFlow = mcw;
+    final tIn = inp.cwInT + ep.cwTempAdd;
+    cwInT = tIn;
+    final sub = inp.refluxSub + 20 * fb;
+    _tGuess = s.tSat0;
+
+    double eval(double p) {
+      _t2Sweep(p, dt, qR, l0, f, hF, fs);
+      final v1 = s.vapor[1];
+      final pc = p * (1 - yI);
+      final ts = t2.bubbleAt(pc, s.x, 0, _tGuess, _yb, 0, _kb, 0, health);
+      _tGuess = ts;
+      _tsatT = ts;
+      final qc = mcw > 0
+          ? math.max(0.0, ua * (ts - tIn) / (1 + ua / (2 * mcw * _cpWater)))
+          : 0.0;
+      _qcT = qc;
+      final hVs = t2.hVAt(ts, s.y, nc);
+      final h0 = t2.hLAt(ts - sub, s.x, 0);
+      var nc0 = (v1 * (hVs - s.hVap[1]) + qc) / (hVs - h0);
+      if (!(nc0 > 0)) nc0 = 0;
+      _ncondT = nc0;
+      final nvent = inp.inertVent /
+          100 *
+          cond.ventMax *
+          math.sqrt(math.max(p - cond.pVentEff, 0.0) / 50000.0);
+      final nrel = cond.reliefMax *
+          ((p - cond.reliefSet) / (0.1 * cond.reliefSet)).clamp(0.0, 1.0);
+      _nventT = nvent;
+      _nreliefT = nrel;
+      final nv = pc * cond.overheadVolume / (gasR * ts);
+      return nv - nV0 - dt * (v1 - nc0 - (nvent + nrel) * (1 - yI));
+    }
+
+    var p0 = s.pTop;
+    var r0 = eval(p0);
+    var p1 = p0 * 1.001;
+    var r1 = eval(p1);
+    var ok = false;
+    for (var it = 0; it < 12; it++) {
+      final den = r1 - r0;
+      if (den == 0) break;
+      var p2 = p1 - r1 * (p1 - p0) / den;
+      if (!(p2 > 1000)) p2 = 1000;
+      if (p2 > 1e7) p2 = 1e7;
+      final delta = (p2 - p1).abs();
+      p0 = p1;
+      r0 = r1;
+      p1 = p2;
+      r1 = eval(p1);
+      if (delta < 0.1) {
+        ok = true;
+        break;
+      }
+    }
+    if (!ok) {
+      // safeguarded fallback: bisection on a bracket (r increases with P)
+      health.pressureFallbacks++;
+      var lo = math.max(1000.0, 0.5 * s.pTop), hi = 2.0 * s.pTop + 1000;
+      if (eval(lo) > 0 || eval(hi) < 0) {
+        p1 = s.pTop;
+        eval(p1);
+      } else {
+        for (var it = 0; it < 60; it++) {
+          final mid = 0.5 * (lo + hi);
+          if (eval(mid) < 0) {
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+          if (hi - lo < 0.05) break;
+        }
+        p1 = 0.5 * (lo + hi);
+        eval(p1);
+      }
+    }
+    _pNew = p1;
+    s.nCond = _ncondT;
+    s.qC = _qcT;
+    s.qR = qR;
+    s.nVent = _nventT;
+    s.nRelief = _nreliefT;
+    qDelivered = qR;
+    dutyRequestExceeds =
+        control.fv103.fMax * control.fv103.g(control.fv103.position) >
+            qMax * (1 + 1e-6) + 1.0;
+  }
+
+  /// Overhead vapour inventory per component and inert inventory (PHYSICS.md 7.1, 12.4 step 10).
+  void _t2InventoryUpdate(double dt, double f) {
+    final nV0 = overheadMoles;
+    final yI = nV0 + s.nI > 0 ? s.nI / (nV0 + s.nI) : 0.0;
+    final v1 = s.vapor[1];
+    final e1 = s.eff[1];
+    final ventTot = (s.nVent + s.nRelief) * (1 - yI);
+    for (var i = 0; i < nc; i++) {
+      final yc = (1 - e1) * _yhat[2 * nc + i] +
+          e1 * _kt[nc + i] * _mnew[nc + i] / _mhat[1];
+      final yv = nV0 > 0 ? s.nVi[i] / nV0 : yc;
+      var nn = s.nVi[i] + dt * ((v1 - s.nCond) * yc - ventTot * yv);
+      if (nn < 0) {
+        if (nn < -1e-12) health.negativeClamps++;
+        nn = 0;
+      }
+      s.nVi[i] = nn;
+      debug.ventRate[i] = ventTot * yv;
+    }
+    var ni = s.nI + dt * (ep.epsI * f - (s.nVent + s.nRelief) * yI);
+    if (ni < 0) ni = 0;
+    s.nI = ni;
+  }
+
+  /// KPIs and measurement values of the finished step (PHYSICS.md VC-5.4, 10.5).
+  void _t2Diagnostics(double f, double d, double b, double hF) {
+    final qr = qDelivered;
+    final res = f * hF + qr - s.qC - d * s.hLiq[0] - b * s.hLiq[nTrays + 1];
+    energyResidual = qr > 1 ? res.abs() / qr : 0.0;
+    final mcw = cwFlow;
+    cwOutT = mcw > 0 ? cwInT + s.qC / (mcw * _cpWater) : cwInT;
+  }
+
   // ---------------------------------------------------------------- controllers
 
   /// Control main layer (PHYSICS.md 10.1, step 12) from the end-of-step state.
@@ -654,6 +1141,12 @@ class Stepper {
     bus.xD = s.x[0];
     bus.xB = s.x[(N + 1) * nc];
     control.modelFull = full;
+    if (tier2) {
+      fillBusT2();
+      control.modelRelief = s.nRelief > 0;
+      control.modelDutyLimited = dutyRequestExceeds;
+      if (s.nRelief > 0) reliefLifted = true;
+    }
     if (full) {
       var maxFlood = 0.0, maxWeep = 0.0;
       var dcLim = false;

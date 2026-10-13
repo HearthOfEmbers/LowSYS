@@ -15,7 +15,7 @@ class Tier2Raoult implements ThermoModel {
   final List<Component> comps;
   final double _mu;
   final Float64List mw, _tc, _pc, _om;
-  final Float64List _k, _dl, _tmp1, _tmp2;
+  final Float64List _k, _tmp1, _tmp2;
 
   /// S = sum K x and the bubble-point derivative sum K x dlnK/dT of the last [bubbleAt] (for tau_j, PHYSICS.md 4.5).
   double lastS = 1, lastDen = 1;
@@ -27,7 +27,6 @@ class Tier2Raoult implements ThermoModel {
         _pc = Float64List.fromList([for (final c in comps) c.pc]),
         _om = Float64List.fromList([for (final c in comps) c.omega]),
         _k = Float64List(comps.length),
-        _dl = Float64List(comps.length),
         _tmp1 = Float64List(comps.length),
         _tmp2 = Float64List(comps.length);
 
@@ -325,6 +324,15 @@ class Tier2Raoult implements ThermoModel {
     var c = 0.0;
     for (var i = 0; i < comps.length; i++) {
       c += x[i] * (comps[i].cp0 + comps[i].dCp * (t - _t0));
+    }
+    return c;
+  }
+
+  /// Liquid heat capacity (J/mol/K) of the liquid [x] at [xo].
+  double cpLAt(double t, Float64List x, int xo) {
+    var c = 0.0;
+    for (var i = 0; i < comps.length; i++) {
+      c += x[xo + i] * (comps[i].cp0 + comps[i].dCp * (t - _t0));
     }
     return c;
   }

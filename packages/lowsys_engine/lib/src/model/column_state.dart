@@ -213,6 +213,12 @@ class StepInputs {
 
   /// Feed temperature (K, Tiers 2/3) before fault effects, and reflux subcooling (K), inert vent opening (%).
   double feedT = 365;
+
+  /// True while the feed is a saturated liquid that follows its bubble point (Tier 2/3 default, q = 1).
+  bool feedSat = true;
+
+  /// Initial top pressure (Pa), steam header (absolute, Pa), CW inlet temperature (K) and capacity (kg/s).
+  double pTopInit = 101325, steamHeaderP = 451325, cwInT = 303.15, cwMaxFlow = 41.54;
   double refluxSub = 0;
   double inertVent = 0;
   int feedStage = 1;

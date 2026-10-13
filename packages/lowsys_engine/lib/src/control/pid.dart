@@ -63,6 +63,9 @@ class ControlLoop {
   bool _hist = false;
   double lastError = 0, lastDeltaOp = 0;
 
+  /// Gain-scheduling factor on Kc (PC-101 at a small CW opening, docs/DEVIATIONS.md E44); 1 = tuned gain.
+  double kcScale = 1.0;
+
   ControlLoop({
     required this.tag,
     required this.pvTag,
@@ -118,7 +121,7 @@ class ControlLoop {
     }
     final integral = params.ti.isFinite ? h / params.ti * e : 0.0;
     final deriv = td > 0 ? s * (td / h) * (pvf - 2 * _pvf1 + _pvf2) : 0.0;
-    final dOp = params.kc * ((e - _eStar) + integral + deriv);
+    final dOp = params.kc * kcScale * ((e - _eStar) + integral + deriv);
     if (mode == LoopMode.auto || mode == LoopMode.cas) {
       op = (op + dOp).clamp(params.opLo, params.opHi).toDouble();
       lastDeltaOp = dOp;
@@ -131,6 +134,18 @@ class ControlLoop {
     _pvf1 = pvf;
     _pvPct1 = pv;
     return op;
+  }
+
+  /// Re-ranges the PV span (transmitter re-ranged): the history in percent of span is rescaled so that nothing jumps.
+  void rescaleSpan(double newLo, double newHi) {
+    final k = (hi - lo) / (newHi - newLo);
+    _eStar *= k;
+    _pvf1 = (_pvf1 * k);
+    _pvf2 = (_pvf2 * k);
+    _pvPct1 = (_pvPct1 * k);
+    _pvFilt = (_pvFilt * k);
+    lo = newLo;
+    hi = newHi;
   }
 
   /// Bumpless mode change (PHYSICS.md 10.2): MAN to AUTO tracks the PV into the SP.

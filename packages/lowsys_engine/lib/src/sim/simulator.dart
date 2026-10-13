@@ -25,6 +25,7 @@ import '../snapshot/sim_snapshot.dart';
 import '../thermo/component.dart';
 import '../thermo/thermo_model.dart';
 import '../thermo/tier1_constant_alpha.dart';
+import '../thermo/tier2_raoult.dart';
 import 'lever_spec.dart';
 import 'stepper.dart';
 
@@ -144,6 +145,7 @@ class Simulator {
   HydraulicsMode _hydraulics = HydraulicsMode.ideal;
 
   late Tier1ConstantAlpha _thermo;
+  late Tier2Raoult _t2;
   late ColumnState _state;
   late StepInputs _inputs;
   late ControlSystem _control;
@@ -166,6 +168,9 @@ class Simulator {
 
   double _carry = 0;
   int _serial = 0;
+
+  /// Reboiler duty lever (W) remembered while the column runs Tier 1.
+  double _dutyLever = 1301477.0;
 
   /// Feed-tray fraction phi = feedStage / N, stored when the feed tray is set explicitly and kept across
   /// tray-count rebuilds (PHYSICS.md 13.4).
@@ -217,9 +222,8 @@ class Simulator {
   void _build(ColumnConfig config, _Carry? carry) {
     final problems = config.validate();
     if (problems.isNotEmpty) throw ConfigException(problems.join('; '));
-    if (config.tier != ThermoTier.t1) {
-      throw ConfigException(
-          'Only Tier 1 is available in this build (got ${config.tier.name})');
+    if (config.tier == ThermoTier.t3) {
+      throw ConfigException('Tier 3 arrives with M5');
     }
     _config = config;
     _tier = config.tier;
@@ -227,6 +231,7 @@ class Simulator {
     final nc = config.nc;
     final N = config.trayCount;
     _thermo = Tier1ConstantAlpha.fromConfig(config);
+    _t2 = Tier2Raoult.fromConfig(config);
     final feed = config.feeds.first;
     final lev = config.initialLevers;
 
@@ -244,6 +249,17 @@ class Simulator {
     for (var i = 0; i < nc; i++) {
       inp.z[i] = feed.z[i];
     }
+    inp.pTopInit = lev['pTop'] ?? config.condenser.pTopDesign;
+    inp.steamHeaderP = config.reboiler.steamHeaderPressure;
+    inp.cwInT = config.condenser.cwInletT;
+    inp.cwMaxFlow = config.condenser.cwMaxFlow;
+    inp.refluxSub = lev['refluxSubcooling'] ?? 0.0;
+    inp.inertVent = lev['inertVent'] ?? 0.0;
+    inp.feedSat = lev['feedT'] == null &&
+        feed.thermal is FeedQ &&
+        (feed.thermal as FeedQ).q == 1.0;
+    inp.feedT = lev['feedT'] ?? _feedTemperature(config, inp);
+    _dutyLever = lev['reboilerDuty'] ?? 1301477.0;
     _inputs = inp;
 
     // design flows for the level-loop valves (PHYSICS.md 10.4: D_max = 2 x design D)
@@ -271,6 +287,12 @@ class Simulator {
           sumpLevelSp: config.control.sumpLevelSp,
           levelKc: config.control.levelKc,
           levelTi: config.control.levelTi,
+          pTopDesign: inp.pTopInit,
+          cwMaxFlow: config.condenser.cwMaxFlow,
+          dutyDesign: _dutyLever,
+          nTrays: N,
+          tc101Tray: config.control.tc101Tray,
+          trays: config.control.trayList(N),
         ),
         _seed);
     _trends = TrendBuffer();
@@ -306,6 +328,11 @@ class Simulator {
       ep: _ep,
       faults: _faults,
       full: config.hydraulics == HydraulicsMode.full,
+      tier2: config.tier == ThermoTier.t2,
+      refluxCapacity: l0,
+      t2: _t2,
+      cond: config.condenser,
+      reb: config.reboiler,
       thermo: _thermo,
       s: _state,
       inp: _inputs,
@@ -319,6 +346,7 @@ class Simulator {
     );
     _stepper.initializeCold();
     _initControl();
+    if (_tier == ThermoTier.t2) _enterTier2Control(_dutyLever);
     _levers = _buildLevers();
     _carry = 0;
     _halted = false;
@@ -341,6 +369,7 @@ class Simulator {
       ..feedLight = _inputs.z[0]
       ..xD = _state.x[0]
       ..xB = _state.x[(_state.nTrays + 1) * _state.nc];
+    _stepper.fillBusT2();
     _control.initialise(_stepper.bus, _state.time);
     _trends.reset();
     _control.alarms.reset();
@@ -748,6 +777,120 @@ class Simulator {
           boundLoop: 'LC-102',
           group: 'bottom'),
       LeverSpec(
+          id: 'reboilerDuty',
+          label: 'Reboiler duty Q_R',
+          quantity: Quantity.energyRate,
+          min: 0,
+          max: 3.0e6,
+          defaultValue: _dutyLever,
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          boundLoop: 'FC-103',
+          group: 'bottom'),
+      LeverSpec(
+          id: 'pTop',
+          label: 'Top pressure',
+          quantity: Quantity.pressure,
+          min: 20000,
+          max: 500000,
+          defaultValue: inp.pTopInit,
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          boundLoop: 'PC-101',
+          group: 'top'),
+      LeverSpec(
+          id: 'refluxSubcooling',
+          label: 'Reflux subcooling',
+          quantity: Quantity.temperatureDelta,
+          min: 0,
+          max: 30,
+          defaultValue: 0,
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          group: 'top'),
+      LeverSpec(
+          id: 'feedT',
+          label: 'Feed temperature',
+          quantity: Quantity.temperature,
+          min: 293.15,
+          max: 480,
+          defaultValue: inp.feedT,
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          group: 'feed'),
+      LeverSpec(
+          id: 'cwInletT',
+          label: 'Cooling water inlet T',
+          quantity: Quantity.temperature,
+          min: 278.15,
+          max: 318.15,
+          defaultValue: _config.condenser.cwInletT,
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          group: 'advanced'),
+      LeverSpec(
+          id: 'cwMaxFlow',
+          label: 'Cooling water capacity',
+          quantity: Quantity.massFlow,
+          min: 50 * 995 / 3600,
+          max: 500 * 995 / 3600,
+          defaultValue: _config.condenser.cwMaxFlow,
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          group: 'advanced'),
+      LeverSpec(
+          id: 'steamHeaderP',
+          label: 'Steam header pressure (abs)',
+          quantity: Quantity.pressure,
+          min: 201325,
+          max: 2101325,
+          defaultValue: _config.reboiler.steamHeaderPressure,
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          group: 'advanced'),
+      const LeverSpec(
+          id: 'inertVent',
+          label: 'Overhead inert vent',
+          quantity: Quantity.percent,
+          min: 0,
+          max: 100,
+          defaultValue: 0,
+          tiers: {ThermoTier.t2, ThermoTier.t3},
+          group: 'advanced'),
+      const LeverSpec(
+          id: 'tc101Enable',
+          label: 'TC-101 tray temperature control',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: 0,
+          tiers: {ThermoTier.t2, ThermoTier.t3},
+          group: 'advanced',
+          integer: true),
+      LeverSpec(
+          id: 'tc101Tray',
+          label: 'TC-101 tray',
+          quantity: Quantity.dimensionless,
+          min: 1,
+          max: N.toDouble(),
+          defaultValue: _config.control.tc101Tray.toDouble(),
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          group: 'advanced',
+          integer: true),
+      LeverSpec(
+          id: 'tc101Sp',
+          label: 'TC-101 set point',
+          quantity: Quantity.temperature,
+          min: 273.15,
+          max: 473.15,
+          defaultValue: 365,
+          tiers: const {ThermoTier.t2, ThermoTier.t3},
+          boundLoop: 'TC-101',
+          group: 'advanced'),
+      const LeverSpec(
+          id: 'cwOP',
+          label: 'Cooling water valve OP',
+          quantity: Quantity.percent,
+          min: 0,
+          max: 100,
+          defaultValue: 50,
+          tiers: {ThermoTier.t2, ThermoTier.t3},
+          boundLoop: 'PC-101',
+          group: 'advanced'),
+      LeverSpec(
           id: 'nTrays',
           label: 'Number of trays N',
           quantity: Quantity.dimensionless,
@@ -914,7 +1057,31 @@ class Simulator {
       case 'refluxMode':
         return inp.ratioMode ? 1 : 0;
       case 'boilup':
-        return _control.fc103.sp;
+        return _tier == ThermoTier.t1 ? _control.fc103.sp : inp.boilupSp;
+      case 'reboilerDuty':
+        return _tier == ThermoTier.t1 ? _dutyLever : _control.fc103.sp;
+      case 'pTop':
+        return _tier == ThermoTier.t1 ? inp.pTopInit : _control.pc101.sp;
+      case 'refluxSubcooling':
+        return inp.refluxSub;
+      case 'feedT':
+        return inp.feedT;
+      case 'cwInletT':
+        return inp.cwInT;
+      case 'cwMaxFlow':
+        return inp.cwMaxFlow;
+      case 'steamHeaderP':
+        return inp.steamHeaderP;
+      case 'inertVent':
+        return inp.inertVent;
+      case 'tc101Enable':
+        return _control.tc101Enabled ? 1 : 0;
+      case 'tc101Tray':
+        return _control.tc101Tray.toDouble();
+      case 'tc101Sp':
+        return _control.tc101.sp;
+      case 'cwOP':
+        return _control.pc101.op;
       case 'drumLevelSp':
         return _control.lc101.sp;
       case 'sumpLevelSp':
@@ -1007,7 +1174,37 @@ class Simulator {
         inp.ratioMode = v >= 0.5;
       case 'boilup':
         inp.boilupSp = v;
-        _control.setSp('FC-103', v);
+        if (_tier == ThermoTier.t1) _control.setSp('FC-103', v);
+      case 'reboilerDuty':
+        _dutyLever = v;
+        if (_tier != ThermoTier.t1) _control.setSp('FC-103', v);
+      case 'pTop':
+        inp.pTopInit = v;
+        if (_tier != ThermoTier.t1) {
+          _control.setSp('PC-101', v);
+          _control.setPtSpan();
+        }
+      case 'refluxSubcooling':
+        inp.refluxSub = v;
+      case 'feedT':
+        inp.feedT = v;
+        inp.feedSat = false;
+      case 'cwInletT':
+        inp.cwInT = v;
+      case 'cwMaxFlow':
+        inp.cwMaxFlow = v;
+      case 'steamHeaderP':
+        inp.steamHeaderP = v;
+      case 'inertVent':
+        inp.inertVent = v;
+      case 'tc101Enable':
+        _control.setTc101Enable(v >= 0.5);
+      case 'tc101Tray':
+        _control.setTc101Tray(v.round());
+      case 'tc101Sp':
+        _control.setSp('TC-101', v);
+      case 'cwOP':
+        _opLever('PC-101', v);
       case 'drumLevelSp':
         _control.setSp('LC-101', v);
       case 'sumpLevelSp':
@@ -1058,6 +1255,9 @@ class Simulator {
     final l = _control.loop(tag);
     if (l.mode == LoopMode.man) l.setOp(v);
   }
+
+  /// Opens the failed steam trap bypass (F14, PHYSICS.md 11): the condensate backup falls to zero over 300 s.
+  void openTrapBypass() => _faults.setTrapBypass(true, _state.time);
 
   // ---------------------------------------------------------------- operator actions (M3)
 
@@ -1376,11 +1576,123 @@ class Simulator {
 
   // ---------------------------------------------------------------- structure
 
-  /// Tier 1 only in this milestone.
-  void setTier(ThermoTier tier) {
-    if (tier != ThermoTier.t1) {
-      throw UnsupportedError('Tier ${tier.name} arrives with M4/M5');
+  // ---------------------------------------------------------------- Tier 2 helpers (M4)
+
+  /// Feed temperature (K) for a feed given as q, vapour fraction or temperature (PHYSICS.md 3.6.3, 3.15).
+  double _feedTemperature(ColumnConfig config, StepInputs inp) {
+    final th = config.feeds.first.thermal;
+    if (th is FeedTemperature) return th.t;
+    final nc = config.nc;
+    final z = Float64List.fromList(inp.z);
+    final p = inp.pTopInit;
+    final health = SolverHealth();
+    final y = Float64List(nc), k = Float64List(nc), x = Float64List(nc);
+    final tb = _t2.bubbleT(p, z, 0, y, k, health);
+    final q = th is FeedQ ? th.q : 1 - (th as FeedVaporFraction).beta;
+    if (q == 1) return tb;
+    if (q > 1) {
+      final lam = _t2.hV(tb, y) - _t2.hL(tb, z);
+      return tb - (q - 1) * lam / _t2.cpL(tb, z);
     }
+    final td = _t2.dewT(p, z, tb + 5, x, health);
+    if (q <= 0) {
+      final lam = _t2.hV(td, z) - _t2.hL(td, x);
+      return td - q * lam / _t2.cpL(td, z) * 0.5;
+    }
+    var lo = tb, hi = td;
+    for (var i = 0; i < 60; i++) {
+      final mid = 0.5 * (lo + hi);
+      if (_t2.flashBeta(mid, p, z) < 1 - q) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  /// Makes the control system a Tier-2 one: Tier-2 instruments visible, FT-103 in kW, FC-103 on the duty [duty] (W).
+  void _enterTier2Control(double duty) {
+    _stepper.prepareTier2();
+    _stepper.fillBusT2();
+    _control.enterTier2(_stepper.bus, _state.time,
+        duty: duty, qMax0: _stepper.qMax0);
+    final tr = _config.control.tc101Tray;
+    if (_control.trayIds.contains(tr)) _control.setTc101Tray(tr);
+  }
+
+  /// Runtime tier switch (PHYSICS.md 13.5): the state X is kept, only the model of the derived quantities changes.
+  void setTier(ThermoTier tier) {
+    if (tier == ThermoTier.t3) {
+      throw UnsupportedError('Tier t3 arrives with M5');
+    }
+    if (tier == _tier) return;
+    final s = _state;
+    final N = s.nTrays;
+    final nc = s.nc;
+    final inp = _inputs;
+    if (tier == ThermoTier.t2) {
+      // top vapour V1 and D continuous: Q_R from the steady energy balance with Tier-2 enthalpies
+      final v1 = s.vapor[1];
+      final dFlow = _debug.dt > 0 ? _debug.distillateFlow : _control.lv101.flow;
+      final bFlow = _debug.dt > 0 ? _debug.bottomsFlow : _control.lv102.flow;
+      final fFlow = _debug.dt > 0 ? _debug.feedFlow : s.feedAct;
+      _tier = ThermoTier.t2;
+      _config = _config.copyWith(tier: ThermoTier.t2);
+      _stepper.tier2 = true;
+      s.pTop = inp.pTopInit;
+      s.nI = 0;
+      s.nVi.fillRange(0, nc, 0);
+      s.tSat0 = 0;
+      for (var j = 0; j < s.n; j++) {
+        s.t[j] = 0;
+      }
+      _stepper.hyd.pTop = s.pTop;
+      _stepper.t2Thermo(s.pTop);
+      _stepper.t2InitInventory();
+      inp.feedSat = _config.feeds.first.thermal is FeedQ &&
+          (_config.feeds.first.thermal as FeedQ).q == 1.0 &&
+          inp.feedQ == 1.0;
+      inp.feedT = _feedTemperature(_config, inp);
+      final hF = _stepper.feedEnthalpyFor(_ep.zEff);
+      final duty = v1 * (s.hVap[1] - s.hLiq[0]) +
+          dFlow * s.hLiq[0] +
+          bFlow * s.hLiq[N + 1] -
+          fFlow * hF;
+      _dutyLever = math.max(0.0, duty);
+      _stepper.refreshFromHoldups();
+      _stepper.t2Thermo(s.pTop);
+      _enterTier2Control(_dutyLever);
+      _levers = _buildLevers();
+    } else {
+      // Tier 2 -> Tier 1: V_B := V1 - (1 - q) F
+      final v1 = s.vapor[1];
+      final f = _debug.dt > 0 ? _debug.feedFlow : s.feedAct;
+      var q = 1.0;
+      try {
+        q = _t2.qOfFeed(_stepper.feedTemp > 0 ? _stepper.feedTemp : inp.feedT,
+            s.pStage[inp.feedStage], _ep.zEff);
+      } catch (_) {}
+      q = q.clamp(-0.5, 1.5).toDouble();
+      inp.feedQ = q;
+      final vb = math.max(0.0, v1 - (1 - q) * f);
+      inp.boilupSp = vb;
+      _tier = ThermoTier.t1;
+      _config = _config.copyWith(tier: ThermoTier.t1);
+      _stepper.tier2 = false;
+      _stepper.restoreTier1Props();
+      _control.enterTier1(_state.time, boilup: vb);
+      _stepper.refreshFromHoldups();
+      _stepper.refreshVapour();
+      _levers = _buildLevers();
+    }
+    _stepper.bus
+      ..drumLevelPct = _stepper.drumLevelPct
+      ..sumpLevelPct = _stepper.sumpLevelPct;
+    _stepper.fillBusT2();
+    _resetMonitor(capture: true);
+    if (_control.noise) _resetNoisyMonitor();
+    _noteChange();
   }
 
   /// Switches between ideal (M1) and full tray hydraulics. The composition state is kept; the entrainment
@@ -1565,6 +1877,11 @@ class Simulator {
       }
     }
     final p = Float64List(n)..fillRange(0, n, _config.condenser.pTopDesign);
+    final t2 = _tier != ThermoTier.t1;
+    if (t2) {
+      p.setAll(0, s.pStage);
+      p[0] = s.pTop;
+    }
     var maxFlood = 0.0, maxWeep = 0.0, columnDp = 0.0;
     final dcFlood = Float64List(n),
         fill = Float64List(n),
@@ -1593,7 +1910,7 @@ class Simulator {
       x: Float64List.fromList(s.x),
       y: Float64List.fromList(s.y),
       yStar: Float64List.fromList(s.yStar),
-      t: Float64List(n)..fillRange(0, n, nan),
+      t: t2 ? Float64List.fromList(s.t) : (Float64List(n)..fillRange(0, n, nan)),
       p: p,
       liquidDown: Float64List.fromList(s.liquid),
       vaporUp: Float64List.fromList(s.vapor),
@@ -1626,13 +1943,24 @@ class Simulator {
     final xSump = Float64List.fromList(s.x.sublist((N + 1) * nc, (N + 2) * nc));
     final ySump = Float64List.fromList(s.y.sublist((N + 1) * nc, (N + 2) * nc));
     final zEff = Float64List.fromList(_ep.zEff);
+    var feedQLive = nan;
+    if (t2) {
+      try {
+        feedQLive = _t2.qOfFeed(_stepper.feedTemp > 0 ? _stepper.feedTemp : _inputs.feedT,
+            s.pStage[_inputs.feedStage], zEff);
+      } catch (_) {}
+    }
     final streams = <StreamId, StreamSnapshot>{
-      StreamId.feed: StreamSnapshot(StreamId.feed, f, zEff, nan),
-      StreamId.reflux: StreamSnapshot(StreamId.reflux, l0, xDrum, nan),
+      StreamId.feed: StreamSnapshot(
+          StreamId.feed, f, zEff, t2 ? _stepper.feedTemp : nan, feedQLive),
+      StreamId.reflux:
+          StreamSnapshot(StreamId.reflux, l0, xDrum, t2 ? s.tRefl : nan),
       StreamId.distillate:
-          StreamSnapshot(StreamId.distillate, dFlow, xDrum, nan),
-      StreamId.bottoms: StreamSnapshot(StreamId.bottoms, bFlow, xSump, nan),
-      StreamId.boilup: StreamSnapshot(StreamId.boilup, vUp, ySump, nan),
+          StreamSnapshot(StreamId.distillate, dFlow, xDrum, t2 ? s.tRefl : nan),
+      StreamId.bottoms: StreamSnapshot(
+          StreamId.bottoms, bFlow, xSump, t2 ? s.t[N + 1] : nan),
+      StreamId.boilup: StreamSnapshot(
+          StreamId.boilup, vUp, ySump, t2 ? s.t[N + 1] : nan),
     };
     final xD = s.x[0];
     final xB = s.x[(N + 1) * nc];
@@ -1647,16 +1975,16 @@ class Simulator {
       b: bFlow,
       refluxRatio: dFlow > 1e-9 ? l0 / dFlow : nan,
       boilup: vUp,
-      qc: nan,
-      qr: nan,
+      qc: t2 ? s.qC : nan,
+      qr: t2 ? _stepper.qDelivered : nan,
       columnDp: columnDp,
       maxFloodPct: 100 * maxFlood,
       maxWeepFraction: maxWeep,
       drumLevelPct: drumPct,
       sumpLevelPct: sumpPct,
-      pTop: _config.condenser.pTopDesign,
+      pTop: t2 ? s.pTop : _config.condenser.pTopDesign,
       balanceResidual: fz > 0 ? (fz - dFlow * xD - bFlow * xB).abs() / fz : 0.0,
-      energyResidual: nan,
+      energyResidual: t2 ? _stepper.energyResidual : nan,
     );
     final plant = _view == SimView.plant;
     final alarms = [
@@ -1680,9 +2008,39 @@ class Simulator {
     var stagesOut = stages;
     var streamsOut = streams;
     var kpisOut = kpis;
-    var condOut = CondenserSnapshot(s.holdup[0], drumPct);
+    var condOut = CondenserSnapshot(s.holdup[0], drumPct,
+        vaporInventory: Float64List(0));
     var rebOut = ReboilerSnapshot(s.holdup[N + 1], sumpPct,
         mMin > 0 ? (s.holdup[N + 1] / mMin).clamp(0.0, 1.0) : 1.0);
+    if (t2) {
+      condOut = CondenserSnapshot(s.holdup[0], drumPct,
+          qC: s.qC,
+          uaClean: _config.condenser.uaClean,
+          uaEff: _stepper.uaCondEff,
+          tCwIn: _stepper.cwInT,
+          tCwOut: _stepper.cwOutT,
+          cwFlow: _stepper.cwFlow,
+          cwOp: _control.pc101.op,
+          tCond: s.tSat0,
+          tReflux: s.tRefl,
+          subcooling: s.tSat0 - s.tRefl,
+          inertFraction: _stepper.yIner,
+          vaporMoles: _stepper.overheadMoles,
+          nCond: s.nCond,
+          nVent: s.nVent,
+          nRelief: s.nRelief,
+          vaporInventory: Float64List.fromList(s.nVi));
+      rebOut = ReboilerSnapshot(s.holdup[N + 1], sumpPct, rebOut.starvation,
+          qDelivered: _stepper.qDelivered,
+          qMax: _stepper.qMax,
+          uaClean: _config.reboiler.uaClean,
+          uaEff: _stepper.uaRebEff,
+          steamP: _stepper.steamHeaderAbs,
+          steamT: _stepper.steamT,
+          steamValveOp: _control.fv103.position,
+          tSump: s.t[N + 1],
+          dutyLimited: _control.modelDutyLimited);
+    }
     if (plant) {
       Float64List nanArr(int len) => Float64List(len)..fillRange(0, len, nan);
       final lt1 = rd('LT-101').value, lt2 = rd('LT-102').value;
@@ -1761,7 +2119,8 @@ class Simulator {
         balanceResidual: nan,
         energyResidual: nan,
       );
-      condOut = CondenserSnapshot(hold[0], lt1);
+      condOut = CondenserSnapshot(hold[0], lt1,
+          vaporInventory: Float64List(0));
       rebOut = ReboilerSnapshot(hold[N + 1], lt2, rebOut.starvation);
     }
     final loopSnaps = <LoopSnapshot>[];
