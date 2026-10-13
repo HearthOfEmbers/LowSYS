@@ -111,21 +111,21 @@ class McCabePainter extends CustomPainter {
     _poly(canvas, plot, d.cmoStripping, cmo, dash: (ch.dashOn, ch.dashOff));
 
     // --- minimum reflux construction
-    if (d.rmin != null) {
+    if (d.rmin != null && d.rmin!.line != null) {
       final r = d.rmin!;
       canvas.drawLine(
-          _pt(plot, r.from.x, r.from.y),
-          _pt(plot, r.to.x, r.to.y),
+          _pt(plot, r.line!.a.x, r.line!.a.y),
+          _pt(plot, r.line!.b.x, r.line!.b.y),
           Paint()
             ..color = p.accent2
             ..strokeWidth = 1.2);
       canvas.drawCircle(
-          _pt(plot, r.touch.x, r.touch.y),
+          _pt(plot, r.pinch!.x, r.pinch!.y),
           5,
           Paint()
             ..color = p.accent2
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.4);
+            ..strokeWidth = r.tangentPinch ? 2.2 : 1.4);
     }
 
     // --- Tier 2: the band between the curve at P_top and at P_bottom (a real column has no single curve)
@@ -383,6 +383,21 @@ class McCabePainter extends CustomPainter {
 
     // --- title block (lower right, drafting-sheet style); a one-line caption when space is tight
     if (!compact) _titleBlock(canvas, plot, d, snap, compact);
+
+    // --- R_min blocked by an azeotrope: no line, a banner (PHYSICS.md 14.1)
+    final blk = d.rmin?.blocked;
+    if (blk != null) {
+      final which = blk.side == AzeotropeSide.distillate ? 'x_D' : 'x_B';
+      final msg = '$which is beyond the azeotrope (x = ${blk.xAzeotrope.toStringAsFixed(4)}): no reflux ratio reaches it';
+      final tp = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr, maxLines: 2, ellipsis: '…')..layout(maxWidth: plot.width - 20);
+      final r = Rect.fromLTWH(plot.left + 8, plot.bottom - tp.height - 14 - (compact ? 0 : 56), tp.width + 12, tp.height + 6);
+      canvas.drawRect(r, Paint()..color = p.bg.withValues(alpha: 0.9));
+      canvas.drawRect(r, Paint()
+        ..color = p.warn
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.9);
+      tp.paint(canvas, Offset(r.left + 6, r.top + 3));
+    }
 
     // --- transient stamp (inside the plot, top centre, on a backing pill)
     if (d.transient) {

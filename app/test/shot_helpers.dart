@@ -36,6 +36,9 @@ Future<void> loadFonts() async {
   await load('STIX Two Math', 'assets/fonts/STIXTwoMath-Regular.ttf');
   await load('Rajdhani', 'assets/fonts/Rajdhani-Medium.ttf');
   await load('JetBrains Mono', 'assets/fonts/JetBrainsMono-VF.ttf');
+  // Paper's Source Sans 3 / Source Serif 4 are not bundled: stand-ins from the OS so that the screenshots are legible
+  await load('Source Sans 3', 'C:/Windows/Fonts/segoeui.ttf');
+  await load('Source Serif 4', 'C:/Windows/Fonts/georgiai.ttf');
 }
 
 final bool shots = Platform.environment['LOWSYS_SHOTS'] == '1';

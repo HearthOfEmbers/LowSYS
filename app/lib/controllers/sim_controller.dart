@@ -16,7 +16,35 @@ class SimController extends ChangeNotifier {
   final SimRunner runner;
   final McCabeThieleBuilder _builder = McCabeThieleBuilder();
 
-  SimController({SimRunner? runner}) : runner = runner ?? LocalSimRunner();
+  final TxyBuilder _txyBuilder = TxyBuilder();
+
+  SimController({SimRunner? runner}) : runner = runner ?? LocalSimRunner() {
+    diagramTab.addListener(() {
+      if (_loaded) _refresh();
+    });
+    txySub.addListener(() {
+      if (_loaded) _refresh();
+    });
+  }
+
+  /// T-x-y curves and column overlay (binaries only), refreshed while the T-x-y tab is open; null otherwise.
+  final ValueNotifier<TxyView?> txy = ValueNotifier<TxyView?>(null);
+
+  /// T-x-y sub-view: 0 T-x-y, 1 x-y.
+  final ValueNotifier<int> txySub = ValueNotifier<int>(0);
+
+  /// Diagram tab ids in display order: 0 McCabe-Thiele, 2 T-x-y (binaries only), 1 Profiles. Figure numbers of the Paper
+  /// theme follow the position (SCOPE.md 7.2).
+  List<int> get diagramTabOrder => [0, if (config.components.length == 2) 2, 1];
+
+  /// Cycles the tier through the tiers the system offers (key T).
+  Future<void> cycleTier() async {
+    final s = snapshot.value;
+    if (s == null) return;
+    final avail = [for (final x in ThermoTier.values) if (config.availableTiers.contains(x)) x];
+    final next = avail[(avail.indexOf(s.tier) + 1) % avail.length];
+    if (next != s.tier) await setTier(next);
+  }
 
   /// Latest snapshot (null until loaded).
   final ValueNotifier<SimSnapshot?> snapshot = ValueNotifier<SimSnapshot?>(
@@ -41,7 +69,7 @@ class SimController extends ChangeNotifier {
     const {},
   );
 
-  /// Diagram tab (0 McCabe-Thiele, 1 Profiles) and the profile quantity (index into ProfileKind).
+  /// Diagram tab (0 McCabe-Thiele, 1 Profiles, 2 T-x-y) and the profile quantity (index into ProfileKind).
   final ValueNotifier<int> diagramTab = ValueNotifier<int>(0);
   final ValueNotifier<int> profileKind = ValueNotifier<int>(0);
 
@@ -289,7 +317,7 @@ class SimController extends ChangeNotifier {
     await runner.setTier(t);
     if (before != null) {
       tierGhost.value = TierGhost(
-        before.tier == ThermoTier.t1 ? 'Tier 1' : 'Tier 2',
+        'Tier ${before.tier.index + 1}',
         List<double>.from(before.stages.vaporUp),
         List<double>.from(before.stages.liquidDown),
       );
@@ -426,6 +454,12 @@ class SimController extends ChangeNotifier {
     snapshot.value = s;
     final t2 = sw.elapsedMicroseconds;
     mccabe.value = _builder.build(s, runner.thermo, showRmin: showRmin);
+    if (diagramTab.value == 2 && s.stages.nc == 2 && s.view == SimView.model) {
+      final th = runner.thermo;
+      txy.value = _txyBuilder.build(s, (s.tier != ThermoTier.t1 && th is Tier2Raoult) ? th : runner.idealThermo);
+    } else if (txy.value != null && diagramTab.value != 2) {
+      txy.value = null;
+    }
     if (perfRecording) {
       perfSnapshot.add(t1);
       perfNotify.add(t2 - t1);
@@ -566,6 +600,8 @@ class SimController extends ChangeNotifier {
     tierGhost.dispose();
     compositionShading.dispose();
     diagramTab.dispose();
+    txy.dispose();
+    txySub.dispose();
     profileKind.dispose();
     controlTab.dispose();
     mathTarget.dispose();

@@ -191,12 +191,15 @@ class TrayInspector extends StatelessWidget {
                     children: [
                       Icon(Icons.functions, size: 18, color: p.accent),
                       const SizedBox(width: 4),
-                      Text(
-                        'Equations',
-                        style: t.type.label.style(
-                          13.5,
-                          p.accent,
-                          weight: FontWeight.w700,
+                      Flexible(
+                        child: Text(
+                          'Equations',
+                          overflow: TextOverflow.ellipsis,
+                          style: t.type.label.style(
+                            13.5,
+                            p.accent,
+                            weight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],

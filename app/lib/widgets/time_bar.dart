@@ -152,11 +152,18 @@ class _SpeedMenu extends StatelessWidget {
   }
 }
 
-/// T1 / T2 badge: tap to switch the thermodynamic tier. The switch keeps the top vapour and the distillate
-/// (PHYSICS.md 13.5), so the learner sees the vapour profile change and the products stay put.
+/// T1 / T2 / T3 badge: tap to switch the thermodynamic tier. The switch keeps the top vapour and the distillate
+/// (PHYSICS.md 13.5), so the learner sees the vapour profile change and the products stay put. T3 is hidden for
+/// systems whose Tier 3 is Tier 2 (`bt`, `crude`).
 class _TierBadge extends StatelessWidget {
   final SimController sim;
   const _TierBadge({required this.sim});
+
+  static const _tips = {
+    ThermoTier.t1: 'Tier 1: constant relative volatility and molar overflow.',
+    ThermoTier.t2: 'Tier 2: ideal VLE (Raoult) with energy balances.',
+    ThermoTier.t3: 'Tier 3: non-ideal VLE (NRTL or DePriester K) with energy balances.',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -165,27 +172,28 @@ class _TierBadge extends StatelessWidget {
     return ValueListenableBuilder<SimSnapshot?>(
       valueListenable: sim.snapshot,
       builder: (_, s, __) {
-        final t2 = s != null && s.tier != ThermoTier.t1;
+        final tier = s?.tier ?? ThermoTier.t1;
+        final avail = [for (final x in ThermoTier.values) if (sim.runner.config.availableTiers.contains(x)) x];
+        final next = avail.isEmpty ? tier : avail[(avail.indexOf(tier) + 1) % avail.length];
         final locked = sim.lockedLevers.contains('tier');
+        final label = 'T${tier.index + 1}';
         return Tooltip(
-          message: t2
-              ? 'Tier 2: ideal VLE with energy balances. Tap for Tier 1 (textbook, constant molar overflow).'
-              : 'Tier 1: constant relative volatility and molar overflow. Tap for Tier 2 (ideal VLE with energy balances).',
+          message: '${_tips[tier]} Tap for ${_tips[next]!.split(':').first}.',
           child: InkWell(
-            onTap: locked || s == null ? null : () => sim.setTier(t2 ? ThermoTier.t1 : ThermoTier.t2),
+            onTap: locked || s == null || next == tier ? null : () => sim.setTier(next),
             child: Container(
               constraints: const BoxConstraints(minHeight: 48, minWidth: 44),
               alignment: Alignment.center,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                  border: Border.all(color: t2 ? p.accent : p.inkMuted, width: 1.4),
+                  border: Border.all(color: tier != ThermoTier.t1 ? p.accent : p.inkMuted, width: 1.4),
                   borderRadius: BorderRadius.circular(3),
                 ),
                 child: Text(
-                  t2 ? 'T2' : 'T1',
+                  label,
                   key: const ValueKey('tier-badge'),
-                  style: t.type.number.style(14, t2 ? p.accent : p.inkMuted, weight: FontWeight.w700),
+                  style: t.type.number.style(14, tier != ThermoTier.t1 ? p.accent : p.inkMuted, weight: FontWeight.w700),
                 ),
               ),
             ),
