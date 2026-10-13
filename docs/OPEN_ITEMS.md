@@ -15,6 +15,18 @@ Collected by the lead from validation passes. Fix in the docs, then delete the i
   - **DePriester range (PHYSICS.md §3.4.2, M5 code).** Validity is 365–852 °R, not 700 °R. Outside it, evaluate the formula unclamped and only flag `thermoOutOfRange`. A clamped T makes K independent of T, and the bubble-point Newton then has g' = 0 (the prototype's depropanizer bottoms ran away to 514 °C). The engine at e1d4ae4 has no DePriester code yet, so implement it this way from the start. `c4` is unaffected.
   - **Additive.** Theme tokens `seriesDash1…6` (existing themes: solid); KPIs `xDHeavy` / `xBLight` (binary: 1 − xD and xB); diagnosis vocabulary `pump` / `refluxPump`.
 
+- **M4 close-out spec decisions (2026-10-13), engine 1155f40.**
+  - **(7.4) entrainment term (PHYSICS.md §7.2).** N_cond = [V_1 (H_V − H_1) + Q_C − e_1 (h_1 − h_0)] / (H_V − h_0), also inside the §7.4 pressure solve. No change in ideal hydraulics.
+  - **Partial condenser CW default (PHYSICS.md §7.2, ENGINE_API.md §4).** New preset field `condenser.cwOpPartial` (default and B-T 30 %); `cwOP` takes it whenever a partial condenser is built (preset load or the `condenserType` switch). Below the total-condensation OP is the rule; 70 % is gone.
+  - **Balances with D_V.** `Kpis.balanceResidual` = |F z − D x_D − D_V y_V − B x_B| / F z (y_V: overhead-inventory composition, light component). The Energy card's column balance shows D_V H_V,0 as an out term (this is E50-a).
+  - **Cross-checks with a partial condenser (PHYSICS.md §14.6 common rules).** C1, C2 and C3b show `n/a` ("vapour product not metered"); C3a and C5 (drum) stay; C4 PV-101/FT-201 runs on the CW valve (it is skipped now); no C4 row for PV-102. Replaces the "flags D_V as unaccounted" behaviour.
+  - **PC-101 → PV-102 Kc 2.0 / Ti 30 s** is now the spec value (§10.7); record it against E50 in DEVIATIONS.md.
+  - **T1 → T2 switch:** PC-101's initial OP is the 50 % design value (§13.5 said 70 %). Check what the engine does.
+  - **G11 stays Tier 1** (SCOPE.md and M4.md now agree with ENGINE_API.md §11.8). Nothing to change in code.
+- **M5 rulings (2026-10-13, DEVIATIONS.md "M5 checkpoint").**
+  - **T2 ↔ T3 pressure (PHYSICS.md §13.5).** Engine change: with a total condenser the switch sets PC-101's OP and the CW valve position so that Q_C is continuous (closed form from (7.3) in §13.5; `c4` ≈ 59 %), and sets T^(n−1) := T after the first new-tier bubble-point solve. VC-28.3's ±0.5 kPa stays. If the peak is still above 0.5 kPa after this, report the trend and the cause here; do not retune PC-101.
+  - **G9 o3 (ENGINE_API.md §11.8).** Drop `steady` from o3 (now tier == 1 ∧ xD ≥ 0.95, hold 300) and use the new hint 2 text, which no longer says "run to steady state". Time limit unchanged.
+
 ## For validator
 
 - **M6: H9.0/H10.0 in Tier 2** with the process-driven typical σ: four tags judged on 0.33–3; calibration check median 0.7–1.4 over seeds 1–3 (VALIDATION.md H9.0). Not run in the 2026-10-13 pass: engine e1d4ae4 has no σ_proc yet.
@@ -23,14 +35,10 @@ Collected by the lead from validation passes. Fix in the docs, then delete the i
 - **M7: the [I] numbers come from one prototype.** VC-9.3 and VC-9.5–9.8 and the H6 [ ] values come from `tools/prototypes/m7/` (an independent steady-state solver; it reproduces VC-4.1's 0.981183 and VC-9.1/9.2 exactly). Re-derive about four of them with your own code: the VC-9.3 recoveries, the VC-9.5 dew points, and `debut` T_B and Q_R in VC-9.6. Record the engine's G13 settling time (the 86 400-s limit is an estimate) and the H6 timings.
 - **M7: PC-101 on the high-pressure presets.** Estimated loop gain against B-T: about 0.6× (`debut`) and 1.0× (`deprop`). The larger PT-101 span (E48) offsets the smaller dT_sat/dP. Record the response to a ±2 % SP step on each. Report here if it oscillates or takes more than 15 min to settle.
 
-## For the physics lead
+- **M4 close-out re-checks (2026-10-13 spec).** VC-5.4 in full hydraulics: assert only the new (7.4) form (≤ 1e-6 at design and +20 % load) once the coder lands it. Partial condenser at B-T `cwOpPartial` 30 %: `balanceResidual` ≤ 1e-9 at steady state, the Energy card residual (E50-a), C1/C2/C3b `n/a`, C3a/C5 `ok`, C4 PV-101 on the CW valve. VC-16.6b against its restated criteria (Kc 2.0).
+- **M5: VC-28.3 switch** with the Q_C-continuous CW initialisation: P within ±0.5 kPa throughout; record the CW OP after the switch and the peak. **G9** hint path with the new o3: record the sim time from the Tier-1 switch to o3 and the total path time against the 172 800-s limit (raise here if over half).
 
-- **M4 close-out (validator, engine 1155f40; DEVIATIONS.md "M4 validation").**
-  1. **(7.4) leaves out the entrained tray-1 liquid.** In full hydraulics, e_1 enters the drum at h_1 ((7.6) counts its mass), but (7.4) treats it as if it arrived at h_0. As a result VC-5.4 fails: 6.8e-6 at the B-T design point and 1.9e-5 at +20 % load. *Proposal:* N_cond = [V_1 (H_V − H_1) + Q_C − e_1 (h_1 − h_0)] / (H_V − h_0). With that term the residual is 1.8e-11.
-  2. **The partial condenser's `cwOP` default of 70 % (§7.2) predates the 50 % design.** B-T condenses all of V_1 at CW ≥ ≈ 48.5 %, so at 70 % PV-102 shuts, D_V = 0 and P floats to 94.5 kPa. *Proposal:* a per-preset default below the total-condensation OP. For B-T, 30 % gives D_V 12.6 kmol/h.
-  3. **Vapour product in the balances.** `Kpis.balanceResidual` (ENGINE_API.md: |F z − D x_D − B x_B| / F z) is 0.25 at a partial-condenser steady state. The Energy card (SCOPE.md §M4: "Q_C + D h_D + B h_B out") has no D_V h_V either. *Proposal:* add D_V y_V and D_V h_V,0. `Kpis.energyResidual` already includes D_V h_V,0; the snapshot side is Coder item E50-a.
-  4. **VC-16.6b tuning.** The engine runs PC-101 → PV-102 at Kc 2.0 / Ti 30 s (spec: 1.0 / 30, [impl-tunable]), and it meets the criteria. Ratify it in the §10.7 table.
-  5. **G11 tier.** SCOPE.md says "G11 upgraded to Tier 2" in M4, but ENGINE_API.md §11.8 and the milestone table ship it in Tier 1. Owner decision.
+## For the physics lead
 
 - **M7 decisions taken in the readiness pass (settled; listed so that the owner can overrule them).**
   1. The sandbox presets use E = 0.7 tray counts: `debut` 32 / 16, `deprop` 28 / 11, from FUG N / 0.7 and a Tier-3 feed-tray scan. The v1.0 counts (22 / 12, 20 / 8) were the E = 1 designs and gave 0.943 / 0.942 recoveries at E = 0.7. VC-9.3 keeps 22 / 12 at E = 1.
@@ -50,6 +58,16 @@ Collected by the lead from validation passes. Fix in the docs, then delete the i
   4. "Plant view with engineering calculations" (view 2) for H1, H3 and H5, so that instrument and feed candidates are not given away by model-view truth. *Fallback if the coder finds it costly:* model view with the drill masking of fault parameters (as for H2 and H4), accepting that FT-102 bias (H3), LT-102 drift (H5) and the lighter feed (H1) can then be read off the drawn streams and level. Record the fallback in DEVIATIONS.md.
   5. H5 `lt102_drift` is exempt from rule 1 (ENGINE_API.md §11.5). If its noise-on rows in VALIDATION.md §H fail, set its weight to 0 and record it, as for H9/H10.
 - **Low priority, M3 table cell.** PHYSICS.md §14.6, "Which checks fail" row "LT-101 or LT-102 drift": C1 is listed as "fail (∝ W)". r1 is a rate, so it does not grow with the window: 10 %/h on LT-102 is ≈ 1.15 band (`check`) at every window. Only C5 grows with W. The M6 row added below that table states this correctly. Fix the old cell when the table is next touched; no test depends on it.
+
+## Resolved 2026-10-13 (M4 close-out, validator at 1155f40; M5 engine notes)
+
+- **(7.4) entrainment:** e_1 (h_1 − h_0) added to the condenser balance as proposed (PHYSICS.md §7.2, M4 excerpt). VC-5.4 closes to 1.8e-11 with it.
+- **Partial condenser 70 % CW:** per-preset `condenser.cwOpPartial`, B-T 30 % (D_V ≈ a quarter of the design D); at or above ≈ 48.5 % P falling below SP with PV-102 shut is stated as correct behaviour.
+- **balanceResidual 0.25 with a partial condenser:** the formula and the Energy card now include the vapour product. Cross-checks that need D_V are `n/a` (no meter).
+- **VC-16.6b:** Kc 2.0 / Ti 30 s ratified with explicit criteria (settle ≤ 600 s, overshoot ≤ 30 %, decay ratio ≤ 0.3).
+- **G11 tier:** stays Tier 1. In Tier 2 the B-T condenser cannot follow the load (×1.3 needs ≈ 1.67 MW, 1.39 MW at 100 % CW), so the scenario would teach a condenser limit and none of its [P] numbers would hold. SCOPE.md and M4.md corrected. Owner may overrule.
+- **M5 `c4` T2 → T3 +5.7 kPa:** a model-switch artefact, not a process event. Fixed by a Q_C-continuous CW initialisation in §13.5; VC-28.3's ±0.5 kPa kept.
+- **M5 G9 vs Tier-1 `ew` 83 h to steady:** o3 no longer requires `steady`; x_D ≥ 0.95 already proves the point. Hint 2 and the VALIDATION G9 checkpoint updated. Time limit unchanged.
 
 ## Resolved 2026-10-13
 
