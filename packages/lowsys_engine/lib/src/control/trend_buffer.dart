@@ -122,6 +122,49 @@ class TrendBuffer {
   /// Time (s) at the end of the newest closed bin.
   double get newestEnd => _nextBin * binSeconds;
 
+  /// Closed bins of the named series newer than the absolute bin index in [synced] (0 for a series not yet mirrored),
+  /// for a background runner to send to a mirror buffer ([ingest]). Plain lists, safe to send between isolates.
+  Map<String, Object?> exportSince(Map<String, int> synced) {
+    final out = <String, Object?>{};
+    for (final e in synced.entries) {
+      final i = _index[e.key];
+      if (i == null) continue;
+      final from = e.value < _nextBin - count ? _nextBin - count : e.value;
+      if (from >= _nextBin) continue;
+      out[e.key] = [
+        from,
+        [for (var b = from; b < _nextBin; b++) _mean[i][b % capacity]],
+        [for (var b = from; b < _nextBin; b++) _min[i][b % capacity]],
+        [for (var b = from; b < _nextBin; b++) _max[i][b % capacity]],
+        [for (var b = from; b < _nextBin; b++) _qual[i][b % capacity]],
+      ];
+    }
+    return {"count": count, "nextBin": _nextBin, "curBin": _curBin, "series": out};
+  }
+
+  /// Applies an [exportSince] payload to this mirror buffer; returns the new synced bin (the sender's next bin).
+  int ingest(Map<String, Object?> p) {
+    final next = p["nextBin"]! as int;
+    final series = p["series"]! as Map<Object?, Object?>;
+    for (final e in series.entries) {
+      final i = register(e.key! as String);
+      final l = e.value! as List<Object?>;
+      final from = l[0]! as int;
+      final mean = l[1]! as List<Object?>, mn = l[2]! as List<Object?>, mx = l[3]! as List<Object?>, q = l[4]! as List<Object?>;
+      for (var k = 0; k < mean.length; k++) {
+        final slot = (from + k) % capacity;
+        _mean[i][slot] = mean[k]! as double;
+        _min[i][slot] = mn[k]! as double;
+        _max[i][slot] = mx[k]! as double;
+        _qual[i][slot] = q[k]! as int;
+      }
+    }
+    count = p["count"]! as int;
+    _nextBin = next;
+    _curBin = p["curBin"]! as int;
+    return next;
+  }
+
   /// Forgets every stored bin (after a warm start or a re-initialisation).
   void reset() {
     count = 0;

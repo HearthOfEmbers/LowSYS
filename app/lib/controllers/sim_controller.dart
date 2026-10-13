@@ -8,6 +8,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../painters/packed_painter.dart' show BedSpec;
 import '../painters/profile_painter.dart' show TierGhost;
 import 'save_store.dart';
+import 'sim_runner_factory.dart' show kEngineBudgetMs;
 
 /// Speeds offered in the TimeBar; 0 is pause.
 const List<double> kSpeeds = [0, 1, 2, 5, 10, 30, 100, 300, 1000];
@@ -16,9 +17,7 @@ const List<double> kSpeeds = [0, 1, 2, 5, 10, 30, 100, 300, 1000];
 /// The per-frame path never rebuilds widgets: painters listen to [snapshot] and [mccabe].
 class SimController extends ChangeNotifier {
   final SimRunner runner;
-  final McCabeThieleBuilder _builder = McCabeThieleBuilder();
 
-  final TxyBuilder _txyBuilder = TxyBuilder();
 
   SimController({SimRunner? runner}) : runner = runner ?? LocalSimRunner() {
     diagramTab.addListener(() {
@@ -197,12 +196,26 @@ class SimController extends ChangeNotifier {
     }
   }
 
+  /// Onboarding tutorial step being shown (null: hidden). It opens by itself on the first run with a save store.
+  final ValueNotifier<int?> onboardingStep = ValueNotifier<int?>(null);
+
+  /// Marks the tutorial as seen, so it does not open again at the next launch.
+  Future<void> finishOnboarding() async {
+    onboardingStep.value = null;
+    try {
+      await saveStore?.write('onboarding.done', '1');
+    } on Object {
+      // a convenience only
+    }
+  }
+
   Future<void> restoreSettings() async {
     final store = saveStore;
     if (store == null) return;
     try {
       final id = await store.read('settings.theme');
       if (id != null && id.isNotEmpty) themeId.value = id;
+      if (await store.read('onboarding.done') == null) onboardingStep.value = 0;
     } on Object {
       // ignore
     }
@@ -487,27 +500,53 @@ class SimController extends ChangeNotifier {
     return true;
   }
 
-  Future<void> _refresh() async {
-    final sw = Stopwatch()..start();
-    final s = await runner.snapshot();
-    final t1 = sw.elapsedMicroseconds;
+  bool _forceFug = false;
+  double _lastAdvanced = 0;
+  double _wallAcc = 0;
+
+  /// One round trip to the engine (M10): optionally advances, then returns the snapshot with the derived diagram data.
+  Future<void> _refresh({double advance = 0}) async {
+    final last = snapshot.value;
+    final nc = config.components.length;
+    final fugDue = config.crude == null &&
+        nc >= 3 &&
+        (_forceFug || fug.value == null || last == null || (last.time - _fugAt).abs() >= 10);
+    _forceFug = false;
+    final req = FrameRequest(
+      mccabe: config.crude == null,
+      showRmin: showRmin,
+      txy: diagramTab.value == 2,
+      fug: fugDue,
+      fugTargets: fugTargets.value,
+      trendTags: trendTags.value,
+    );
+    final wall = Stopwatch()..start();
+    final fr = await runner.frame(req, advanceSeconds: advance, budget: Duration(milliseconds: kEngineBudgetMs));
+    final s = fr.snapshot;
+    _lastAdvanced = fr.advanced;
+    final t1 = wall.elapsedMicroseconds;
     snapshot.value = s;
-    final t2 = sw.elapsedMicroseconds;
+    final t2 = wall.elapsedMicroseconds;
     final crude = config.crude != null;
     if (!crude) {
-      mccabe.value = _builder.build(s, runner.thermo, showRmin: showRmin, keys: s.stages.nc > 2 ? config.effectiveKeys : null);
-      _refreshFug(s);
+      if (fr.mccabe != null) mccabe.value = fr.mccabe;
+      if (s.stages.nc < 3 || s.view.isPlant) {
+        if (fug.value != null) fug.value = null;
+      } else if (fugDue) {
+        _fugAt = s.time;
+        fug.value = fr.fug;
+      }
     }
-    if (!crude && diagramTab.value == 2 && s.stages.nc == 2 && s.view == SimView.model) {
-      final th = runner.thermo;
-      txy.value = _txyBuilder.build(s, (s.tier != ThermoTier.t1 && th is Tier2Raoult) ? th : runner.idealThermo);
+    if (fr.txy != null) {
+      txy.value = fr.txy;
     } else if (txy.value != null && diagramTab.value != 2) {
       txy.value = null;
     }
     if (perfRecording) {
-      perfSnapshot.add(t1);
+      perfAdvance.add(fr.advanceMicros);
+      perfSnapshot.add(fr.snapshotMicros + fr.derivedMicros);
       perfNotify.add(t2 - t1);
-      perfMccabe.add(sw.elapsedMicroseconds - t2);
+      perfMccabe.add(t1);
     }
     final st = (trays: s.layout.nTrays, feed: s.layout.feedStages.first, beds: BedSpec.key(BedSpec.of(s)));
     if (st != structure.value) structure.value = st;
@@ -525,21 +564,11 @@ class SimController extends ChangeNotifier {
     _refreshMath();
   }
 
-  void _refreshFug(SimSnapshot s, {bool force = false}) {
-    if (s.stages.nc < 3 || s.view.isPlant) {
-      if (fug.value != null) fug.value = null;
-      return;
-    }
-    if (!force && (s.time - _fugAt).abs() < 10 && fug.value != null) return;
-    _fugAt = s.time;
-    fug.value = const FugCalculator().compute(s, config.effectiveKeys, targets: fugTargets.value, thermo: runner.thermo);
-  }
-
   /// Switches the FUG panel between live mode (null) and target mode.
   void setFugTargets(FugTargets? t) {
     fugTargets.value = t;
-    final s = snapshot.value;
-    if (s != null) _refreshFug(s, force: true);
+    _forceFug = true;
+    if (_loaded) _refresh();
   }
 
   void setSpeed(double v) {
@@ -575,10 +604,14 @@ class SimController extends ChangeNotifier {
       _autosaveWall = 0;
       saveSandbox(0);
     }
+    // wall time that passes while a frame is in flight (the engine isolate) still counts toward the next one
+    _wallAcc += wall;
+    if (!_loaded || paused || runningToSteady) _wallAcc = 0;
     if (!_loaded || _busy || paused || runningToSteady) return;
     _busy = true;
     try {
-      final dtWall = wall.clamp(0.0, 0.1);
+      final dtWall = _wallAcc.clamp(0.0, 0.1);
+      _wallAcc = 0;
       _debt += dtWall * _speed;
       final cap = math.max(
         2 * (1 / 60) * _speed,
@@ -586,9 +619,8 @@ class SimController extends ChangeNotifier {
       ); // always allow at least two steps of 0.5 s
       if (_debt > cap) _debt = cap;
       final requested = _debt;
-      final swA = Stopwatch()..start();
-      final adv = await runner.advance(_debt, const Duration(milliseconds: 6));
-      if (perfRecording) perfAdvance.add(swA.elapsedMicroseconds);
+      await _refresh(advance: _debt);
+      final adv = _lastAdvanced;
       _debt -= adv;
       if (dtWall > 0) {
         final inst = adv / dtWall;
@@ -599,7 +631,6 @@ class SimController extends ChangeNotifier {
         speedLimited = limited;
         notifyListeners();
       }
-      await _refresh();
     } finally {
       _busy = false;
     }
@@ -676,6 +707,7 @@ class SimController extends ChangeNotifier {
     notice.dispose();
     selectedLoop.dispose();
     trendTags.dispose();
+    onboardingStep.dispose();
     saveMessage.dispose();
     runner.dispose();
     super.dispose();

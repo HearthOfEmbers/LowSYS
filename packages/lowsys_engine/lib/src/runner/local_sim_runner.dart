@@ -12,6 +12,11 @@ import '../sim/lever_spec.dart';
 import '../sim/simulator.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/thermo_model.dart';
+import '../snapshot/fug.dart';
+import '../snapshot/mccabe_thiele.dart';
+import '../snapshot/txy.dart';
+import '../thermo/tier2_raoult.dart';
+import 'frame.dart';
 import 'sim_runner.dart';
 
 /// Wraps a [Simulator] on the calling isolate; futures complete without real asynchrony.
@@ -66,6 +71,35 @@ class LocalSimRunner implements SimRunner {
 
   @override
   Future<SimSnapshot> snapshot() async => sim.snapshot();
+
+  final McCabeThieleBuilder _mcBuilder = McCabeThieleBuilder();
+  final TxyBuilder _txyBuilder = TxyBuilder();
+
+  @override
+  Future<FrameResult> frame(FrameRequest req,
+      {double advanceSeconds = 0, Duration budget = const Duration(milliseconds: 6)}) async {
+    final sw = Stopwatch()..start();
+    final adv = advanceSeconds > 0 ? await advance(advanceSeconds, budget) : 0.0;
+    final t0 = sw.elapsedMicroseconds;
+    final s = sim.snapshot();
+    final t1 = sw.elapsedMicroseconds;
+    final cfg = sim.config;
+    final crude = cfg.crude != null;
+    McCabeThieleData? mc;
+    TxyView? txy;
+    FugResult? fug;
+    if (!crude && req.mccabe) {
+      mc = _mcBuilder.build(s, sim.thermo, showRmin: req.showRmin, keys: s.stages.nc > 2 ? cfg.effectiveKeys : null);
+    }
+    if (!crude && req.txy && s.stages.nc == 2 && s.view == SimView.model) {
+      final th = sim.thermo;
+      txy = _txyBuilder.build(s, (s.tier != ThermoTier.t1 && th is Tier2Raoult) ? th : sim.tier2Thermo);
+    }
+    if (!crude && req.fug && s.stages.nc >= 3 && !s.view.isPlant) {
+      fug = const FugCalculator().compute(s, cfg.effectiveKeys, targets: req.fugTargets, thermo: sim.thermo);
+    }
+    return FrameResult(s, advanced: adv, mccabe: mc, txy: txy, fug: fug, advanceMicros: t0, snapshotMicros: t1 - t0, derivedMicros: sw.elapsedMicroseconds - t1);
+  }
 
   @override
   Future<void> setLever(LeverId id, double value) async =>
