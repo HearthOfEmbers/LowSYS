@@ -12,6 +12,8 @@ import 'alarms.dart';
 import 'control_system.dart';
 
 class CrudeControl extends ControlSystem {
+  /// F24 reference steam flow per injection point (kg/s), captured at onset (null: no fault).
+  final List<double?> _steamRef = [null, null, null, null];
   final CrudeColumn col;
   final CrudeFaultState fault = CrudeFaultState();
 
@@ -301,8 +303,16 @@ class CrudeControl extends ControlSystem {
       final loop = [fc321, fc322, fc323, fc324][q];
       final passed = fvs[q].step(dt, loop.op, noise);
       // F24: a supply restriction delivers (1 - s) of the demanded steam; the loop winds up on the low flow reading
+      // Spec rulings M9 item 2: the cap is (1 - s) W_ref, W_ref being the demand at onset (frozen while the fault is
+      // active), so raising the SP does not restore the steam
       final demand = loop.mode == LoopMode.man ? passed : loop.sp;
-      inp.steam[q] = fault.steamFactor[q] < 1 ? math.min(passed, fault.steamFactor[q] * demand) : passed;
+      if (fault.steamFactor[q] < 1) {
+        _steamRef[q] ??= demand;
+        inp.steam[q] = math.min(passed, fault.steamFactor[q] * _steamRef[q]!);
+      } else {
+        _steamRef[q] = null;
+        inp.steam[q] = passed;
+      }
     }
     inp.naphtha = lv301.step(dt, lc301.op, noise);
     inp.residue = lv302.step(dt, lc302.op, noise);
