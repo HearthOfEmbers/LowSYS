@@ -347,7 +347,7 @@ class Simulator {
       faults: _faults,
       full: config.hydraulics == HydraulicsMode.full,
       tier2: config.tier != ThermoTier.t1,
-      refluxCapacity: l0,
+      refluxCapacity: _control.fv102.fMax,  // F_max of FV-102 (PHYSICS.md 10.2), not the design L0
       t2: _active,
       cond: config.condenser,
       reb: config.reboiler,
