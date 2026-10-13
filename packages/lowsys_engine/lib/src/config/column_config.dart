@@ -93,6 +93,10 @@ class CondenserConfig {
   /// CW valve OP (%) a partial condenser starts at (PHYSICS.md 7.2; below the total-condensation OP).
   final double cwOpPartial;
 
+  /// Slope of the design distillate's bubble point at the design pressure (K/Pa; B-T 0.32 K/kPa): the process part
+  /// of TI-100's typical sigma (PHYSICS.md 10.5).
+  final double dTbubDp;
+
   /// Vapour-product header pressure (partial condenser), vent header pressure and capacities (PHYSICS.md 7.1, 7.2);
   /// null: P_design - 30 kPa, and 50 kPa below 3 bar design pressure else 1 atm.
   final double? pDown, pVent;
@@ -110,6 +114,7 @@ class CondenserConfig {
     this.uaClean = 29900,
     this.dvMax = 0,
     this.cwOpPartial = 30,
+    this.dTbubDp = 3.2e-4,
     this.pDown,
     this.pVent,
     this.ventMax = 2.0,
@@ -134,6 +139,7 @@ class CondenserConfig {
       uaClean: g('uaClean', d.uaClean),
       dvMax: g('dvMax', d.dvMax),
       cwOpPartial: g('cwOpPartial', d.cwOpPartial),
+      dTbubDp: g('dTbubDp', d.dTbubDp),
       pDown: (j['pDown'] as num?)?.toDouble(),
       pVent: (j['pVent'] as num?)?.toDouble(),
       ventMax: g('ventMax', d.ventMax),
@@ -152,6 +158,7 @@ class CondenserConfig {
         'uaClean': uaClean,
         'dvMax': dvMax,
         'cwOpPartial': cwOpPartial,
+        'dTbubDp': dTbubDp,
         if (pDown != null) 'pDown': pDown,
         if (pVent != null) 'pVent': pVent,
         'ventMax': ventMax,
@@ -159,9 +166,97 @@ class CondenserConfig {
       };
 }
 
+/// Thermosyphon geometry and constants (PHYSICS.md 8.3.1; SI; B-T defaults). With a thermosyphon UA_R,clean = u * area
+/// (FV-103 F_max, F13, C4); the kettle's `uaClean` is not used.
+@immutable
+class ThermosyphonGeometry {
+  final int nTubes;
+  final double tubeId, tubeLength;
+
+  /// Outside heat-transfer area (m2) and clean overall U (W/m2/K), referred to it.
+  final double area, u;
+
+  /// Liquid height above the bottom tubesheet at 0 % sump level, return nozzle height (m).
+  final double z0, zReturn;
+  final double inletD, inletLength, riserD;
+
+  /// Loss coefficients (inlet entry and bends, outlet) and the exit quality where mist-flow degradation starts.
+  final double kIn, kOut, xCrit;
+
+  /// Preset constants: liquid viscosity (Pa s) and the design liquid density (kg/m3) and dT_sat/dP (K/Pa) used by the
+  /// C4 check of FV-103 (PHYSICS.md 14.6).
+  final double muL, rhoLDesign, dTsatDpDesign;
+  const ThermosyphonGeometry({
+    this.nTubes = 200,
+    this.tubeId = 0.0212,
+    this.tubeLength = 3.0,
+    this.area = 47.6,
+    this.u = 1000,
+    this.z0 = 1.2,
+    this.zReturn = 4.5,
+    this.inletD = 0.20,
+    this.inletLength = 6.0,
+    this.riserD = 0.30,
+    this.kIn = 4,
+    this.kOut = 3,
+    this.xCrit = 0.30,
+    this.muL = 0.27e-3,
+    this.rhoLDesign = 780,
+    this.dTsatDpDesign = 3.63e-4,
+  });
+
+  /// Clean UA (W/K) = U A.
+  double get uaClean => u * area;
+
+  factory ThermosyphonGeometry.fromJson(Map<String, Object?> j) {
+    const d = ThermosyphonGeometry();
+    double g(String k, double def) => (j[k] as num?)?.toDouble() ?? def;
+    return ThermosyphonGeometry(
+      nTubes: (j['nTubes'] as num?)?.toInt() ?? d.nTubes,
+      tubeId: g('tubeId', d.tubeId),
+      tubeLength: g('tubeLength', d.tubeLength),
+      area: g('area', d.area),
+      u: g('u', d.u),
+      z0: g('z0', d.z0),
+      zReturn: g('zReturn', d.zReturn),
+      inletD: g('inletD', d.inletD),
+      inletLength: g('inletLength', d.inletLength),
+      riserD: g('riserD', d.riserD),
+      kIn: g('kIn', d.kIn),
+      kOut: g('kOut', d.kOut),
+      xCrit: g('xCrit', d.xCrit),
+      muL: g('muL', d.muL),
+      rhoLDesign: g('rhoLDesign', d.rhoLDesign),
+      dTsatDpDesign: g('dTsatDpDesign', d.dTsatDpDesign),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        'nTubes': nTubes,
+        'tubeId': tubeId,
+        'tubeLength': tubeLength,
+        'area': area,
+        'u': u,
+        'z0': z0,
+        'zReturn': zReturn,
+        'inletD': inletD,
+        'inletLength': inletLength,
+        'riserD': riserD,
+        'kIn': kIn,
+        'kOut': kOut,
+        'xCrit': xCrit,
+        'muL': muL,
+        'rhoLDesign': rhoLDesign,
+        'dTsatDpDesign': dTsatDpDesign,
+      };
+}
+
 @immutable
 class ReboilerConfig {
   final ReboilerType type;
+
+  /// Thermosyphon geometry (every preset has it; it is used when [type] is thermosyphon).
+  final ThermosyphonGeometry thermosyphon;
 
   /// m, m2
   final double sumpHeight, sumpArea;
@@ -172,6 +267,7 @@ class ReboilerConfig {
     this.sumpArea = 1.131,
     this.steamHeaderPressure = 451325,
     this.uaClean = 57500,
+    this.thermosyphon = const ThermosyphonGeometry(),
   });
 
   factory ReboilerConfig.fromJson(Map<String, Object?> j) {
@@ -184,6 +280,10 @@ class ReboilerConfig {
       sumpArea: g('sumpArea', d.sumpArea),
       steamHeaderPressure: g('steamHeaderPressure', d.steamHeaderPressure),
       uaClean: g('uaClean', d.uaClean),
+      thermosyphon: j['thermosyphon'] == null
+          ? d.thermosyphon
+          : ThermosyphonGeometry.fromJson(
+              Map<String, Object?>.from(j['thermosyphon']! as Map<Object?, Object?>)),
     );
   }
 
@@ -193,6 +293,7 @@ class ReboilerConfig {
         'sumpArea': sumpArea,
         'steamHeaderPressure': steamHeaderPressure,
         'uaClean': uaClean,
+        'thermosyphon': thermosyphon.toJson(),
       };
 
   /// Sump liquid volume at 100 % level (m3).

@@ -179,6 +179,10 @@ String faultLabel(FaultType t) {
       return 'Reboiler condensate backup (F14)';
     case FaultType.steamHeaderLoss:
       return 'Steam header pressure loss (F15)';
+    case FaultType.tsInletRestriction:
+      return 'Thermosyphon inlet restriction (F17)';
+    case FaultType.tsOutletRestriction:
+      return 'Thermosyphon outlet restriction (F18)';
     default:
       return t.name;
   }

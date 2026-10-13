@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../config/column_config.dart' show ThermosyphonGeometry;
 import '../core/ids.dart';
+import '../model/thermosyphon.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/component.dart' show WaterProps;
 import '../thermo/tier2_raoult.dart';
@@ -24,7 +26,13 @@ class T2CheckContext {
   final double uaRebClean, cwMax;
   final List<int> trayIds;
   final int nTrays;
+
+  /// Thermosyphon geometry (null for a kettle) and the sump height (m): C4 of FV-103 (PHYSICS.md 14.6).
+  final ThermosyphonGeometry? thermosyphon;
+  final double sumpHeight;
   const T2CheckContext({
+    this.thermosyphon,
+    this.sumpHeight = 2.4,
     required this.thermo,
     required this.feedT,
     required this.refluxSubLever,
@@ -354,13 +362,23 @@ class CrossCheckEngine {
         double fexp, fmax;
         if (valve == 'FV-103' && is2) {
           // Q_exp = Q_max,0 g(OP) with Q_max,0 = UA_R,clean (T_st(P_201) - T_121), all from readings
-          final extra = badInput(['PT-201', sumpTi]);
+          final extra = badInput(['PT-201', sumpTi, if (t2.thermosyphon != null) 'LT-102']);
           if (extra != null) {
             out.add(na(id, title, [meter, 'PT-201', sumpTi], 'BAD input $extra'));
             continue;
           }
           final tSt = WaterProps.saturationT(mean('PV:PT-201') + 101325.0);
-          final qMax0 = math.max(0.0, t2.uaRebClean * (tSt - mean('PV:$sumpTi')));
+          var tb = mean('PV:$sumpTi');
+          var ua = t2.uaRebClean;
+          final tsg = t2.thermosyphon;
+          if (tsg != null) {
+            // thermosyphon: Q_max,0 = U A (T_st - T_sump - dT_sub/2), dT_sub from (8.3) at the LT-102 window mean with the
+            // design dT_sat/dP and rho_L
+            final z = tsg.z0 + mean('PV:LT-102') / 100 * t2.sumpHeight;
+            tb += tsg.dTsatDpDesign * tsg.rhoLDesign * ThermosyphonLoop.g * z / 2;
+            ua = tsg.uaClean;
+          }
+          final qMax0 = math.max(0.0, ua * (tSt - tb));
           fexp = qMax0 * v.g(op);
           fmax = qMax0;
         } else if (valve == 'PV-101') {

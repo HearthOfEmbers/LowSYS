@@ -17,6 +17,7 @@ import '../faults/fault_effects.dart';
 import '../faults/fault_manager.dart';
 import '../explain/explain_engine.dart';
 import '../explain/explain_types.dart';
+import '../model/thermosyphon.dart';
 import '../model/tray_hydraulics.dart';
 import '../model/column_state.dart';
 import '../scenario/drill.dart';
@@ -301,6 +302,12 @@ class Simulator {
           tc101Tray: config.control.tc101Tray,
           trays: config.control.trayList(N),
           partial: _isPartial(config),
+          feedMax: _rangeMax(config, 'feedFlow', 250),
+          refluxMax: _rangeMax(config, 'refluxFlow', 300),
+          boilupMax: _rangeMax(config, 'boilup', 300),
+          dutyMax: _rangeMax(config, 'reboilerDuty', 3.0e6, kmolh: false),
+          dTbubDp: config.condenser.dTbubDp,
+          thermosyphon: config.reboiler.type == ReboilerType.thermosyphon ? config.reboiler.thermosyphon : null,
           dvMax: config.condenser.dvMax,
           cwManualOp: lev['cwOP'] ?? config.condenser.cwOpPartial,
         ),
@@ -362,6 +369,15 @@ class Simulator {
     _halted = false;
     _resetMonitor(capture: true);
     if (carry != null) _applyCarry(carry);
+  }
+
+  /// Range of a flow or duty lever (PHYSICS.md 2.3 "Lever ranges"): the B-T value [bt] (kmol/h, or W when [kmolh] is
+  /// false) for `bt`, else 2 x the preset's default.
+  static double _rangeMax(ColumnConfig c, String lever, double bt, {bool kmolh = true}) {
+    if (c.presetId == 'bt' || c.presetId == 'bt_custom_alpha' || !Presets.ids.contains(c.presetId)) return bt;
+    final d = Presets.byId(c.presetId).initialLevers[lever];
+    if (d == null || d <= 0) return bt;
+    return kmolh ? 2 * d / _kmolh : 2 * d;
   }
 
   /// A partial condenser exists only in Tiers 2 and 3 (PHYSICS.md 7.2).
@@ -484,6 +500,7 @@ class Simulator {
     while (remaining > 1e-12) {
       final hh = math.min(h, remaining);
       if (_pinDrum != null) _applyPin();
+      _stepper.strictClamp = halvings < 3;
       if (_stepper.step(hh)) {
         remaining -= hh;
         _monitor();
@@ -706,7 +723,7 @@ class Simulator {
           label: 'Feed rate F',
           quantity: Quantity.molarFlow,
           min: 0,
-          max: 250 * _kmolh,
+          max: _rangeMax(_config, 'feedFlow', 250) * _kmolh,
           defaultValue: inp.feedFlowSp,
           boundLoop: 'FC-101',
           group: 'feed'),
@@ -741,7 +758,7 @@ class Simulator {
           label: 'Reflux flow L0',
           quantity: Quantity.molarFlow,
           min: 0,
-          max: 300 * _kmolh,
+          max: _rangeMax(_config, 'refluxFlow', 300) * _kmolh,
           defaultValue: inp.refluxFlowSp,
           boundLoop: 'FC-102',
           group: 'top'),
@@ -776,7 +793,7 @@ class Simulator {
           label: 'Boilup V_B',
           quantity: Quantity.molarFlow,
           min: 0,
-          max: 300 * _kmolh,
+          max: _rangeMax(_config, 'boilup', 300) * _kmolh,
           defaultValue: inp.boilupSp,
           tiers: const {ThermoTier.t1},
           boundLoop: 'FC-103',
@@ -795,7 +812,7 @@ class Simulator {
           label: 'Reboiler duty Q_R',
           quantity: Quantity.energyRate,
           min: 0,
-          max: 3.0e6,
+          max: _rangeMax(_config, 'reboilerDuty', 3.0e6, kmolh: false),
           defaultValue: _dutyLever,
           tiers: const {ThermoTier.t2, ThermoTier.t3},
           boundLoop: 'FC-103',
@@ -915,6 +932,26 @@ class Simulator {
           requiresPause: true,
           group: 'advanced',
           integer: true),
+      const LeverSpec(
+          id: 'reboilerType',
+          label: 'Reboiler (0 kettle, 1 thermosyphon)',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: 0,
+          tiers: {ThermoTier.t2, ThermoTier.t3},
+          requiresPause: true,
+          group: 'advanced',
+          integer: true),
+      const LeverSpec(
+          id: 'tsInletValve',
+          label: 'Thermosyphon inlet valve',
+          quantity: Quantity.percent,
+          min: 5,
+          max: 100,
+          defaultValue: 100,
+          tiers: {ThermoTier.t2, ThermoTier.t3},
+          group: 'bottom'),
       LeverSpec(
           id: 'nTrays',
           label: 'Number of trays N',
@@ -1027,10 +1064,10 @@ class Simulator {
           integer: true),
       const LeverSpec(
           id: 'view',
-          label: 'View (0 model, 1 plant)',
+          label: 'View (0 model, 1 plant, 2 plant with calculations)',
           quantity: Quantity.dimensionless,
           min: 0,
-          max: 1,
+          max: 2,
           defaultValue: 0,
           group: 'advanced',
           integer: true),
@@ -1109,6 +1146,10 @@ class Simulator {
         return _control.partial ? _control.cwManualOp : _control.pc101.op;
       case 'condenserType':
         return _control.partial ? 1.0 : 0.0;
+      case 'reboilerType':
+        return _control.ts != null ? 1.0 : 0.0;
+      case 'tsInletValve':
+        return _control.tsInletOp;
       case 'drumLevelSp':
         return _control.lc101.sp;
       case 'sumpLevelSp':
@@ -1138,7 +1179,7 @@ class Simulator {
       case 'noise':
         return _control.noise ? 1 : 0;
       case 'view':
-        return _view == SimView.plant ? 1 : 0;
+        return _view.index.toDouble();
       case 'badPvShed':
         return _control.badPvShed ? 1 : 0;
     }
@@ -1258,6 +1299,10 @@ class Simulator {
             sections: [_config.traySection.copyWith(type: _hyd.trayType)]);
       case 'antifoam':
         _faults.setAntifoam(v >= 0.5, _state.time);
+      case 'reboilerType':
+        _setReboilerType(v >= 0.5 ? ReboilerType.thermosyphon : ReboilerType.kettle);
+      case 'tsInletValve':
+        _control.tsInletOp = v;
       case 'distillateValve':
         _opLever('LC-101', v);
       case 'bottomsValve':
@@ -1272,7 +1317,7 @@ class Simulator {
         _setNoise(v >= 0.5);
         return;
       case 'view':
-        _view = v >= 0.5 ? SimView.plant : SimView.model;
+        _view = SimView.values[v.round().clamp(0, 2)];
         return;
       case 'badPvShed':
         _control.badPvShed = v >= 0.5;
@@ -1364,7 +1409,9 @@ class Simulator {
           uaRebClean: _config.reboiler.uaClean,
           cwMax: _inputs.cwMaxFlow,
           trayIds: _control.trayIds,
-          nTrays: _state.nTrays);
+          nTrays: _state.nTrays,
+          thermosyphon: _control.ts == null ? null : _config.reboiler.thermosyphon,
+          sumpHeight: _config.reboiler.sumpHeight);
 
   int _tier2StartBin = 0;
 
@@ -1474,7 +1521,11 @@ class Simulator {
       if (cfg['op'] != null) _control.setOp(tag, (cfg['op']! as num).toDouble());
     }
     _control.badPvShed = def.badPvShed;
-    _view = def.view == 'plant' ? SimView.plant : SimView.model;
+    _view = switch (def.view) {
+      'plant' => SimView.plant,
+      'plantCalc' => SimView.plantCalc,
+      _ => SimView.model,
+    };
     _setNoise(def.noise);
     _resetMonitor(capture: true);
     if (_control.noise) _resetNoisyMonitor();
@@ -1552,6 +1603,11 @@ class Simulator {
   static final RegExp _mCheck = RegExp(r'^check\[([\w:.-]+)\]\.(\w+)$');
   static final RegExp _mAlarm = RegExp(r'^alarm\[([\w.:-]+)\]\.active$');
 
+  double _tsLive(double Function(ThermosyphonLoop) f) {
+    final l = _control.ts;
+    return l == null || _tier == ThermoTier.t1 ? double.nan : f(l);
+  }
+
   /// True model values for scenario predicates, read from the live state without building a snapshot
   /// (ENGINE_API.md 11.3). Unknown paths give null.
   dynamic liveMetric(String path) {
@@ -1576,6 +1632,18 @@ class Simulator {
         return _tier == ThermoTier.t1 ? double.nan : _stepper.qDelivered;
       case 'reboiler.steamValveOp':
         return _tier == ThermoTier.t1 ? double.nan : _control.fv103.position;
+      case 'reboiler.circulation':
+        return _tsLive((l) => l.w);
+      case 'reboiler.exitQuality':
+        return _tsLive((l) => l.xe);
+      case 'reboiler.instabilityIndex':
+        return _tsLive((l) => l.iS);
+      case 'reboiler.oscAmplitude':
+        return _tsLive((l) => l.amplitude);
+      case 'reboiler.oscPeriod':
+        return _tsLive((l) => l.tOsc);
+      case 'reboiler.inletValve':
+        return _control.tsInletOp;
     }
     final om = RegExp(r'^objective\[(\w+)\]\.met$').firstMatch(path);
     if (om != null) return _scenario?.objectiveMet(om.group(1)!) ?? false;
@@ -1734,6 +1802,7 @@ class Simulator {
   /// Makes the control system a Tier-2 one: Tier-2 instruments visible, FT-103 in kW, FC-103 on the duty [duty] (W).
   void _enterTier2Control(double duty) {
     _stepper.prepareTier2();
+    _stepper.initThermosyphon(duty);
     _stepper.fillBusT2();
     _tier2StartBin = (_trends.newestEnd / TrendBuffer.binSeconds).round();
     _checks.tiReference = null;
@@ -1868,7 +1937,7 @@ class Simulator {
   /// Equation trace for the math overlay (ENGINE_API.md 8). Recomputes the hydraulics for the current state
   /// with the same code the stepper and the snapshot use.
   ExplainResult explain(ExplainTarget target) {
-    if (_view == SimView.plant &&
+    if (_view.isPlant &&
         target is! ExplainInstrument &&
         target is! ExplainValve &&
         target is! ExplainLoop &&
@@ -1962,6 +2031,18 @@ class Simulator {
         condenser: CondenserConfig.fromJson(
             {...cur.condenser.toJson(), 'type': type.name}),
         initialLevers: lev));
+  }
+
+  /// Reboiler type switch (pause required, PHYSICS.md 8.3, 13.1 step 7): rebuilds the column at its present state; the
+  /// thermosyphon loop is initialised from it.
+  void _setReboilerType(ReboilerType type) {
+    if (type == _config.reboiler.type) return;
+    if (_tier == ThermoTier.t1) {
+      throw UnsupportedError('The thermosyphon needs Tier 2 or 3');
+    }
+    final cur = _configWithCurrentLevers();
+    rebuild(cur.copyWith(
+        reboiler: ReboilerConfig.fromJson({...cur.reboiler.toJson(), 'type': type.name})));
   }
 
   /// `thermoOutOfRange` (PHYSICS.md 2.2, 3.4.2): an Antoine component outside 0.1 to 5 bar, or a DePriester stage outside
@@ -2077,6 +2158,15 @@ class Simulator {
     s.refluxAct = c.refluxAct;
     s.boilupAct = c.boilupAct;
     _control.loadJson(c.control);
+    if (_control.ts != null && _tier != ThermoTier.t1 && c.control['ts'] == null) {
+      // kettle -> thermosyphon: start the loop from the carried column (PHYSICS.md 13.1 step 7)
+      final duty = _control.fc103.sp;
+      _stepper.t2Thermo(_state.pTop);
+      _stepper.initThermosyphon(duty);
+      _control.fv103.init(100 * duty / _control.fv103.fMax);
+      _control.fc103.op = _control.fv103.position;
+      _control.ft103.reset(duty, _state.time);
+    }
     _initFromCarry();
     _resetMonitor(capture: true);
   }
@@ -2233,11 +2323,20 @@ class Simulator {
       balanceResidual: fz > 0 ? (fz - dFlow * xD - dvLight - bFlow * xB).abs() / fz : 0.0,
       energyResidual: t2 ? _stepper.energyResidual : nan,
     );
-    final plant = _view == SimView.plant;
+    final plant = _view.isPlant;
+    final calc = _view == SimView.plantCalc;
+    // fault parameters stay hidden in drills (PHYSICS.md 10.9)
+    final drill = _scenarioIsDrill;
+    double hide(double v) => drill ? nan : v;
+    const calcAlarms = {'model.flood', 'model.weep', 'model.dcLimited', 'model.tsUnstable'};
     final alarms = [
       for (final a in _control.alarms.active())
-        if (!plant || !a.id.startsWith('model.') || a.id == 'model.relief') a,
+        if (!plant || !a.id.startsWith('model.') || a.id == 'model.relief' || (calc && calcAlarms.contains(a.id))) a,
     ];
+    final tsLoop = t2 ? _control.ts : null;
+    // thermosyphon fields: model view all (static head and sensible fraction included), plantCalc the calculated ones
+    double tsv(double v, {bool calcKeeps = true}) =>
+        tsLoop == null ? nan : (plant ? (calc && calcKeeps ? v : nan) : v);
     final fl = <int>[_inputs.feedStage];
     final layout = ColumnLayoutInfo(
       nTrays: N,
@@ -2263,7 +2362,7 @@ class Simulator {
       condOut = CondenserSnapshot(s.holdup[0], drumPct,
           qC: s.qC,
           uaClean: _config.condenser.uaClean,
-          uaEff: _stepper.uaCondEff,
+          uaEff: hide(_stepper.uaCondEff),
           tCwIn: _stepper.cwInT,
           tCwOut: _stepper.cwOutT,
           cwFlow: _stepper.cwFlow,
@@ -2273,17 +2372,30 @@ class Simulator {
           tCond: s.tSat0,
           tReflux: s.tRefl,
           subcooling: s.tSat0 - s.tRefl,
-          inertFraction: _stepper.yIner,
+          inertFraction: hide(_stepper.yIner),
           vaporMoles: _stepper.overheadMoles,
           nCond: s.nCond,
           nVent: s.nVent,
           nRelief: s.nRelief,
           vaporInventory: Float64List.fromList(s.nVi));
       rebOut = ReboilerSnapshot(s.holdup[N + 1], sumpPct, rebOut.starvation,
+          type: _config.reboiler.type,
+          steamSideDuty: _control.meanSteamQ,
+          circulation: tsv(tsLoop?.w ?? nan),
+          exitQuality: tsv(tsLoop?.xe ?? nan),
+          riserQuality: tsv(tsLoop?.xr ?? nan),
+          instabilityIndex: tsv(tsLoop?.iS ?? nan),
+          oscAmplitude: tsv(tsLoop?.amplitude ?? nan),
+          oscPeriod: tsv(tsLoop?.tOsc ?? nan),
+          inletLineDp: tsv(tsLoop?.inletLineDp ?? nan),
+          outletLineDp: tsv(tsLoop?.outletLineDp ?? nan),
+          drivingHead: tsv(tsLoop?.drivingHead ?? nan, calcKeeps: false),
+          sensibleFraction: tsv(tsLoop?.fsc ?? nan, calcKeeps: false),
+          inletValve: _control.tsInletOp,
           qDelivered: _stepper.qDelivered,
-          qMax: _stepper.qMax,
-          uaClean: _config.reboiler.uaClean,
-          uaEff: _stepper.uaRebEff,
+          qMax: hide(_stepper.qMax),
+          uaClean: tsLoop?.geo.uaClean ?? _config.reboiler.uaClean,
+          uaEff: hide(_stepper.uaRebEff),
           steamP: _stepper.steamHeaderAbs,
           steamT: _stepper.steamT,
           steamValveOp: _control.fv103.position,
@@ -2319,13 +2431,13 @@ class Simulator {
         holdup: hold,
         hcl: stages.hcl,
         froth: stages.froth,
-        dp: nanArr(n),
+        dp: calc ? stages.dp : nanArr(n),
         dpDry: nanArr(n),
-        jetFlood: nanArr(n),
-        dcFlood: nanArr(n),
-        frothFill: nanArr(n),
-        stability: nanArr(n),
-        weepFrac: nanArr(n),
+        jetFlood: calc ? stages.jetFlood : nanArr(n),
+        dcFlood: calc ? stages.dcFlood : nanArr(n),
+        frothFill: calc ? stages.frothFill : nanArr(n),
+        stability: calc ? stages.stability : nanArr(n),
+        weepFrac: calc ? stages.weepFrac : nanArr(n),
         efficiency: nanArr(n),
         hetp: nanArr(n),
         packFlood: nanArr(n),
@@ -2374,8 +2486,8 @@ class Simulator {
         qc: qcPlant,
         qr: t2 ? ftV : nan,
         columnDp: rd('PDT-101').value,
-        maxFloodPct: nan,
-        maxWeepFraction: nan,
+        maxFloodPct: calc ? kpis.maxFloodPct : nan,
+        maxWeepFraction: calc ? kpis.maxWeepFraction : nan,
         drumLevelPct: lt1,
         sumpLevelPct: lt2,
         pTop: t2 ? rd('PT-101').value : _config.condenser.pTopDesign,
@@ -2395,8 +2507,21 @@ class Simulator {
           : CondenserSnapshot(hold[0], lt1, vaporInventory: Float64List(0));
       rebOut = t2
           ? ReboilerSnapshot(hold[N + 1], lt2, rebOut.starvation,
+              type: _config.reboiler.type,
+              steamSideDuty: ftV,
+              circulation: tsv(tsLoop?.w ?? nan),
+              exitQuality: tsv(tsLoop?.xe ?? nan),
+              riserQuality: tsv(tsLoop?.xr ?? nan),
+              instabilityIndex: tsv(tsLoop?.iS ?? nan),
+              oscAmplitude: tsv(tsLoop?.amplitude ?? nan),
+              oscPeriod: tsv(tsLoop?.tOsc ?? nan),
+              inletLineDp: tsv(tsLoop?.inletLineDp ?? nan),
+              outletLineDp: tsv(tsLoop?.outletLineDp ?? nan),
+              drivingHead: tsv(tsLoop?.drivingHead ?? nan, calcKeeps: false),
+              sensibleFraction: tsv(tsLoop?.fsc ?? nan, calcKeeps: false),
+              inletValve: _control.tsInletOp,
               qDelivered: ftV,
-              uaClean: _config.reboiler.uaClean,
+              uaClean: tsLoop?.geo.uaClean ?? _config.reboiler.uaClean,
               steamP: rd('PT-201').value + 101325.0,
               steamT: WaterProps.saturationT(
                   math.max(rd('PT-201').value + 101325.0, 20000.0)),

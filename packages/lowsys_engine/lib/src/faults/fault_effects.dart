@@ -37,6 +37,9 @@ class EffectiveParams {
   /// F15: factor on the absolute steam header pressure.
   double epsI = 0, refluxCapScale = 1, fFlooded = 0, headerScale = 1;
 
+  /// F17 and F18 (M6): added loss coefficients of the thermosyphon inlet and outlet lines.
+  double kInAdd = 0, kOutAdd = 0;
+
   EffectiveParams(this.n, this.nc)
       : holeScale = Float64List(n),
         apronScale = Float64List(n),
@@ -57,6 +60,8 @@ class EffectiveParams {
     refluxCapScale = 1;
     fFlooded = 0;
     headerScale = 1;
+    kInAdd = 0;
+    kOutAdd = 0;
     for (var j = 0; j < n; j++) {
       holeScale[j] = 1;
       apronScale[j] = 1;

@@ -37,7 +37,7 @@ class EnergyPanel extends StatelessWidget {
           );
         }
         final u = sim.units.value;
-        final plant = s.view == SimView.plant;
+        final plant = s.view.isPlant;
         return ListView(
           controller: controller,
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),

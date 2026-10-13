@@ -261,6 +261,7 @@ class ExplainEngine {
     final t2Lines = tier2 ? ExplainT2(snapshot, t2!).stageLines(j) : const <EquationLine>[];
     groups.add(EquationGroup('Equilibrium and efficiency', [
       if (tier2) t2Lines[0],
+      if (tier2) t2Lines[1],
       if (!tier2) EquationLine(
         id: 'eq.equilibrium.T1',
         physicsRef: 'PHYSICS.md (3.1)',
@@ -280,7 +281,7 @@ class ExplainEngine {
         note:
             'Murphree vapour efficiency, including the dry-tray factor min(1, h_cl / 5 mm).',
       ),
-      if (tier2) t2Lines[1],
+      if (tier2) t2Lines[2],
       if (!tier2) EquationLine(
         id: 'eq.vapourFlow.cmo',
         physicsRef: 'PHYSICS.md (4.5)',
@@ -453,7 +454,7 @@ class ExplainEngine {
 
   ExplainResult _sump() {
     if (t2 != null && snapshot.tier != ThermoTier.t1) {
-      return ExplainT2(snapshot, t2!).sump();
+      return ExplainT2(snapshot, t2!, loop: control.ts).sump();
     }
     final k = snapshot.kpis;
     final N = nTrays;

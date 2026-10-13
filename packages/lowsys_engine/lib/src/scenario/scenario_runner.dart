@@ -95,6 +95,9 @@ class SimulatorHost implements ScenarioHost {
         ? sim.control.instrument(tag)
         : null;
     final sg = sign < 0 ? '−' : '+';
+    if (c.faultType == FaultType.coolingLoss && c.params['mode'] == 'temperature') {
+      return (15 * severity).toStringAsFixed(1); // K of CW inlet temperature rise (PHYSICS.md 11)
+    }
     if (inst == null) return severity.toStringAsFixed(2);
     final pct = 10 * severity;
     return '$sg${pct.toStringAsFixed(1)} % of span';

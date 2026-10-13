@@ -19,12 +19,18 @@ abstract final class Scenarios {
     'G10_other_azeotrope': g10Json,
     'G11_flooding': g11Json,
     'G12_turndown': g12Json,
+    'G14_thermosyphon': g14Json,
   };
 
   /// Tier 2 drills: defined and testable (draws, scoring), playable from M4/M6.
   static final Map<String, String> _drills = {
     'H9_dont_trust_the_gauge': h9Json,
     'H10_valve_or_meter': h10Json,
+    'H1_creeping_dp': h1Json,
+    'H2_pressure': h2Json,
+    'H3_lost_separation': h3Json,
+    'H4_reboiler': h4Json,
+    'H5_bottoms_swings': h5Json,
   };
 
   /// Scenarios playable in this build.

@@ -36,6 +36,9 @@ class FaultManager {
 
   FaultId inject(FaultSpec spec) {
     final t0 = spec.type;
+    if (t0 == FaultType.tsInletRestriction || t0 == FaultType.tsOutletRestriction) {
+      validator?.call(spec);
+    }
     if (t0 == FaultType.instrument ||
         t0 == FaultType.transmitter ||
         t0 == FaultType.valve) {
@@ -270,6 +273,10 @@ class FaultManager {
           ep.fFlooded = math.max(ep.fFlooded, 0.8 * s * _trapFactor(t));
         case FaultType.steamHeaderLoss:
           ep.headerScale *= 1 - 0.6 * s;
+        case FaultType.tsInletRestriction:
+          ep.kInAdd += 300 * s;
+        case FaultType.tsOutletRestriction:
+          ep.kOutAdd += 40 * s;
         default:
           break;
       }

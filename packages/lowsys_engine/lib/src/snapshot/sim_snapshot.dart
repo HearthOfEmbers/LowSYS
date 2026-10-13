@@ -17,7 +17,13 @@ enum AlarmPriority { low, medium, high }
 
 enum AlarmState { unack, acked, rtnUnack }
 
-enum SimView { model, plant }
+/// Model view, plant view and (M6, PHYSICS.md 10.9) plant view with engineering calculations (`plantCalc`).
+enum SimView { model, plant, plantCalc }
+
+extension SimViewX on SimView {
+  /// True in both plant views (the truth is masked).
+  bool get isPlant => this != SimView.model;
+}
 
 enum CheckStatus { ok, check, fail, notAvailable, transient }
 
@@ -173,8 +179,32 @@ class ReboilerSnapshot {
 
   /// True when the steam valve requests more than the exchanger can transfer (alarm `model.dutyLimited`).
   final bool dutyLimited;
+
+  /// M6 (ENGINE_API.md 7.1). [duty] is Q_R,delivered, [steamSideDuty] the mean of Q_k (what FT-103 measures; equal to the
+  /// duty for a kettle). The thermosyphon fields are NaN for a kettle, NaN in plant view and in drills where they would
+  /// reveal a fault parameter; plantCalc keeps all of them except [drivingHead] and [sensibleFraction].
+  final ReboilerType type;
+  final double steamSideDuty;
+  final double circulation, exitQuality, riserQuality, instabilityIndex, oscAmplitude, oscPeriod;
+  final double inletLineDp, outletLineDp, drivingHead, sensibleFraction;
+
+  /// Inlet valve lever, % open (always visible).
+  final double inletValve;
   const ReboilerSnapshot(this.sumpHoldup, this.sumpLevelPct, this.starvation,
-      {this.qDelivered = double.nan,
+      {this.type = ReboilerType.kettle,
+      this.steamSideDuty = double.nan,
+      this.circulation = double.nan,
+      this.exitQuality = double.nan,
+      this.riserQuality = double.nan,
+      this.instabilityIndex = double.nan,
+      this.oscAmplitude = double.nan,
+      this.oscPeriod = double.nan,
+      this.inletLineDp = double.nan,
+      this.outletLineDp = double.nan,
+      this.drivingHead = double.nan,
+      this.sensibleFraction = double.nan,
+      this.inletValve = 100,
+      this.qDelivered = double.nan,
       this.qMax = double.nan,
       this.uaClean = double.nan,
       this.uaEff = double.nan,

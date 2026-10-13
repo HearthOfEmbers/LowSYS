@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
+import '../core/ids.dart' show ReboilerType;
 import '../core/quantity.dart';
+import '../model/thermosyphon.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/tier2_raoult.dart';
 import '../thermo/tier3_depriester.dart';
@@ -13,7 +15,10 @@ import 'explain_types.dart';
 class ExplainT2 {
   final SimSnapshot snap;
   final Tier2Raoult th;
-  ExplainT2(this.snap, this.th);
+
+  /// The thermosyphon loop (null for a kettle): the `eq.ts.*` lines of PHYSICS.md 15 read its last sub-step.
+  final ThermosyphonLoop? loop;
+  ExplainT2(this.snap, this.th, {this.loop});
 
   StageArrays get st => snap.stages;
   int get nc => st.nc;
@@ -87,8 +92,19 @@ class ExplainT2 {
             'Raoult\'s law with the stage temperature from the bubble point (PHYSICS.md 3.6.1).',
       );
     }
+    final bubble = EquationLine(
+      id: 'eq.bubblePoint',
+      physicsRef: 'PHYSICS.md (3.6.1)',
+      texSymbolic: r'\sum_i K_i(T_j, P_j)\,x_{ij} = 1\ \Rightarrow\ T_j',
+      texSubstituted:
+          'P_{$j} = ${texNum(st.p[j])}\\ \\mathrm{Pa},\\ \\sum K x = ${texNum(s)} \\Rightarrow T_{$j} = ${texNum(st.t[j])}\\ \\mathrm{K}',
+      value: st.t[j],
+      quantity: Quantity.temperature,
+      note: 'The stage temperature is the bubble point of its liquid at the stage pressure.',
+    );
     return [
       eqLine,
+      bubble,
       EquationLine(
         id: 'eq.vapourFlow.energy',
         physicsRef: 'PHYSICS.md (4.6)',
@@ -172,10 +188,68 @@ class ExplainT2 {
     final lN = st.liquidDown[nT];
     final b = k.b;
     final hB = _hL(nT + 1), hVB = _hV(nT + 1);
+    final ts = loop;
+    final tsGroup = ts == null || r.type != ReboilerType.thermosyphon
+        ? null
+        : EquationGroup('Thermosyphon reboiler', [
+            EquationLine(
+              id: 'eq.ts.subcooling',
+              physicsRef: 'PHYSICS.md (8.3)',
+              texSymbolic: r'\Delta T_{sub} = \frac{dT_{sat}}{dP}\,\rho_L\,g\,z',
+              texSubstituted:
+                  '\\Delta T_{sub} = ${texNum(ts.p.dTsatdP)}\\times ${texNum(ts.p.rhoL)}\\times 9.807\\times ${texNum(ts.dTsub / (ts.p.dTsatdP * ts.p.rhoL * ThermosyphonLoop.g))} = ${texNum(ts.dTsub)}\\ \\mathrm{K}',
+              value: ts.dTsub,
+              note:
+                  'The static head of the liquid leg keeps the liquid below its boiling point at the tube inlet; a low sump level means less head.',
+            ),
+            EquationLine(
+              id: 'eq.ts.exitQuality',
+              physicsRef: 'PHYSICS.md (8.3)',
+              texSymbolic: r'x_e = \frac{Q - W_h c_{p,L}\Delta T_{sub}}{W_h\,\lambda}',
+              texSubstituted:
+                  'x_e = \\frac{${texNum(ts.q)} - ${texNum(ts.wHeater * ts.p.cpL * ts.dTsub)}}{${texNum(ts.wHeater * ts.p.lambdaMass)}} = ${texNum(ts.xe)}',
+              value: ts.xe,
+              note:
+                  'Above x_c = 0.30 the tube wall starts to dry out (mist flow) and the duty the exchanger can transfer falls.',
+            ),
+            EquationLine(
+              id: 'eq.ts.drivingHead',
+              physicsRef: 'PHYSICS.md (8.3)',
+              texSymbolic:
+                  r'\Delta P_{drive} = g\left[\rho_L z - \rho_L L_t f_{sc} - \bar\rho_b L_t (1-f_{sc}) - \rho_{tp}(x_r) L_r\right]',
+              texSubstituted:
+                  '\\Delta P_{drive} = ${texNum(ts.drivingHead)}\\ \\mathrm{Pa}\\ (f_{sc} = ${texNum(ts.fsc)},\\ \\bar\\rho_b = ${texNum(ts.rhoB)}\\ \\mathrm{kg/m^3})',
+              value: ts.drivingHead,
+              quantity: Quantity.pressure,
+            ),
+            EquationLine(
+              id: 'eq.ts.friction',
+              physicsRef: 'PHYSICS.md (8.3)',
+              texSymbolic: r'\Delta P_{loss} = (c_{in} + c_{tube} + c_{acc} + c_{out})\,W^2',
+              texSubstituted:
+                  '\\Delta P_{loss} = (${texNum(ts.cIn)} + ${texNum(ts.cTube)} + ${texNum(ts.cAcc)} + ${texNum(ts.cOut)})\\times ${texNum(ts.w)}^2 = ${texNum((ts.cIn + ts.cTube + ts.cAcc + ts.cOut) * ts.w * ts.w)}\\ \\mathrm{Pa}',
+              value: (ts.cIn + ts.cTube + ts.cAcc + ts.cOut) * ts.w * ts.w,
+              quantity: Quantity.pressure,
+              note: 'Circulation settles where this loss equals the driving head.',
+            ),
+            EquationLine(
+              id: 'eq.ts.instabilityIndex',
+              physicsRef: 'PHYSICS.md (8.4)',
+              texSymbolic: r'I_s = \frac{\max(\bar x_e/0.30,\ \bar r_{out})}{1 + 3\bar r_{in}}',
+              texSubstituted:
+                  'I_s = \\frac{\\max(${texNum(ts.xeBar / 0.30)},\\ ${texNum(ts.routBar)})}{1 + 3\\times ${texNum(ts.rinBar)}} = ${texNum(ts.iS)}',
+              value: ts.iS,
+              note: ts.iS > 1
+                  ? 'Above 1 the loop surges: the circulation oscillates. Raise the level, throttle the inlet valve or cut the duty.'
+                  : 'Below 1 the loop is stable. High exit quality and a restrictive outlet raise the index; inlet restriction lowers it.',
+            ),
+          ]);
     return ExplainResult(
       title: 'Sump and reboiler',
       groups: [
-        EquationGroup('Kettle reboiler', [
+        if (tsGroup != null) tsGroup,
+        EquationGroup(tsGroup == null ? 'Kettle reboiler' : 'Boilup', [
+          if (tsGroup == null)
           EquationLine(
             id: 'eq.kettleDuty',
             physicsRef: 'PHYSICS.md (8.2, 10.3)',

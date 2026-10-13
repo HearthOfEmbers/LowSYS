@@ -10,6 +10,7 @@ import '../faults/fault_effects.dart';
 import '../faults/fault_manager.dart';
 import '../math/banded_solver.dart';
 import '../model/column_state.dart';
+import '../model/thermosyphon.dart';
 import '../model/tray_hydraulics.dart';
 import '../thermo/component.dart' show WaterProps;
 import '../thermo/tier1_constant_alpha.dart';
@@ -362,10 +363,16 @@ class Stepper {
 
   /// Advances the state by [dt]. Returns false (state restored) when the step produced NaN, Inf or a
   /// negative holdup beyond tolerance.
+  /// When true a significant negative clamp (an overshoot of the explicit inventory update beyond 1e-6 mol) fails the
+  /// step so that the simulator halves it (PHYSICS.md 12.7); the simulator relaxes it on the last retry.
+  bool strictClamp = false;
+  bool _clampHit = false;
+
   bool step(double dt) {
     _backup.copyFrom(s);
+    _clampHit = false;
     _advance(dt);
-    if (!_healthy()) {
+    if (!_healthy() || (strictClamp && _clampHit)) {
       s.copyFrom(_backup);
       return false;
     }
@@ -645,6 +652,7 @@ class Stepper {
       var v = _mnew[k];
       if (v < 0) {
         if (v < -1e-12) health.negativeClamps++;
+        if (v < -1e-6) _clampHit = true;
         v = 0;
       }
       s.m[k] = v;
@@ -805,16 +813,77 @@ class Stepper {
     steamHeaderAbs = inp.steamHeaderP * ep.headerScale;
     steamT = WaterProps.saturationT(math.max(steamHeaderAbs, 20000.0));
     final tB = s.t[nTrays + 1];
-    final rf = ep.rebFoulS * 1.5 / reb.uaClean;
-    uaRebEff = reb.uaClean / (1 + reb.uaClean * rf) * (1 - ep.fFlooded);
-    qMax0 = math.max(0.0, reb.uaClean * (steamT - tB));
-    qMax = math.max(0.0, uaRebEff * (steamT - tB));
-    control.fv103.fMax = math.max(qMax0, 1.0);
-    control.fv103.cap = qMax;
+    final ts = control.ts;
+    if (ts != null) {
+      // thermosyphon (PHYSICS.md 8.3.4): Q_max,0 = U A (T_st - T_b,mean) at the start-of-step state; the loop applies the
+      // heat-transfer and mist-flow limits itself, so the valve is not capped
+      _tsProps(ts);
+      final z = ts.liquidHeight(sumpLevelPct, reb.sumpHeight);
+      final ua = ts.geo.uaClean;
+      final rfK = ep.rebFoulS * 1.5 / ua;
+      control
+        ..tsLevelPct = sumpLevelPct
+        ..tsSumpHeight = reb.sumpHeight
+        ..tsRfK = rfK
+        ..tsFFlooded = ep.fFlooded
+        ..tsKInAdd = ep.kInAdd
+        ..tsKOutAdd = ep.kOutAdd;
+      uaRebEff = ua / (1 + ua * rfK) * (1 - ep.fFlooded);
+      qMax0 = ts.qMax0For(z);
+      qMax = ts.iS > 0 || ts.qMax > 0 ? ts.qMax : qMax0;
+      control.fv103.fMax = math.max(qMax0, 1.0);
+      control.fv103.cap = double.infinity;
+    } else {
+      final rf = ep.rebFoulS * 1.5 / reb.uaClean;
+      uaRebEff = reb.uaClean / (1 + reb.uaClean * rf) * (1 - ep.fFlooded);
+      qMax0 = math.max(0.0, reb.uaClean * (steamT - tB));
+      qMax = math.max(0.0, uaRebEff * (steamT - tB));
+      control.fv103.fMax = math.max(qMax0, 1.0);
+      control.fv103.cap = qMax;
+    }
     control.cwValve.fMax = inp.cwMaxFlow;
     control.cwScale = ep.cwFlowScale;
     control.fv102.cap =
         ep.refluxCapScale < 1 ? refluxCapacity * ep.refluxCapScale : double.infinity;
+  }
+
+  /// The sump-liquid properties and steam temperature the thermosyphon loop sees (PHYSICS.md 8.3.1), from the
+  /// start-of-step state. Clausius-Clapeyron uses the molar latent heat: dT_sat/dP = R T^2 / (lambda_molar P).
+  void _tsProps(ThermosyphonLoop ts) {
+    final j = nTrays + 1;
+    final t = s.t[j];
+    if (!(t > 200)) return;
+    var mbar = 0.0;
+    for (var i = 0; i < nc; i++) {
+      mbar += s.x[j * nc + i] * t2.mw[i];
+      _yy[i] = s.y[j * nc + i];
+    }
+    mbar /= 1000; // kg/mol
+    final p = s.pStage[j] > 0 ? s.pStage[j] : s.pTop;
+    final lamMol = s.hVap[j] - s.hLiq[j];
+    final pr = ts.p;
+    pr.rhoL = mbar / s.vLiq[j];
+    pr.rhoV = t2.vaporDensity(t, p, _yy);
+    pr.lambdaMass = lamMol / mbar;
+    pr.cpL = t2.cpLAt(t, s.x, j * nc) / mbar;
+    pr.muL = ts.geo.muL;
+    pr.dTsatdP = gasR * t * t / (lamMol * p);
+    pr.tSump = t;
+    pr.tSteam = steamT;
+  }
+
+  /// PHYSICS.md 13.1 step 7: runs the loop alone for 600 s with the column frozen and Q_R,SP = [duty].
+  void initThermosyphon(double duty) {
+    final ts = control.ts;
+    if (ts == null) return;
+    _t2Utilities();
+    ts.init(duty);
+    final n = (600 / ControlSystem.deltaC).round();
+    for (var k = 0; k < n; k++) {
+      ts.substep(ControlSystem.deltaC, duty, sumpLevelPct, reb.sumpHeight, control.tsInletOp,
+          rfK: control.tsRfK, fFlooded: control.tsFFlooded, kInAdd: control.tsKInAdd, kOutAdd: control.tsKOutAdd);
+    }
+    control.modelTsIs = ts.iS;
   }
 
   double _t2FeedEnthalpy(Float64List z) {
@@ -1168,6 +1237,7 @@ class Stepper {
     s.nRelief = _nreliefT;
     s.dV = _dvT;
     qDelivered = qR;
+    if (control.ts != null) qMax = control.ts!.qMax;
     dutyRequestExceeds =
         control.fv103.fMax * control.fv103.g(control.fv103.position) >
             qMax * (1 + 1e-6) + 1.0;
@@ -1191,6 +1261,7 @@ class Stepper {
       var nn = s.nVi[i] + dt * ((v1 - s.nCond) * yc - ventTot * yv);
       if (nn < 0) {
         if (nn < -1e-12) health.negativeClamps++;
+        if (nn < -1e-6) _clampHit = true;
         nn = 0;
       }
       s.nVi[i] = nn;

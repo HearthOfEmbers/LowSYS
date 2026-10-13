@@ -417,6 +417,16 @@ class ScenarioDef {
   static final RegExp _templatePattern =
       RegExp(r'\{([\w\[\].:\-]+?)(?::([0-9.]+|time))?\}');
 
+  /// Diagnosis vocabulary (ENGINE_API.md 11.2, with the M6 additions).
+  static const Set<String> diagnosisCategories = {
+    'cooling', 'fouling', 'inerts', 'foaming', 'trayDamage', 'instrument', 'valve', 'feedUpset', 'steam',
+    'thermosyphon', 'maldistribution', 'none', 'restriction', 'condensate',
+  };
+  static const Set<String> diagnosisLocations = {
+    'condenser', 'reboiler', 'rectifying', 'stripping', 'feed', 'instrument:*', 'valve:*', 'packedBed', 'column',
+    'steamSupply', 'tsInletLine', 'tsOutletLine',
+  };
+
   /// True when [path] is a valid template variable of this scenario.
   bool _validTemplateVar(String v) {
     if (metricPathPattern.hasMatch(v)) return true;
@@ -532,7 +542,38 @@ class ScenarioDef {
         }
         if (c.weight < 0) p.add('candidate ${c.id}: negative weight');
       }
-      if (diagnosis == null) p.add('drill needs a diagnosis block');
+      final dg = diagnosis;
+      if (dg == null) {
+        p.add('drill needs a diagnosis block');
+      } else {
+        for (final c in dg.categories) {
+          if (!diagnosisCategories.contains(c)) p.add('unknown diagnosis category "$c"');
+        }
+        for (final l in dg.locations) {
+          if (!diagnosisLocations.contains(l)) p.add('unknown diagnosis location "$l"');
+        }
+        for (final c in candidates) {
+          if (!dg.categories.contains(c.answerCategory)) {
+            p.add('candidate ${c.id}: answer category "${c.answerCategory}" is not offered');
+          }
+          final ok = dg.locations.any((l) =>
+              l == c.answerLocation ||
+              (l.endsWith(':*') && c.answerLocation.startsWith(l.substring(0, l.length - 1))));
+          if (!ok) p.add('candidate ${c.id}: answer location "${c.answerLocation}" is not offered');
+        }
+      }
+    }
+    if (!const {'model', 'plant', 'plantCalc'}.contains(view)) p.add('unknown view "$view"');
+    // F17 and F18 act on the thermosyphon loop only (ENGINE_API.md 9)
+    const tsFaults = {'tsInletRestriction', 'tsOutletRestriction'};
+    final usesTs = candidates.any((c) => tsFaults.contains(c.faultType.name)) ||
+        events.any((e) =>
+            e.action == 'injectFault' &&
+            e.data['fault'] is Map &&
+            tsFaults.contains((e.data['fault'] as Map)['type']));
+    if (usesTs) {
+      final lev = (leverSet['reboilerType'] ?? 0) >= 0.5;
+      if (!lev) p.add('F17/F18 need a thermosyphon reboiler (levers.set reboilerType 1)');
     }
     // templates
     for (final text in [debrief, ...candidates.map((c) => c.debrief)]) {
