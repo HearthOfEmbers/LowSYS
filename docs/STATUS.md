@@ -54,10 +54,8 @@ Last updated 2026-10-12 by the outgoing coordinator.
   3. Disable the `lowsys-coordinator` scheduled task.
 
 ## Next steps
-1. Read `DEVIATIONS.md` → "M3 handoff" and `git log -5`.
-2. In parallel:
-   - **Opus `high`:** apply `docs/OPEN_ITEMS.md` to the spec docs, then empty the file.
-   - **Sonnet:** create `docs/milestones/M4.md`, a self-contained excerpt of only the M4 parts of SCOPE, PHYSICS, ENGINE_API and VALIDATION.
+1. Read `DEVIATIONS.md` → "M3 handoff" and "Spec decisions 2026-10-12", and `git log -5`.
+2. Done 2026-10-12: OPEN_ITEMS applied to the specs (the engine must now implement CAS-slave `delta` → master OP shift for the H9 ratio-preserving feed event), and `docs/milestones/M4.md` created (about 103 KB). Open questions from the excerpt: VC-7.4's Tier-2 3–9 h window exists only in a test name; no test found for VC-16.3(c); the engine still lacks `inertFraction`, `vaporInventory`, `vaporMoles`, `qMax`, `steamT` and `model.dutyLimited`. The M3-leftovers coder was stopped before it changed anything because usage was low, so step 3 starts from scratch.
 3. **Fresh Sonnet coder:** finish any M3 handoff items (perf first), then build M4 from `docs/milestones/M4.md`, adopting the API names in `fixtures_m4.dart` where reasonable. Push a checkpoint once the Tier-2 engine is in.
 4. **Fresh Opus `xhigh` validator:** run the M4 suite against that checkpoint and adjudicate failures (test wrong, engine wrong or spec wrong). Fix only the tests. Spec issues go into OPEN_ITEMS.md; engine bugs go to the coder.
 5. Report briefly to the user at each milestone. The user is learning distillation and wants autonomous progress, so ask them only for genuine decisions.

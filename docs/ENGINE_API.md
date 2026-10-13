@@ -967,7 +967,7 @@ An unknown path is a schema-test failure.
 
 The M2 runner implements `at`, `setLever`, `setLoopMode` (with `tag`), `injectFault` and `message` (with `text`). M3 adds `atRandom`, `when`, `setSp`, `delta`, `clearFault` and `text` on any action.
 
-`delta` is an SI increment applied to the current value. A `setSp` on a loop in MAN stores the SP (PHYSICS.md §10.2).
+`delta` is an SI increment applied to the current value. A `setSp` on a loop in MAN stores the SP (PHYSICS.md §10.2). A `setSp` with `delta` on a slave in CAS steps the master's OP by the same amount in the slave's span, OP_master += 100 δ/(hi_s − lo_s) (clamped), so the cascade SP moves by δ at once and the velocity-form master trims from there; a `value` on a slave in CAS is rejected by the schema test.
 
 ### 11.2 Drill JSON (extends §11.1)
 
@@ -1160,7 +1160,7 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102 (reflux flow) read {fault.magnitude} wrong from {fault.onset:time}.** FC-102 kept the *reading* at its set point, so the real reflux moved the other way by the same amount. The tell-tales: C4 for FV-102 went red (the valve's OP no longer matched the flow it should give), and C3 (vapour to the top: reboiler vs reflux + distillate) disagreed by the same amount, while every other check stayed green. The trend itself looked normal — a bias has normal noise. Right response: FC-102 to MAN, then set the OP from the valve curve, for example {valve[FV-102].op:0.0} %."},
     {"id": "ft102_plugged", "weight": 1,
-     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
+     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [1.0, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-102", "mode": "plugged"},
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** The reading stopped following the process: its 5-minute σ dropped from about 1.2 kmol/h to under 0.1 (\"too steady\"). FC-102 then kept integrating the small offset between its set point and the trapped value, and walked the real reflux far away while the reading sat on the set point. C4 (FV-102) and C3 both failed. A stuck *valve* would have looked similar on the OP trend, but its flow reading would still have had normal noise and the balances would have agreed."},
@@ -1218,7 +1218,9 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
   ],
   "events": [
     {"id": "feed_up", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 1.38889,
-     "text": "Upstream raised the feed: FC-101 set point +5 kmol/h."}
+     "text": "Upstream raised the feed by 5 %; reflux and steam were raised 5 % with it."},
+    {"at": 2700, "action": "setSp", "tag": "FC-102", "delta": 1.38889},
+    {"at": 2700, "action": "setSp", "tag": "FC-103", "delta": 65000}
   ],
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
@@ -1244,7 +1246,7 @@ Notes:
 - **Tier 2, not "T1 or T2".** Tier 1 has no temperatures or pressure, so the TI and PT candidates and checks C3b, C6 and C7 need Tier 2. SCOPE.md §6.2 is changed accordingly.
 - **The decoy** (`feed_real`, weight 2 of 17, about 12 %) makes the "process or instrument?" choice real (rule 6 of §11.5).
 - **Bonus.** The protect bonus is available in 9 of the 13 draws: those where the lying tag is a loop PV and putting that loop in MAN is the right response. For `ft103_bias` the cascade protects the product by itself, so there is no bonus and no penalty.
-- **Feed event.** The +5 % feed step at 45 min exists so that frozen, plugged and coated sensors get a change they fail to follow. It is never later than 15 min after the latest onset. VALIDATION.md H9.0 checks that, with no fault, it does not trip the off-spec test.
+- **Feed event.** The step at 45 min exists so that frozen, plugged and coated sensors get a change they fail to follow. It is never later than 15 min after the latest onset. It is ratio-preserving: feed, reflux and reboiler duty all rise by 5 % (+5 kmol/h, +5 kmol/h, +65 kW), so L/V and D/F stay put. A feed-only step under LV control sends the extra benzene into the bottoms and takes x_B off spec on a healthy run (M3 adjudication). FC-103 is in CAS here, so its `delta` bumps TC-101's OP (§11.1, `delta` on a slave in CAS), and TC-101 then trims the duty. VALIDATION.md H9.0 checks that, with no fault, the event does not trip the off-spec test. It moves the true D by only ≈ 2.5 kmol/h, so `ft104_stuck` shows as C1/C3 `check`, not `fail` (VALIDATION.md H9.12); the frozen trace is the key evidence.
 
 ### 11.7 Drill H10 "Bad valve or bad meter?" (M6)
 
@@ -1284,7 +1286,7 @@ Notes:
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102 read {fault.magnitude} wrong from {fault.onset:time}.** The valve was fine and moved as told, but FC-102 controlled a lie, so the real reflux was off by that amount. Two checks failed together: C4 for FV-102 (OP vs flow) *and* C3/C3a (reflux + distillate vs condenser duty). A sticking valve fails only the first."},
     {"id": "ft102_plugged", "weight": 1,
-     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
+     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [1.0, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-102"},
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** On the OP trend this looks exactly like a stuck valve: OP moving, reading flat. The difference was the *noise*: the reading became far too smooth (σ under a tenth of typical) and the balances disagreed. With a stuck valve the meter keeps its normal noise and the balances agree."},

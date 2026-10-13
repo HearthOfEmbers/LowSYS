@@ -647,7 +647,7 @@ Unit tests drive a bare `Instrument` with a scripted true value (PHYSICS.md §10
   | FT-102 bias +, s = 0.4 (12 kmol/h) | C4:FV-102 and C3 `fail` within 10 min | C1 leaves `ok` |
   | FV-102 `stuck` | C4:FV-102 `fail` within 15 min | C3 or C1 `fail` (≥ 95 % of evaluations `ok`) |
   | FT-102 plugged, s = 1, ramp 300 s | Signal-look ratio ≤ 0.2 within 10 min; C3 `fail` within 20 min | – |
-  | FT-101 drift +, s = 0.6 | C1 `fail` within 25 min; C4:FV-101 `fail` within 30 min | C3 `fail` (Tier 1, q = 1) |
+  | FT-101 drift +, s = 0.6 | C1 `fail` within 25 min; C4:FV-101 `fail` within 40 min (the 600-s window mean of a drift ramp crosses the fail line at about 36 min; C1 fails first) | C3 `fail` (Tier 1, q = 1) |
   | LT-101 bias +, s = 0.8 | C5:drum `fail` within 10 min; FT-104 excursion ≥ 10 kmol/h; an LG-101 check differs from LT-101 by 8 ± 3 % | C4 any `fail` |
   | LT-102 stuck | σ_5min = 0 within 5 min; C5:sump `fail` within 20 min of a feed SP step of +5 kmol/h | – |
   | PT-101 bias +, s = 0.5 (10.1 kPa) [T2] | r7a and r7b both ≥ 2.7 K (band 1 K) with the same sign within 15 min | C6 flags any TI |
@@ -856,10 +856,10 @@ Unlike the rows above, these run with **noise on**, plant view and the drill's o
 
 | Id | Candidate | Key evidence to assert (default window 600 s) | Also assert |
 |---|---|---|---|
-| H9.0 | **No fault** (healthy run, 2 h, the feed event included) | No check `fail`; no BAD alarm; the off-spec predicate is never true | Signal-look ratios σ_5min/typicalSigma of every tag in 0.5–2, where FT-104/FT-105 use the level-loop typical σ of PHYSICS.md §10.5 (0.94 % / 1.60 % of span; against plain σ_disp they would read ≈ 2.4) |
+| H9.0 | **No fault** (healthy run, 2 h, the ratio-preserving feed event included) | No check `fail`; no BAD alarm; the off-spec predicate is never true | Signal-look ratios σ_5min/typicalSigma of every tag in 0.5–2, judged at all times except the 300 s after a scripted event (the 5-min σ then contains the step itself), where FT-104/FT-105 use the level-loop typical σ of PHYSICS.md §10.5 (0.94 % / 1.60 % of span; against plain σ_disp they would read ≈ 2.4) |
 | H9.1 | FT-102 bias, s = 0.4 | C3 or C3a `fail` within 10 min; C4:FV-102 `fail` within 10 min | C1 `ok`; off-spec reached within 2 h (so the protect bonus means something) |
-| H9.2 | FT-102 plugged, s = 0.9 | Signal-look ratio of FT-102 ≤ 0.2 within 15 min | C3/C3a `fail` within 30 min |
-| H9.3 | FT-101 drift, s = 0.6 | C1 `fail` within 20 min | C4:FV-101 `fail` within 30 min |
+| H9.2 | FT-102 plugged, s = 1.0 (minimum severity raised from 0.9: at 0.9 the oscillating true reflux averages out in the window and C3 never fails) | Signal-look ratio of FT-102 ≤ 0.2 within 15 min | C3/C3a `fail` within 30 min |
+| H9.3 | FT-101 drift, s = 0.6 | C1 `fail` within 20 min | C4:FV-101 `fail` within 40 min |
 | H9.4 | FT-103 bias, s = 0.4 | C3b `fail` within 15 min; C4:FV-103 `fail` within 15 min | \|ΔxB\| < 0.01 (the cascade compensates) |
 | H9.5 | LT-101 bias, s = 0.8 | C5:drum `fail` within 10 min; LG-101 vs LT-101 ≥ 5 % at any time after 15 min | – |
 | H9.6 | LT-102 signal loss low | `LT-102.BAD` at once | With no action, true sump > 95 % within 30 min (safety at stake) |
@@ -868,18 +868,18 @@ Unlike the rows above, these run with **noise on**, plant view and the drill's o
 | H9.9 | TI-114 bias, s = 0.25 | C6 flags TI-114 within 20 min | Off-spec reached within 2 h |
 | H9.10 | TI-114 coated, s = 0.8 | Within 30 min after the feed event, either C6 flags TI-114, or TC-101's OP oscillates with peak-to-peak ≥ 5 %, or TI-114's signal-look ratio ≤ 0.6 | **Weakest candidate**; drop it per the rule above if none of the three holds |
 | H9.11 | TI-107 spiking, s = 0.5 | Signal-look ratio of TI-107 ≥ 5 within 5 min | – |
-| H9.12 | FT-104 stuck | σ_5min of FT-104 = 0 within 5 min | C1 or C3 `fail` within 20 min after the feed event |
+| H9.12 | FT-104 stuck | σ_5min of FT-104 = 0 within 5 min | C1 or C3 at `check` or worse, held ≥ 60 s, within 20 min after the feed event (the event moves the true D by ≈ 2.5 kmol/h: above the band, below the 2 × band fail line) |
 | H9.13 | F07 ± 0.08 benzene | AT-100 shows the change within 15 min | No check `fail` in 2 h; C6 flags nothing |
 | H10.0 | **No fault** (healthy run, 2 h, the planning event included) | As H9.0 | – |
-| H10.1 | FV-102 stuck | C4:FV-102 `fail` within 20 min, or within 5 min of the planning event | C3/C3a and C1 `ok` ≥ 95 % of evaluations; FT-102 signal-look ratio in 0.5–2 |
+| H10.1 | FV-102 stuck | C4:FV-102 `fail` within 20 min, or within 5 min of the planning event | C3/C3a and C1 never `fail`, and `ok` ≥ 85 % of evaluations; FT-102 signal-look ratio in 0.5–2 |
 | H10.2 | FV-103 stuck | C4:FV-103 `fail` as above | C3b `ok` ≥ 95 %; FT-103 signal look normal |
 | H10.3 | FT-102 bias, s = 0.4 | C4:FV-102 **and** C3/C3a `fail` within 10 min | – |
-| H10.4 | FT-102 plugged, s = 0.9 | FT-102 signal-look ratio ≤ 0.2 within 15 min | C3/C3a `fail` within 30 min (separates it from H10.1) |
-| H10.5 | FT-103 drift, s = 0.6 | C3b `fail` within 25 min | C4:FV-103 `fail` within 30 min |
+| H10.4 | FT-102 plugged, s = 1.0 (as H9.2) | FT-102 signal-look ratio ≤ 0.2 within 15 min | C3/C3a `fail` within 30 min (separates it from H10.1) |
+| H10.5 | FT-103 drift, s = 0.6 | C3b `fail` within 25 min | C4:FV-103 `fail` within 40 min |
 | H10.6 | FT-103 plugged, s = 0.9 | FT-103 signal-look ratio ≤ 0.2 within 15 min | – |
 | H10.7 | F07 ± 0.10 benzene | AT-100 shows the change within 15 min | No C4 `fail`; no C3 `fail` in 2 h |
 
-A healthy run with the drill's scripted event (H9.0, H10.0) must never meet the off-spec predicate, so the protect bonus measures the fault and not the event (ENGINE_API.md §11.5 rule 7). If H9.0 fails, reduce the feed event from +5 to +3 kmol/h and record it.
+A healthy run with the drill's scripted event (H9.0, H10.0) must never meet the off-spec predicate, so the protect bonus measures the fault and not the event (ENGINE_API.md §11.5 rule 7). The H9 feed event is therefore ratio-preserving: F, L₀ and the reboiler duty all step by +5 % together (ENGINE_API.md §11.6), so the column's L/V and D/F stay put. A feed-only step under LV control sends the extra benzene into the bottoms (x_B 0.013 → ≈ 0.024 about 8 min later, M3 adjudication). If H9.0 still fails, reduce all three steps from +5 % to +3 % and record it.
 
 ---
 

@@ -1857,7 +1857,7 @@ These thresholds are **[impl-tunable]**: VC-20.6 fixes the required behaviour, a
 ### 13.4 Changing the number of trays, feed tray, internals
 
 - Feed tray change: no rebuild; the feed moves to the new stage at the next step.
-- Number of trays N → N': rebuild the stage arrays. For each new tray at fractional height s' = (j' − ½)/N', interpolate liquid composition and h_cl linearly from the old profile at s = s'; drum, sump, controllers, pressure inventory unchanged; the feed tray keeps its fractional position (rounded). Then continue. Allowed while running; the UI pauses for the rebuild frame.
+- Number of trays N → N': rebuild the stage arrays. For each new tray at fractional height s' = (j' − ½)/N', interpolate liquid composition and h_cl linearly from the old profile at s = s'; drum, sump, controllers, pressure inventory unchanged; the feed tray keeps its fractional position, rounded **down**: feedStage' = clamp(⌊φ N' + 10⁻⁹⌋, 1, N'), where φ = feedStage/N is stored whenever the feed tray is set explicitly (config or lever) and is not changed by a rebuild, so a sequence of rebuilds does not drift. B-T feed 10 of 20 (φ = 0.5) gives N' = 27 → tray 13 (G6 reference x_D 0.97761), 28 → 14. Then continue. Allowed while running; the UI pauses for the rebuild frame.
 - On a rebuild, tray TIs are remapped as in §10.5. A TI that keeps its tag keeps its state. A new TI starts at the true value, and a TI that disappears loses its faults and alarms. The sump TI is renamed TI-(100 + N' + 1) and keeps its state.
 - Tray type or section geometry changes: allowed only while paused; holdups re-initialised from Bennett at current flows.
 
