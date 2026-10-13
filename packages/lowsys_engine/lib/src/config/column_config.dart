@@ -415,6 +415,9 @@ class ColumnConfig {
     for (final s in sections) {
       if (s is TraySection) s.geometry.validate(p, 'section');
     }
+    if (tier == ThermoTier.t1 && condenser.type == CondenserType.partial) {
+      p.add('A partial condenser needs Tier 2 or 3');
+    }
     if (condenser.drumVolume <= 0) p.add('drumVolume must be > 0');
     if (reboiler.sumpVolume <= 0) p.add('sump volume must be > 0');
     return p;

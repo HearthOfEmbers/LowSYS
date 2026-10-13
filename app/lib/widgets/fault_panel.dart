@@ -558,7 +558,8 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
             ],
           ),
           if (signed)
-            Row(
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text('Reads', style: t.type.label.style(13, p.inkMuted)),
                 const SizedBox(width: 8),

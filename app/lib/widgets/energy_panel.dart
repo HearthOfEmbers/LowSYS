@@ -236,6 +236,12 @@ class _CondenserCard extends StatelessWidget {
               sub: blanket > 0.005 ? 'tubes blanketed ${(100 * blanket).toStringAsFixed(0)} %' : null,
               valueColor: c.inertFraction > 0.02 ? p.warn : null),
           _Row('Top pressure', _bar(u, s.kpis.pTop), t),
+          if (c.partial)
+            _Row(
+              'Vapour product PV-102',
+              '${u.fromSI(Quantity.molarFlow, c.vaporProduct).toStringAsFixed(1)} ${u.symbol(Quantity.molarFlow)}',
+              t,
+            ),
           if (c.nRelief > 1e-6) _Row('Relief valve', 'LIFTING', t, valueColor: p.alarm),
         ] else
           _Row('Reflux temperature TI-100', _temp(u, c.tReflux), t),

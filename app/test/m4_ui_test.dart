@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lowsys_app/app.dart';
 import 'package:lowsys_app/controllers/save_store.dart';
 import 'package:lowsys_app/controllers/sim_controller.dart';
+import 'package:lowsys_app/widgets/fault_panel.dart';
 import 'package:lowsys_app/theme/themes/control_room.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -48,6 +49,15 @@ void main() {
       await frames(tester, 10);
       expect(sim.loaded, isTrue);
       expect(sim.snapshot.value!.tier, ThermoTier.t1);
+
+      // Tier 1 shows the display-only T* (ideal Raoult bubble point)
+      expect(sim.snapshot.value!.stages.idealT, isTrue);
+      expect(sim.snapshot.value!.stages.t[5].isFinite, isTrue);
+      sim.diagramTab.value = 1;
+      sim.profileKind.value = 5;
+      await frames(tester, 3);
+      await snap(tester, key, '${e.key}_t1_tstar', dir: 'm4');
+      sim.diagramTab.value = 0;
 
       // Energy tab in Tier 1 explains itself
       sim.controlTab.value = 5;
@@ -94,7 +104,7 @@ void main() {
       sim.controlTab.value = 4;
       await frames(tester, 3);
       if (e.value.width > 1000) {
-        await tester.scrollUntilVisible(find.byKey(const ValueKey('process-faults')), 300, scrollable: find.byType(Scrollable).last);
+        await tester.scrollUntilVisible(find.byKey(const ValueKey('process-faults')), 300, scrollable: find.descendant(of: find.byType(FaultPanel), matching: find.byType(Scrollable)).first);
         expect(find.byKey(const ValueKey('process-faults')), findsOneWidget);
       }
       await sim.injectFault(FaultSpec(
@@ -119,6 +129,23 @@ void main() {
       sim.controlTab.value = 5;
       await frames(tester, 5);
       await snap(tester, key, '${e.key}_control_room', dir: 'm4');
+      sim.controlTab.value = 1;
+      sim.selectedLoop.value = 'PC-101';
+      await frames(tester, 5);
+      await snap(tester, key, '${e.key}_control_room_loops', dir: 'm4');
+      sim.controlTab.value = 0;
+      await frames(tester, 5);
+      await snap(tester, key, '${e.key}_control_room_levers', dir: 'm4');
+      expect(tester.takeException(), isNull);
+
+      // partial condenser (E50): vapour product PV-102, CW from its own lever
+      await sim.setLever('cwOP', 30);
+      await sim.setLever('condenserType', 1);
+      await frames(tester, 20);
+      expect(sim.snapshot.value!.condenser!.partial, isTrue);
+      sim.controlTab.value = 5;
+      await frames(tester, 5);
+      await snap(tester, key, '${e.key}_partial_condenser', dir: 'm4');
       expect(tester.takeException(), isNull);
 
       // G8 scenario loads in Tier 2 with the 10 bar(g) header

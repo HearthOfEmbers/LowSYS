@@ -200,9 +200,10 @@ class Stepper {
         }
       }
       if (j == 0) {
-        // drum: the condensate has the composition of the vapour leaving tray 1
+        // drum: the condensate has the composition of the vapour leaving tray 1; with a partial condenser the
+        // drum vapour is in equilibrium with the drum liquid (PHYSICS.md 7.1)
         for (var i = 0; i < nc; i++) {
-          yOut[i] = yOut[nc + i];
+          yOut[i] = partial ? _yy[i] : yOut[nc + i];
         }
       } else if (j == N + 1) {
         for (var i = 0; i < nc; i++) {
@@ -676,13 +677,23 @@ class Stepper {
       double L0, Float64List z) {
     final N = nTrays;
     final v1 = tier2 ? s.nCond : s.vapor[1];
+    final part = partial;
+    final vTop = s.vapor[1];
     for (var i = 0; i < nc; i++) {
       // drum row (total condenser, PHYSICS.md 12.3)
       _g[0] = 0;
       _a[0] = 0;
-      _b[0] = 1 + dt * (L0 + D) / _mhat[0];
-      _c[0] = -dt * (v1 * s.eff[1] * _kt[nc + i] + s.entrain[1]) / _mhat[1];
-      _d[0] = s.m[i] + dt * v1 * (1 - s.eff[1]) * _yhat[2 * nc + i];
+      if (part) {
+        // partial condenser (PHYSICS.md 7.4): the drum is an equilibrium stage, the uncondensed vapour leaves at K~ x_0
+        _b[0] = 1 + dt * (L0 + D + (vTop - v1) * _kt[i]) / _mhat[0];
+        _c[0] =
+            -dt * (vTop * s.eff[1] * _kt[nc + i] + s.entrain[1]) / _mhat[1];
+        _d[0] = s.m[i] + dt * vTop * (1 - s.eff[1]) * _yhat[2 * nc + i];
+      } else {
+        _b[0] = 1 + dt * (L0 + D) / _mhat[0];
+        _c[0] = -dt * (v1 * s.eff[1] * _kt[nc + i] + s.entrain[1]) / _mhat[1];
+        _d[0] = s.m[i] + dt * v1 * (1 - s.eff[1]) * _yhat[2 * nc + i];
+      }
       for (var j = 1; j <= N; j++) {
         _g[j] = j >= 2
             ? -dt * s.bypass[j - 1] * s.liquid[j - 2] / _mhat[j - 2]
@@ -723,6 +734,9 @@ class Stepper {
 
   // ---------------------------------------------------------------- Tier 2 (M4)
 
+  /// True with a partial condenser in Tiers 2/3 (PHYSICS.md 7.2 to 7.5); Tier 1 always has a total one.
+  bool get partial => tier2 && cond.type == CondenserType.partial;
+
   /// Live outputs of the last Tier-2 step (snapshot, instruments, alarms).
   double qMax = 0,
       qMax0 = 0,
@@ -746,7 +760,8 @@ class Stepper {
       _qcT = 0,
       _ncondT = 0,
       _nventT = 0,
-      _nreliefT = 0;
+      _nreliefT = 0,
+      _dvT = 0;
   late final Float64List _cj = Float64List(s.n);
   late final Float64List _yb = Float64List(nc), _kb = Float64List(nc);
   double _sSumpNow = 1.0;
@@ -768,7 +783,7 @@ class Stepper {
   /// Prepares Tier-2 start values: utilities and the initial cooling-water flow.
   void prepareTier2() {
     _t2Utilities();
-    cwFlow = control.pv101.fMax * control.pv101.g(control.pv101.position);
+    cwFlow = control.cwValve.fMax * control.cwValve.g(control.cwValve.position);
     cwInT = inp.cwInT;
     cwOutT = cwInT + 14.7;
   }
@@ -796,7 +811,7 @@ class Stepper {
     qMax = math.max(0.0, uaRebEff * (steamT - tB));
     control.fv103.fMax = math.max(qMax0, 1.0);
     control.fv103.cap = qMax;
-    control.pv101.fMax = inp.cwMaxFlow;
+    control.cwValve.fMax = inp.cwMaxFlow;
     control.cwScale = ep.cwFlowScale;
     control.fv102.cap =
         ep.refluxCapScale < 1 ? refluxCapacity * ep.refluxCapScale : double.infinity;
@@ -1044,6 +1059,10 @@ class Stepper {
     cwInT = tIn;
     final sub = inp.refluxSub + 20 * fb;
     _tGuess = s.tSat0;
+    final part = partial;
+    final dvScale = part ? control.meanDv : 0.0;
+    final pDown = cond.pDownEff;
+    final dpDes = math.max(cond.pTopDesign - pDown, 1.0);
 
     double eval(double p) {
       _t2Sweep(p, dt, qR, l0, f, hF, fs);
@@ -1055,7 +1074,8 @@ class Stepper {
           ? math.max(0.0, ua * (ts - tIn) / (1 + ua / (2 * mcw * _cpWater)))
           : 0.0;
       _qcT = qc;
-      final hVs = t2.hVAt(ts, s.y, nc);
+      // partial condenser: the uncondensed vapour leaves the drum at y_0 = K~ x_0, so desuperheating is to that vapour
+      final hVs = part ? t2.hVAt(ts, _yb, 0) : t2.hVAt(ts, s.y, nc);
       final h0 = t2.hLAt(ts - sub, s.x, 0);
       var nc0 = (v1 * (hVs - s.hVap[1]) + qc) / (hVs - h0);
       if (!(nc0 > 0)) nc0 = 0;
@@ -1068,8 +1088,11 @@ class Stepper {
           ((p - cond.reliefSet) / (0.1 * cond.reliefSet)).clamp(0.0, 1.0);
       _nventT = nvent;
       _nreliefT = nrel;
+      // vapour product through PV-102 (7.5)
+      final dv = part ? dvScale * math.sqrt(math.max(p - pDown, 0.0) / dpDes) : 0.0;
+      _dvT = dv;
       final nv = pc * cond.overheadVolume / (gasR * ts);
-      return nv - nV0 - dt * (v1 - nc0 - (nvent + nrel) * (1 - yI));
+      return nv - nV0 - dt * (v1 - nc0 - dv - (nvent + nrel) * (1 - yI));
     }
 
     var p0 = s.pTop;
@@ -1077,22 +1100,29 @@ class Stepper {
     var p1 = p0 * 1.001;
     var r1 = eval(p1);
     var ok = false;
+    var lastDelta = double.infinity;
     for (var it = 0; it < 12; it++) {
       final den = r1 - r0;
-      if (den == 0) break;
+      if (den == 0) {
+        ok = true; // two identical residuals: converged to machine precision
+        break;
+      }
       var p2 = p1 - r1 * (p1 - p0) / den;
       if (!(p2 > 1000)) p2 = 1000;
       if (p2 > 1e7) p2 = 1e7;
       final delta = (p2 - p1).abs();
+      lastDelta = delta;
       p0 = p1;
       r0 = r1;
       p1 = p2;
       r1 = eval(p1);
-      if (delta < 0.1) {
+      // polish to 1e-4 Pa: a 0.1 Pa stop left ~5e-11 relative jitter in P that PC-101 and TC-101 kept alive (V4)
+      if (delta < 1e-4) {
         ok = true;
         break;
       }
     }
+    if (!ok && lastDelta < 0.1) ok = true;
     if (!ok) {
       // safeguarded fallback: bisection on a bracket (r increases with P)
       health.pressureFallbacks++;
@@ -1120,6 +1150,7 @@ class Stepper {
     s.qR = qR;
     s.nVent = _nventT;
     s.nRelief = _nreliefT;
+    s.dV = _dvT;
     qDelivered = qR;
     dutyRequestExceeds =
         control.fv103.fMax * control.fv103.g(control.fv103.position) >
@@ -1132,10 +1163,14 @@ class Stepper {
     final yI = nV0 + s.nI > 0 ? s.nI / (nV0 + s.nI) : 0.0;
     final v1 = s.vapor[1];
     final e1 = s.eff[1];
-    final ventTot = (s.nVent + s.nRelief) * (1 - yI);
+    final ventTot = (s.nVent + s.nRelief) * (1 - yI) + s.dV;
+    final part = partial;
     for (var i = 0; i < nc; i++) {
-      final yc = (1 - e1) * _yhat[2 * nc + i] +
-          e1 * _kt[nc + i] * _mnew[nc + i] / _mhat[1];
+      // the vapour that does not condense: tray-1 vapour (total condenser) or the drum vapour y_0 (partial, 7.1)
+      final yc = part
+          ? _kt[i] * _mnew[i] / _mhat[0]
+          : (1 - e1) * _yhat[2 * nc + i] +
+              e1 * _kt[nc + i] * _mnew[nc + i] / _mhat[1];
       final yv = nV0 > 0 ? s.nVi[i] / nV0 : yc;
       var nn = s.nVi[i] + dt * ((v1 - s.nCond) * yc - ventTot * yv);
       if (nn < 0) {
@@ -1153,7 +1188,12 @@ class Stepper {
   /// KPIs and measurement values of the finished step (PHYSICS.md VC-5.4, 10.5).
   void _t2Diagnostics(double f, double d, double b, double hF) {
     final qr = qDelivered;
-    final res = f * hF + qr - s.qC - d * s.hLiq[0] - b * s.hLiq[nTrays + 1];
+    final res = f * hF +
+        qr -
+        s.qC -
+        d * s.hLiq[0] -
+        b * s.hLiq[nTrays + 1] -
+        s.dV * s.hVap[0];
     energyResidual = qr > 1 ? res.abs() / qr : 0.0;
     final mcw = cwFlow;
     cwOutT = mcw > 0 ? cwInT + s.qC / (mcw * _cpWater) : cwInT;

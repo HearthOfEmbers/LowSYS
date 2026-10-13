@@ -294,6 +294,9 @@ class Simulator {
           nTrays: N,
           tc101Tray: config.control.tc101Tray,
           trays: config.control.trayList(N),
+          partial: _isPartial(config),
+          dvMax: config.condenser.dvMax,
+          cwManualOp: lev['cwOP'] ?? 70.0,
         ),
         _seed);
     _trends = TrendBuffer();
@@ -354,6 +357,10 @@ class Simulator {
     _resetMonitor(capture: true);
     if (carry != null) _applyCarry(carry);
   }
+
+  /// A partial condenser exists only in Tiers 2 and 3 (PHYSICS.md 7.2).
+  static bool _isPartial(ColumnConfig c) =>
+      c.condenser.type == CondenserType.partial && c.tier != ThermoTier.t1;
 
   void _initFromCarry() {
     _stepper.bus
@@ -891,6 +898,17 @@ class Simulator {
           tiers: {ThermoTier.t2, ThermoTier.t3},
           boundLoop: 'PC-101',
           group: 'advanced'),
+      const LeverSpec(
+          id: 'condenserType',
+          label: 'Condenser (0 total, 1 partial)',
+          quantity: Quantity.dimensionless,
+          min: 0,
+          max: 1,
+          defaultValue: 0,
+          tiers: {ThermoTier.t2, ThermoTier.t3},
+          requiresPause: true,
+          group: 'advanced',
+          integer: true),
       LeverSpec(
           id: 'nTrays',
           label: 'Number of trays N',
@@ -1082,7 +1100,9 @@ class Simulator {
       case 'tc101Sp':
         return _control.tc101.sp;
       case 'cwOP':
-        return _control.pc101.op;
+        return _control.partial ? _control.cwManualOp : _control.pc101.op;
+      case 'condenserType':
+        return _control.partial ? 1.0 : 0.0;
       case 'drumLevelSp':
         return _control.lc101.sp;
       case 'sumpLevelSp':
@@ -1205,7 +1225,14 @@ class Simulator {
       case 'tc101Sp':
         _control.setSp('TC-101', v);
       case 'cwOP':
-        _opLever('PC-101', v);
+        if (_control.partial) {
+          _control.cwManualOp = v;
+        } else {
+          _opLever('PC-101', v);
+        }
+      case 'condenserType':
+        _setCondenserType(v >= 0.5 ? CondenserType.partial : CondenserType.total);
+        return;
       case 'drumLevelSp':
         _control.setSp('LC-101', v);
       case 'sumpLevelSp':
@@ -1716,6 +1743,9 @@ class Simulator {
       throw UnsupportedError('Tier t3 arrives with M5');
     }
     if (tier == _tier) return;
+    if (tier == ThermoTier.t1 && _control.partial) {
+      throw UnsupportedError('Tier 1 has a total condenser only');
+    }
     final s = _state;
     final N = s.nTrays;
     final nc = s.nc;
@@ -1871,6 +1901,7 @@ class Simulator {
         'refluxSubcooling': inp.refluxSub,
         'inertVent': inp.inertVent,
         if (!t1 && !inp.feedSat) 'feedT': inp.feedT,
+        if (_control.partial) 'cwOP': _control.cwManualOp,
       },
       control: ControlConfig(
         levelKc: _config.control.levelKc,
@@ -1883,6 +1914,45 @@ class Simulator {
         tc101Tray: _control.tc101Tray,
       ),
     );
+  }
+
+  /// Condenser type switch (pause required, PHYSICS.md 7.2): rebuilds the column at its present state.
+  void _setCondenserType(CondenserType type) {
+    if (type == _config.condenser.type) return;
+    if (_tier == ThermoTier.t1) {
+      throw UnsupportedError('A partial condenser needs Tier 2 or 3');
+    }
+    final cur = _configWithCurrentLevers();
+    final lev = {...cur.initialLevers};
+    if (type == CondenserType.total) lev.remove('cwOP');
+    rebuild(cur.copyWith(
+        condenser: CondenserConfig.fromJson(
+            {...cur.condenser.toJson(), 'type': type.name}),
+        initialLevers: lev));
+  }
+
+  final SolverHealth _displayHealth = SolverHealth();
+  Float64List _tStar = Float64List(0);
+
+  /// Display-only T* of Tier 1 (PHYSICS.md 1.3): the Tier-2 (Raoult) bubble point of every stage liquid at the
+  /// stage pressure [p]; the engine never uses it. NaN when the solve fails.
+  Float64List _displayBubbleT(Float64List p) {
+    final s = _state;
+    final n = s.n, nc = s.nc;
+    if (_tStar.length != n) _tStar = Float64List(n)..fillRange(0, n, 350.0);
+    final out = Float64List(n);
+    final y = Float64List(nc), k = Float64List(nc);
+    for (var j = 0; j < n; j++) {
+      try {
+        final t = _t2.bubbleAt(p[j] > 0 ? p[j] : _config.condenser.pTopDesign, s.x, j * nc,
+            _tStar[j], y, 0, k, 0, _displayHealth);
+        out[j] = t.isFinite ? t : double.nan;
+        if (t.isFinite) _tStar[j] = t;
+      } catch (_) {
+        out[j] = double.nan;
+      }
+    }
+    return out;
   }
 
   void _rebuildTrays(int trays) {
@@ -2020,7 +2090,8 @@ class Simulator {
       x: Float64List.fromList(s.x),
       y: Float64List.fromList(s.y),
       yStar: Float64List.fromList(s.yStar),
-      t: t2 ? Float64List.fromList(s.t) : (Float64List(n)..fillRange(0, n, nan)),
+      t: t2 ? Float64List.fromList(s.t) : _displayBubbleT(p),
+      idealT: !t2,
       p: p,
       liquidDown: Float64List.fromList(s.liquid),
       vaporUp: Float64List.fromList(s.vapor),
@@ -2071,6 +2142,9 @@ class Simulator {
           StreamId.bottoms, bFlow, xSump, t2 ? s.t[N + 1] : nan),
       StreamId.boilup: StreamSnapshot(
           StreamId.boilup, vUp, ySump, t2 ? s.t[N + 1] : nan),
+      if (t2 && _stepper.partial)
+        StreamId.vaporProduct: StreamSnapshot(StreamId.vaporProduct, s.dV,
+            Float64List.fromList(s.y.sublist(0, nc)), s.tSat0),
     };
     final xD = s.x[0];
     final xB = s.x[(N + 1) * nc];
@@ -2130,7 +2204,9 @@ class Simulator {
           tCwIn: _stepper.cwInT,
           tCwOut: _stepper.cwOutT,
           cwFlow: _stepper.cwFlow,
-          cwOp: _control.pc101.op,
+          cwOp: _control.partial ? _control.cwManualOp : _control.pc101.op,
+          partial: _stepper.partial,
+          vaporProduct: s.dV,
           tCond: s.tSat0,
           tReflux: s.tRefl,
           subcooling: s.tSat0 - s.tRefl,

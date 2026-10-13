@@ -93,7 +93,7 @@ class Tier2Raoult implements ThermoModel {
       }
       if (!(s > 0)) break;
       final g = math.log(s);
-      if (g.abs() < 1e-10) {
+      if (g.abs() < 1e-13) {
         ok = true;
         break;
       }
