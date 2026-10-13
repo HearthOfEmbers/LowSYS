@@ -78,7 +78,7 @@ class ControlDesign {
     this.partial = false,
     this.dvMax = 0,
     this.dvOp = 20,
-    this.cwManualOp = 70,
+    this.cwManualOp = 30,
     this.pTopDesign = 101325,
     this.cwMaxFlow = 41.54,
     this.dutyDesign = 1.3e6,
@@ -144,7 +144,7 @@ class ControlSystem {
   /// [cwValve] is always the cooling-water valve (the same object as [pv101] when the condenser is total).
   late Valve pv101, cwValve;
   bool partial = false;
-  double cwManualOp = 70, meanDv = 0;
+  double cwManualOp = 30, meanDv = 0;
   late Instrument pt101, pt201, ti100, ti201, ti202, ft201, tiSump;
   final List<Instrument> trayTis = [];
   final List<int> trayIds = [];
@@ -982,6 +982,20 @@ class ControlSystem {
     fv103.fMax = t2 ? math.max(fv103.fMax, 1.0) : 300 * _kmolh;
   }
 
+  /// T2 <-> T3 switch with a total condenser (PHYSICS.md 13.5): puts the CW valve and PC-101's OP, bumplessly,
+  /// at the position that delivers the CW flow [mcw] (kg/s, after the fault scale).
+  void setCwFlowBumpless(double mcw) {
+    if (partial || cwValve.fMax <= 0) return;
+    final gt = (mcw / (cwValve.fMax * cwScale)).clamp(0.0, 1.0);
+    final op = cwValve.characteristic == ValveCharacteristic.linear
+        ? 100 * gt
+        : 100 * math.log(gt * 49 + 1) / math.log(50);
+    cwValve
+      ..position = op
+      ..command = op;
+    pc101.op = op;
+  }
+
   /// Tier 1 -> Tier 2 (PHYSICS.md 13.5): the Tier-2 objects appear at their true values; FT-103 changes quantity and
   /// FV-103's position is re-initialised so that the delivered duty [duty] (W) is continuous.
   void enterTier2(MeasurementBus bus, double t,
@@ -1000,6 +1014,10 @@ class ControlSystem {
     fc103.initHistory(ft103.value);
     _resetT2Instruments(bus, t);
     pc101.sp = bus.pTop;
+    if (!partial) {
+      // PC-101 starts at the 50 % design OP (PHYSICS.md 13.5), whatever the hidden valve last held
+      pv101.init(50);
+    }
     pc101.op = pv101.position;
     pc101.mode = LoopMode.auto;
     pc101.requestedMode = LoopMode.auto;

@@ -43,3 +43,12 @@ flutter:
     - family: JetBrains Mono
       fonts:
         - asset: assets/fonts/JetBrainsMono-VF.ttf
+
+    - family: Source Serif 4
+      fonts:
+        - asset: assets/fonts/SourceSerif4-VF.ttf
+        - asset: assets/fonts/SourceSerif4-Italic-VF.ttf
+          style: italic
+    - family: Source Sans 3
+      fonts:
+        - asset: assets/fonts/SourceSans3-VF.ttf

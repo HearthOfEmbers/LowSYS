@@ -90,6 +90,9 @@ class CondenserConfig {
   final double pTopDesign, reliefSet;
   final double cwInletT, cwMaxFlow, uaClean, dvMax;
 
+  /// CW valve OP (%) a partial condenser starts at (PHYSICS.md 7.2; below the total-condensation OP).
+  final double cwOpPartial;
+
   /// Vapour-product header pressure (partial condenser), vent header pressure and capacities (PHYSICS.md 7.1, 7.2);
   /// null: P_design - 30 kPa, and 50 kPa below 3 bar design pressure else 1 atm.
   final double? pDown, pVent;
@@ -106,6 +109,7 @@ class CondenserConfig {
     this.cwMaxFlow = 41.54,
     this.uaClean = 29900,
     this.dvMax = 0,
+    this.cwOpPartial = 30,
     this.pDown,
     this.pVent,
     this.ventMax = 2.0,
@@ -129,6 +133,7 @@ class CondenserConfig {
       cwMaxFlow: g('cwMaxFlow', d.cwMaxFlow),
       uaClean: g('uaClean', d.uaClean),
       dvMax: g('dvMax', d.dvMax),
+      cwOpPartial: g('cwOpPartial', d.cwOpPartial),
       pDown: (j['pDown'] as num?)?.toDouble(),
       pVent: (j['pVent'] as num?)?.toDouble(),
       ventMax: g('ventMax', d.ventMax),
@@ -146,6 +151,7 @@ class CondenserConfig {
         'cwMaxFlow': cwMaxFlow,
         'uaClean': uaClean,
         'dvMax': dvMax,
+        'cwOpPartial': cwOpPartial,
         if (pDown != null) 'pDown': pDown,
         if (pVent != null) 'pVent': pVent,
         'ventMax': ventMax,

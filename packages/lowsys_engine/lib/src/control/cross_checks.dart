@@ -142,7 +142,9 @@ class CrossCheckEngine {
     {
       const id = 'C1', title = 'check.c1';
       final inputs = ['FT-101', 'FT-104', 'FT-105', 'LT-101', 'LT-102'];
-      if (!ready) {
+      if (cs.partial) {
+        out.add(na(id, title, inputs, 'vapour product not metered'));
+      } else if (!ready) {
         out.add(na(id, title, inputs, 'collecting data'));
       } else if (badInput(inputs) case final bad?) {
         out.add(na(id, title, inputs, 'BAD input $bad'));
@@ -174,7 +176,9 @@ class CrossCheckEngine {
         'AT-101',
         'AT-102'
       ];
-      if (w < 1800) {
+      if (cs.partial) {
+        out.add(na(id, title, inputs, 'vapour product not metered'));
+      } else if (w < 1800) {
         out.add(na(id, title, inputs, 'needs a window of at least 1800 s'));
       } else if (!ready) {
         out.add(na(id, title, inputs, 'collecting data'));
@@ -285,7 +289,9 @@ class CrossCheckEngine {
           'FT-103', 'FT-101', 'FT-201', 'TI-201', 'TI-202', 'FT-104',
           'FT-105', 'AT-100', 'AT-101', 'AT-102', 'TI-100', sumpTi //
         ];
-        if (!ready2) {
+        if (cs.partial) {
+          out.add(na(id, title, inputs, 'vapour product not metered'));
+        } else if (!ready2) {
           out.add(na(id, title, inputs, 'collecting data'));
         } else if ((badInput(['FT-103', 'FT-101', 'FT-104', 'FT-105', 'AT-100', 'AT-102', sumpTi]) ?? t2Bad) case final bad?) {
           out.add(na(id, title, inputs, 'BAD input $bad'));
@@ -331,7 +337,7 @@ class CrossCheckEngine {
       ('LV-102', 'FT-105', 'LC-102'),
       ('PV-101', 'FT-201', 'PC-101'),
     ]) {
-      if (valve == 'PV-101' && (!is2 || cs.partial)) continue;
+      if (valve == 'PV-101' && !is2) continue;
       final id = 'C4:$valve', title = 'check.c4';
       final inputs = [meter];
       final isT2Valve = valve == 'FV-103' && is2 || valve == 'PV-101';
@@ -341,8 +347,10 @@ class CrossCheckEngine {
       } else if (badInput(inputs) case final bad?) {
         out.add(na(id, title, inputs, 'BAD input $bad'));
       } else {
-        final v = cs.valve(valve);
-        final op = mean('OP:$loop');
+        // with a partial condenser PV-101 is the CW valve, held at its own lever (no PC-101 OP series)
+        final cwHeld = valve == 'PV-101' && cs.partial;
+        final v = cwHeld ? cs.cwValve : cs.valve(valve);
+        final op = cwHeld ? cs.cwManualOp : mean('OP:$loop');
         double fexp, fmax;
         if (valve == 'FV-103' && is2) {
           // Q_exp = Q_max,0 g(OP) with Q_max,0 = UA_R,clean (T_st(P_201) - T_121), all from readings
@@ -376,7 +384,10 @@ class CrossCheckEngine {
           ? ['LT-101', 'FT-101', 'FT-102', 'FT-103', 'FT-104']
           : ['LT-102', 'FT-101', 'FT-102', 'FT-103', 'FT-105'];
       final ok = is2 ? ready2 : ready;
-      if (!ok) {
+      if (!drum && cs.partial) {
+        // the sump balance needs the top vapour, which is the condensate plus the unmetered vapour product
+        out.add(na(id, title, inputs, 'vapour product not metered'));
+      } else if (!ok) {
         out.add(na(id, title, inputs, 'collecting data'));
       } else if ((badInput(inputs) ?? (is2 ? t2Bad : null)) case final bad?) {
         out.add(na(id, title, inputs, 'BAD input $bad'));

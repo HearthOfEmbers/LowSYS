@@ -40,7 +40,7 @@ void main() {
     expect(vp.flow, c.vaporProduct);
   });
 
-  test('over-sized CW (70 %, spec default): PV-102 closes and P floats below SP',
+  test('over-sized CW (70 %, above the total-condensation OP): PV-102 closes and P floats below SP',
       () {
     final sim = _steady(70);
     final s = sim.snapshot();
