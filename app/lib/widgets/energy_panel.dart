@@ -359,6 +359,7 @@ class _ThermosyphonCard extends StatelessWidget {
         title: 'THERMOSYPHON',
         t: t,
         rows: [
+          _LoopSchematic(r: r, t: t, show: false, surging: false),
           _Row('Inlet valve', '${r.inletValve.toStringAsFixed(0)} % open', t),
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -377,6 +378,7 @@ class _ThermosyphonCard extends StatelessWidget {
       flag: surging ? 'SURGING' : null,
       flagColor: p.alarm,
       rows: [
+        _LoopSchematic(r: r, t: t, show: true, surging: surging),
         _Row('Circulation W$tag', num2(r.circulation, 'kg/s'), t),
         _Row('Exit quality x_e$tag', num2(r.exitQuality, '', 3), t,
             sub: r.exitQuality > 0.30 ? 'above 0.30: mist flow' : null,
@@ -394,4 +396,106 @@ class _ThermosyphonCard extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Thermosyphon loop drawing: sump on the left, inlet line down to the heater tubes, riser up to the column return.
+/// The two-phase leg is shaded by the exit quality and the loop turns red while it surges; the inlet valve shows its
+/// opening. With [show] false (plant view) only the inlet valve is drawn: the loop is not observable.
+class _LoopSchematic extends StatelessWidget {
+  final ReboilerSnapshot r;
+  final LowsysTheme t;
+  final bool show, surging;
+  const _LoopSchematic({required this.r, required this.t, required this.show, required this.surging});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 2, bottom: 4),
+        child: SizedBox(
+          key: const ValueKey('ts-schematic'),
+          height: 120,
+          child: CustomPaint(
+            painter: _LoopPainter(
+              palette: t.palette,
+              valve: r.inletValve.isNaN ? 100 : r.inletValve,
+              xe: show && !r.exitQuality.isNaN ? r.exitQuality : null,
+              surging: surging,
+              style: t.type.label.style(11, t.palette.inkMuted),
+            ),
+          ),
+        ),
+      );
+}
+
+class _LoopPainter extends CustomPainter {
+  final dynamic palette;
+  final double valve;
+  final double? xe;
+  final bool surging;
+  final TextStyle style;
+  _LoopPainter({required this.palette, required this.valve, required this.xe, required this.surging, required this.style});
+
+  void _label(Canvas c, String text, Offset at) {
+    final tp = TextPainter(text: TextSpan(text: text, style: style), textDirection: TextDirection.ltr)..layout();
+    tp.paint(c, at);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final line = Paint()
+      ..color = palette.ink as Color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    final hot = surging ? palette.alarm as Color : palette.accent as Color;
+    final q = ((xe ?? 0) / 0.4).clamp(0.0, 1.0);
+    final twoPhase = Paint()
+      ..color = Color.lerp(palette.ink as Color, hot, xe == null ? 0 : 0.3 + 0.7 * q)!
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4;
+    final x0 = w * 0.12, x1 = w * 0.38, x2 = w * 0.62, x3 = w * 0.88;
+    final yTop = h * 0.14, yLiq = h * 0.34, yBot = h * 0.84;
+    // column sump (left) and the column return (right)
+    final sump = Rect.fromLTRB(x0 - 22, yTop, x0 + 22, yBot - 14);
+    canvas.drawRect(sump, line);
+    final liquid = Paint()..color = (palette.accent as Color).withValues(alpha: 0.25);
+    canvas.drawRect(Rect.fromLTRB(sump.left + 1, yLiq, sump.right - 1, sump.bottom - 1), liquid);
+    canvas.drawLine(Offset(sump.left, yLiq), Offset(sump.right, yLiq), line);
+    // inlet line: sump bottom -> valve -> heater bottom
+    canvas.drawLine(Offset(x0, sump.bottom), Offset(x0, yBot), line);
+    canvas.drawLine(Offset(x0, yBot), Offset(x1, yBot), line);
+    // heater (tubes)
+    final heater = Rect.fromLTRB(x1, yTop + 8, x2, yBot + 6);
+    canvas.drawRect(heater, line);
+    for (var i = 1; i < 5; i++) {
+      final x = heater.left + heater.width * i / 5;
+      canvas.drawLine(Offset(x, heater.top + 4), Offset(x, heater.bottom - 4), line..strokeWidth = 1);
+    }
+    line.strokeWidth = 2;
+    // riser: heater top -> column return, drawn thick in the two-phase colour
+    final riser = Path()
+      ..moveTo((x1 + x2) / 2, heater.top)
+      ..lineTo((x1 + x2) / 2, yTop - 6 + 8)
+      ..lineTo(x3, yTop + 2)
+      ..lineTo(x3, yLiq - 4);
+    canvas.drawPath(riser, twoPhase);
+    canvas.drawRect(Rect.fromLTRB(x3 - 22, yLiq - 4, x3 + 22, yBot - 14), line);
+    // inlet valve (bowtie), its fill follows the opening
+    final vx = (x0 + x1) / 2, vy = yBot;
+    final vp = Path()
+      ..moveTo(vx - 8, vy - 7)
+      ..lineTo(vx + 8, vy + 7)
+      ..lineTo(vx + 8, vy - 7)
+      ..lineTo(vx - 8, vy + 7)
+      ..close();
+    canvas.drawPath(vp, Paint()..color = (palette.ok as Color).withValues(alpha: (valve / 100).clamp(0.1, 1.0)));
+    canvas.drawPath(vp, line);
+    _label(canvas, 'sump', Offset(x0 - 14, yTop - 12));
+    _label(canvas, 'inlet ${valve.toStringAsFixed(0)} %', Offset(x0 - 10, h - 14));
+    _label(canvas, 'heater', Offset(x1 + 4, h - 14));
+    _label(canvas, xe == null ? 'riser' : 'riser x_e ${xe!.toStringAsFixed(2)}', Offset(x2 + 4, yTop - 12));
+    _label(canvas, 'column', Offset(x3 - 18, h - 14));
+  }
+
+  @override
+  bool shouldRepaint(_LoopPainter o) => o.valve != valve || o.xe != xe || o.surging != surging || o.palette != palette;
 }

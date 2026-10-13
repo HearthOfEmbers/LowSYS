@@ -58,9 +58,12 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
     ),
   );
   if (picked == null || !context.mounted) return;
+  final attempts = picked.isDrill ? await sim.savedAttempts(picked.id) : const <Map<String, Object?>>[];
+  if (!context.mounted) return;
+  int? replaySeed;
   final go = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setS) => AlertDialog(
       title: Text(picked.title, style: t.type.display.style(20, p.ink)),
       content: SizedBox(
         width: 480,
@@ -95,6 +98,20 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
                     style: t.type.label.style(13.5, p.ink),
                   ),
                 ),
+              if (attempts.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('Your saved attempts (pick one to replay the same fault)',
+                    style: t.type.label.style(13, p.inkMuted)),
+                Wrap(spacing: 6, runSpacing: 4, children: [
+                  for (final a in attempts.reversed)
+                    ChoiceChip(
+                      key: ValueKey('drill-seed-${a['seed']}'),
+                      label: Text('seed ${a['seed']}  ${a['score']} %', style: t.type.label.style(12.5, p.ink)),
+                      selected: replaySeed == a['seed'],
+                      onSelected: (v) => setS(() => replaySeed = v ? a['seed'] as int : null),
+                    ),
+                ]),
+              ],
               const SizedBox(height: 8),
               Text(
                 picked.isDrill
@@ -116,9 +133,9 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
           child: const Text('Start'),
         ),
       ],
-    ),
+    )),
   );
-  if (go == true) await sim.startScenario(picked);
+  if (go == true) await sim.startScenario(picked, seed: replaySeed);
 }
 
 /// Objective checklist, timer, answers, hints and Finish (S2a).
@@ -182,6 +199,14 @@ class _ScenarioHudState extends State<ScenarioHud> {
                                     : '${formatClock(r.elapsed)}  ${r.objectives.where((o) => o.met).length}/${r.objectives.length}',
                                 style: t.type.number.style(13, p.inkMuted),
                               ),
+                              Text(
+                                '  / ${formatClock(r.timeLimit)}',
+                                key: const ValueKey('drill-timer'),
+                                style: t.type.number.style(
+                                  13,
+                                  r.timeLimit - r.elapsed < 300 ? p.alarm : p.inkMuted,
+                                ),
+                              ),
                               Icon(
                                 open ? Icons.expand_less : Icons.expand_more,
                                 size: 20,
@@ -199,6 +224,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
                               style: t.type.label.style(13, p.ink),
                             ),
                           ),
+                        if (open && def.isDrill) _fieldChecks(sim, t),
                         if (open)
                           for (var i = 0; i < r.objectives.length; i++)
                             _objective(context, sim, def, r.objectives[i], t),
@@ -256,6 +282,38 @@ class _ScenarioHudState extends State<ScenarioHud> {
             ),
           ),
         );
+      },
+    );
+  }
+
+  /// Field checks of the LG sight glasses (the walk takes simulated time; the result compares with the transmitter).
+  Widget _fieldChecks(SimController sim, LowsysTheme t) {
+    final p = t.palette;
+    return ValueListenableBuilder<SimSnapshot?>(
+      valueListenable: sim.snapshot,
+      builder: (context, s, _) {
+        final lines = <Widget>[];
+        for (final g in const ['LG-101', 'LG-102']) {
+          final fc = s?.fieldChecks.where((x) => x.gaugeTag == g).firstOrNull;
+          final String status;
+          if (fc == null) {
+            status = '';
+          } else if (fc.value == null) {
+            status = 'walking, ${(fc.readyAt - (s?.time ?? 0)).clamp(0, 180).round()} s';
+          } else {
+            status = '${fc.value!.toStringAsFixed(0)} %';
+          }
+          lines.add(Row(children: [
+            TextButton(
+              key: ValueKey('drill-fc-$g'),
+              style: TextButton.styleFrom(minimumSize: const Size(0, 30), padding: const EdgeInsets.symmetric(horizontal: 6)),
+              onPressed: () => sim.fieldCheck(g),
+              child: Text('Check $g', style: t.type.label.style(12.5, p.accent, weight: FontWeight.w700)),
+            ),
+            Text(status, key: ValueKey('drill-fc-result-$g'), style: t.type.number.style(12.5, p.inkMuted)),
+          ]));
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: lines);
       },
     );
   }

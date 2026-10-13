@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -230,7 +231,30 @@ class SimController extends ChangeNotifier {
 
   // ---------------------------------------------------------------- scenarios
 
-  Future<void> startScenario(ScenarioDef def) async {
+  /// Seed of the running scenario and the drill attempts saved so far (newest last), kept in the save store.
+  int? scenarioSeed;
+
+  Future<List<Map<String, Object?>>> savedAttempts(String id) async {
+    final text = await saveStore?.read('drill.attempts.$id');
+    if (text == null) return [];
+    try {
+      return [for (final e in jsonDecode(text) as List) Map<String, Object?>.from(e as Map)];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _recordAttempt(ScenarioDef def, ScoreCard card) async {
+    final store = saveStore;
+    final seed = scenarioSeed;
+    if (store == null || seed == null || !def.isDrill) return;
+    final list = await savedAttempts(def.id);
+    list.removeWhere((e) => e['seed'] == seed);
+    list.add({'seed': seed, 'score': card.score});
+    await store.write('drill.attempts.${def.id}', jsonEncode(list.length > 12 ? list.sublist(list.length - 12) : list));
+  }
+
+  Future<void> startScenario(ScenarioDef def, {int? seed}) async {
     _loaded = false;
     closeMath();
     selectedStage.value = null;
@@ -239,10 +263,8 @@ class SimController extends ChangeNotifier {
     debriefText = null;
     _finishing = false;
     presetId = def.preset;
-    await runner.startScenario(
-      def,
-      seed: DateTime.now().microsecondsSinceEpoch & 0x7fffffff,
-    );
+    scenarioSeed = seed ?? DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
+    await runner.startScenario(def, seed: scenarioSeed);
     scenarioDef = def;
     _loaded = true;
     scenarioTick.value++;
@@ -254,6 +276,7 @@ class SimController extends ChangeNotifier {
   Future<void> finishScenario() async {
     if (scenarioDef == null || scoreCard != null) return;
     scoreCard = await runner.finishScenario();
+    await _recordAttempt(scenarioDef!, scoreCard!);
     debriefText = scoreCard!.debriefText;
     scenarioTick.value++;
     notifyListeners();
