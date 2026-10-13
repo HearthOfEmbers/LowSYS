@@ -2,6 +2,8 @@
 // here runs with `ideal` hydraulics (steady values do not depend on the diameters) except the M7 close-out group: VC-9.6 (b)
 // (full hydraulics per tray section, debut 0.75 m, deprop 0.55 / 0.85 m) and VC-16.6d. H6 runs on 7f3e3db (C3a at T_dew, d48e6ff rows). VC-9.4 / 9.5 (E.3 #3-5) are in
 // m5_tier3_thermo_validation_test.dart. Independent FUG: reference/fug_reference.dart.
+// M10 follow-up (79be4e6): "Spec rulings M7-S4/M8" validator actions: deprop valve decks (VC-9.6 (b) un-skipped, alarms
+// active at the end), VC-16.6d deprop at Kc 120 / Ti 400 s ((b) +-2 kPa in 10 min, (d) k' and Kc k' Ti; M7-C2 un-skipped).
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -647,27 +649,42 @@ void main() {
       expect(r.s.kpis.maxFloodPct, lessThan(90));
       expect(sec(r.s, 1, 28).dcMax, lessThan(0.5));
     }, timeout: _long);
-    test('VC-9.6 (b) deprop: Phi_min >= 0.75 in the stripping section (no weeping)',
-        skip: 'spec-pending (M7 close-out coder item 5): the 0.85-m stripping trays weep (Phi_min 0.341, weep 74 %) and '
-            'runToSteadyState does not converge in 400 000 s (D 30.83-30.91 over the last 2 h); see DEVIATIONS "M7 close-out validation"', () {
-      expect(runFull('deprop').reached, isTrue);
-      expect(sec(runFull('deprop').s, 11, 28).phiMin, greaterThanOrEqualTo(0.75));
-    });
-    test('deprop stripping-section probe (record, for the spec lead): hole fraction 0.10 -> 0.05 at 0.85 m', () {
-      for (final hf in [0.05]) {
-        final sections = [
-          for (final (n, d, h) in [(10, 0.55, 0.10), (18, 0.85, hf)])
-            {
-              'kind': 'trays', 'trays': n, 'type': 'sieve',
-              'geometry': {'diameter': d, 'traySpacing': 0.9, 'downcomerFraction': 0.12, 'weirHeight': 0.05,
-                'apronClearance': 0.038, 'holeFraction': h, 'holeDiameter': 0.0127, 'orificeCoeff': 0.73,
-                'downcomerAeration': 0.5, 'systemFactor': 1.0}
-            }
-        ];
-        final r = runFull('deprop', {'sections': sections});
-        print('probe hole fraction $hf: ${row('deprop', r.s, [(1, 10), (11, 28)])}; ${r.note}');
-        expect(r.s.kpis.d.isFinite, isTrue);
-      }
+    // M10 follow-up (spec rulings M7-S4/M8, ruling 1): deprop on valve decks, D_c 0.55 / 0.85 m, PC-101 Ti 400 s.
+    test('VC-9.6 (b) deprop valve decks (M7-S4): steady reached, Phi_min >= 0.75 per section, no flood / weep / downcomer '
+        'alarm active at the end; reference ~37 000 s, jet 58.6-66.3 / 45.1-64.2 %, Phi_min 1.173 / 0.916, dc <= 31.5 %, '
+        'dP 10.52 kPa, D 30.676 kmol/h', () {
+      final cfg = Presets.byId('deprop');
+      expect(cfg.condenser.pcKc, 120);
+      expect(cfg.condenser.pcTi, 400);
+      final r = runFull('deprop');
+      final top = sec(r.s, 1, 10), bot = sec(r.s, 11, 28);
+      final n = r.s.layout.nTrays;
+      final dp = (r.s.stages.p[n + 1] - r.s.stages.p[1]) / 1000;
+      // ruling: "active at the end" = condition still in alarm; RTN-UNACK (latched in the cold start, returned to normal)
+      // does not count (AlarmManager.isActive is true for RTN-UNACK too)
+      const ids = {'model.flood', 'model.weep', 'model.dcLimited'};
+      final latched = r.sim.control.alarms.active().where((a) => ids.contains(a.id)).toList();
+      final active = [for (final a in latched) if (a.state != AlarmState.rtnUnack) a.id];
+      print('deprop end-of-run model alarms: ${[for (final a in latched) '${a.id} ${a.state.name}']}');
+      print('VC-9.6 (b) valve: steady at ${(r.sim.time - 7200).toStringAsFixed(0)} s; trays 1-10 jet '
+          '${(100 * top.jetMin).toStringAsFixed(1)}-${(100 * top.jetMax).toStringAsFixed(1)} %, Phi_min ${top.phiMin.toStringAsFixed(3)}; '
+          'trays 11-28 jet ${(100 * bot.jetMin).toStringAsFixed(1)}-${(100 * bot.jetMax).toStringAsFixed(1)} %, Phi_min '
+          '${bot.phiMin.toStringAsFixed(3)}; weep <= ${(100 * math.max(top.weepMax, bot.weepMax)).toStringAsFixed(2)} %, dc <= '
+          '${(100 * math.max(top.dcMax, bot.dcMax)).toStringAsFixed(1)} %; dP ${dp.toStringAsFixed(2)} kPa; D '
+          '${(r.s.kpis.d / _kmolh).toStringAsFixed(3)}; active at end $active; ${r.note}');
+      expect(r.reached, isTrue);
+      expect(top.phiMin, greaterThanOrEqualTo(0.75));
+      expect(bot.phiMin, greaterThanOrEqualTo(0.75));
+      expect(math.max(top.weepMax, bot.weepMax), lessThan(1e-3));
+      expect(active, isEmpty);
+      // [P] engine references of the ruling
+      expect(top.phiMin, closeTo(1.173, 0.02));
+      expect(bot.phiMin, closeTo(0.916, 0.02));
+      expect(top.jetMax, closeTo(0.663, 0.01));
+      expect(bot.jetMax, closeTo(0.642, 0.01));
+      expect(math.max(top.dcMax, bot.dcMax), lessThanOrEqualTo(0.33));
+      expect(dp, closeTo(10.52, 0.1));
+      expect(r.s.kpis.d / _kmolh, closeTo(30.676, 0.05));
     }, timeout: _long);
 
     for (final id in ['debut', 'deprop']) {
@@ -692,13 +709,15 @@ void main() {
           final base = sim.snapshot().kpis.pTop, sp = base + step;
           sim.setLever('pTop', sp);
           final e = <double>[];
-          var tIn = double.nan;
+          var tIn = double.nan, tIn2 = double.nan;
           for (var k = 0; k < 360; k++) {
             sim.advance(5);
             final ek = (sim.snapshot().kpis.pTop - sp) / step; // normalised: starts at -1, 0 at SP, > 0 overshoot
             e.add(ek);
             if ((ek * step).abs() > 1000) tIn = double.nan;
             if (tIn.isNaN && (ek * step).abs() <= 1000) tIn = 5.0 * (k + 1);
+            if ((ek * step).abs() > 2000) tIn2 = double.nan;
+            if (tIn2.isNaN && (ek * step).abs() <= 2000) tIn2 = 5.0 * (k + 1);
           }
           // overshoot = first maximum after the first crossing; decay = next overshoot peak / first
           final i0 = e.indexWhere((v) => v >= 0);
@@ -718,26 +737,68 @@ void main() {
             }
           }
           final decay = a1 > 1e-3 ? a3 / a1 : 0.0;
-          rows.add('SP ${step > 0 ? '+' : ''}${(step / 1000).toStringAsFixed(0)} kPa: within 1 kPa from '
-              '${tIn.toStringAsFixed(0)} s, overshoot ${(100 * a1).toStringAsFixed(1)} %, decay ${decay.toStringAsFixed(2)}, '
-              'CW valve ${sim.control.pc101.op.toStringAsFixed(1)} %');
+          rows.add('SP ${step > 0 ? '+' : ''}${(step / 1000).toStringAsFixed(0)} kPa: within 2 kPa from '
+              '${tIn2.toStringAsFixed(0)} s, within 1 kPa from ${tIn.toStringAsFixed(0)} s, overshoot '
+              '${(100 * a1).toStringAsFixed(1)} %, decay ${decay.toStringAsFixed(2)}, CW valve ${sim.control.pc101.op.toStringAsFixed(1)} %');
           if (step.abs() == 10000) {
-            if (!(tIn <= 600) || a1 > 0.30 || decay > 0.3) badStep.add('SP $step');
+            // VC-16.6d (b) as amended 2026-10-13: deprop within +-2 kPa in 10 min (the +-1 kPa time is recorded)
+            final tBand = id == 'deprop' ? tIn2 : tIn;
+            if (!(tBand <= 600) || a1 > 0.30 || decay > 0.3) badStep.add('SP $step');
           } else if (sim.control.alarms.isActive('model.relief')) {
             bad.add('relief at +50 kPa');
           }
           sim.setLever('pTop', base);
           sim.advance(1800);
         }
-        print('VC-16.6d $id (pcKc ${sim.config.condenser.pcKc}): ${rows.join('; ')}');
+        print('VC-16.6d $id (pcKc ${sim.config.condenser.pcKc}, pcTi ${sim.config.condenser.pcTi}): ${rows.join('; ')}');
         expect(bad, isEmpty);
-        // deprop's step response is the coder item below (recorded here, asserted there)
-        if (id == 'debut') expect(badStep, isEmpty);
+        expect(badStep, isEmpty);
       }, timeout: _long);
     }
-    test('VC-16.6d (b) deprop: PC-101 SP +-10 kPa within 1 kPa in 10 min, overshoot <= 30 %, decay <= 0.3',
-        skip: 'coder item M7-C2 (M7 close-out validation): with pcKc 120 on the 0.55 / 0.85 m column the loop is '
-            'underdamped: +10 kPa settles in 1720 s, decay 0.65; -10 kPa overshoots 45 %, decay 0.85. Measure the '
-            'open-loop gain (VC-16.6d (d), ruling 5) and retune', () {});
+    test('VC-16.6d (d) deprop open loop (ideal, PC-101 MAN, CW OP +-2 %): initial slope k\' 5.95e-5 % span/s per % OP '
+        '(+-20 %); Kc k\' Ti >= 2.8', () {
+      final ks = <double>[];
+      final rows = <String>[];
+      late ColumnConfig cfg;
+      for (final dOp in [2.0, -2.0]) {
+        final sim = _sim(Presets.byId('deprop'));
+        _steady(sim);
+        cfg = sim.config;
+        final span = 2 * math.max(cfg.condenser.pTopDesign, sim.lever('pTop')); // PT-101 range (DEVIATIONS E45)
+        final op0 = sim.control.pc101.op;
+        final p0 = sim.snapshot().kpis.pTop;
+        sim.control.setMode('PC-101', LoopMode.man);
+        sim.control.setOp('PC-101', op0 + dOp);
+        // P_top every 30 s for 20 min; least-squares slope over 2-20 min (past the valve and transmitter lags)
+        final ts = <double>[], ps = <double>[];
+        for (var k = 1; k <= 40; k++) {
+          sim.advance(30);
+          if (k >= 4) {
+            ts.add(30.0 * k);
+            ps.add(sim.snapshot().kpis.pTop);
+          }
+        }
+        final tm = ts.reduce((a, b) => a + b) / ts.length, pm = ps.reduce((a, b) => a + b) / ps.length;
+        var sxy = 0.0, sxx = 0.0;
+        for (var i = 0; i < ts.length; i++) {
+          sxy += (ts[i] - tm) * (ps[i] - pm);
+          sxx += (ts[i] - tm) * (ts[i] - tm);
+        }
+        final slope = sxy / sxx; // Pa/s
+        final k = -100 * slope / span / dOp; // % span/s per % OP (CW up -> P down)
+        ks.add(k);
+        rows.add('OP ${op0.toStringAsFixed(2)} ${dOp > 0 ? '+' : ''}${dOp.toStringAsFixed(0)} %: '
+            '${(slope / dOp).toStringAsFixed(3)} Pa/s per % OP, P(20 min) - P0 ${((ps.last - p0) / 1000).toStringAsFixed(2)} kPa, '
+            'k\' ${k.toStringAsExponential(3)}');
+      }
+      final kMean = (ks[0] + ks[1]) / 2;
+      final prod = cfg.condenser.pcKc * kMean * cfg.condenser.pcTi;
+      print('VC-16.6d (d) deprop: ${rows.join('; ')}; mean k\' ${kMean.toStringAsExponential(3)}, Kc k\' Ti '
+          '${prod.toStringAsFixed(3)}');
+      for (final k in ks) {
+        expect(k, closeTo(5.95e-5, 0.2 * 5.95e-5));
+      }
+      expect(prod, greaterThanOrEqualTo(2.8));
+    }, timeout: _long);
   }, timeout: _long);
 }
