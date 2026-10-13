@@ -5,6 +5,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../controllers/sim_controller.dart';
 import '../theme/lowsys_theme.dart';
+import '../theme/painter_text.dart';
 
 const Map<String, String> kLoopValve = {
   'FC-101': 'FV-101',
@@ -633,7 +634,7 @@ class ValveCurvePainter extends CustomPainter {
     canvas.drawCircle(pt, 4, dot);
     final tp = TextPainter(
       text: TextSpan(text: 'OP %', style: t.type.label.style(10, p.inkMuted)),
-      textDirection: TextDirection.ltr,
+      textDirection: TextDirection.ltr, textScaler: PainterText.scaler,
     )..layout();
     tp.paint(
       canvas,
@@ -641,7 +642,7 @@ class ValveCurvePainter extends CustomPainter {
     );
     final tp2 = TextPainter(
       text: TextSpan(text: 'F', style: t.type.label.style(10, p.inkMuted)),
-      textDirection: TextDirection.ltr,
+      textDirection: TextDirection.ltr, textScaler: PainterText.scaler,
     )..layout();
     tp2.paint(canvas, const Offset(4, 2));
   }

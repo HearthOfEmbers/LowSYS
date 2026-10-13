@@ -7,6 +7,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../painters/effects/glow.dart';
 import '../theme/lowsys_theme.dart';
+import '../theme/painter_text.dart';
 
 /// Trends tab: auto-scaled strip charts of the 5-s trend bins. Each pixel column draws the min-max envelope of
 /// its bins, so one-second spikes survive decimation, and the mean line on top (ENGINE_API.md 5.4).
@@ -344,7 +345,7 @@ class TrendPainter extends CustomPainter {
     void label(String s, Offset o) {
       final tp = TextPainter(
         text: TextSpan(text: s, style: t.type.number.style(10, p.inkMuted)),
-        textDirection: TextDirection.ltr,
+        textDirection: TextDirection.ltr, textScaler: PainterText.scaler,
       )..layout();
       tp.paint(canvas, o);
     }

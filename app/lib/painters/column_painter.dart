@@ -8,6 +8,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../theme/lowsys_theme.dart';
 import 'column_geometry.dart';
 import 'packed_painter.dart';
+import '../theme/painter_text.dart';
 
 /// UI clock for animation that must run at wall speed whatever the simulation speed is
 /// (SCOPE.md 7.3: particle positions advance on the UI clock).
@@ -35,7 +36,7 @@ TextPainter _tp(
 }) {
   return TextPainter(
     text: TextSpan(text: text, style: style),
-    textDirection: TextDirection.ltr,
+    textDirection: TextDirection.ltr, textScaler: PainterText.scaler,
     textAlign: align,
     maxLines: 1,
     ellipsis: '…',

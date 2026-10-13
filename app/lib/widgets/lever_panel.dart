@@ -133,6 +133,7 @@ class LeverPanel extends StatelessWidget {
             ]);
             group('TOP', [
               _Segments(
+                name: 'Reflux input',
                 options: const [S.refluxFlow, S.refluxRatio],
                 selected: ratioMode ? 1 : 0,
                 onSelect: (i) => sim.setLever('refluxMode', i.toDouble()),
@@ -357,7 +358,7 @@ class _FeedCondition extends StatelessWidget {
     final q = snap.streams[StreamId.feed]?.q ?? double.nan;
     final p = t.palette;
     final text = q.isNaN
-        ? 'q: —'
+        ? 'q: â€”'
         : q > 1.0005
             ? 'q = ${q.toStringAsFixed(2)}  subcooled liquid'
             : q > 0.9995
@@ -379,17 +380,28 @@ class _GroupHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = t.palette;
+    final style = t.type.display.style(14, p.accent, weight: FontWeight.w700);
+    final scaler = MediaQuery.textScalerOf(context);
     return Padding(
       padding: const EdgeInsets.only(top: 14, bottom: 2),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: t.type.display.style(14, p.accent, weight: FontWeight.w700),
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: Container(height: 1, color: p.gridMajor)),
-        ],
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final tp = TextPainter(
+            text: TextSpan(text: title, style: style),
+            textDirection: TextDirection.ltr,
+            textScaler: scaler,
+            maxLines: 1,
+          )..layout();
+          // a long title (large text scale) wraps and drops the rule instead of overflowing the row
+          if (tp.width + 8 > box.maxWidth) return Text(title, style: style);
+          return Row(
+            children: [
+              Text(title, style: style),
+              const SizedBox(width: 8),
+              Expanded(child: Container(height: 1, color: p.gridMajor)),
+            ],
+          );
+        },
       ),
     );
   }
@@ -408,10 +420,19 @@ class _Labeled extends StatelessWidget {
       children: [
         Text(label, style: t.type.label.style(13.5, t.palette.ink)),
         const SizedBox(height: 3),
-        child,
+        _LeverName(name: label, child: child),
       ],
     ),
   );
+}
+
+/// Name of the lever a [_Segments] row belongs to, for its semantics labels.
+class _LeverName extends InheritedWidget {
+  final String name;
+  const _LeverName({required this.name, required super.child});
+  static String? of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<_LeverName>()?.name;
+  @override
+  bool updateShouldNotify(_LeverName old) => old.name != name;
 }
 
 class _Segments extends StatelessWidget {
@@ -419,8 +440,10 @@ class _Segments extends StatelessWidget {
   final int selected;
   final void Function(int)? onSelect;
   final LowsysTheme t;
+  final String? name;
   const _Segments({
     super.key,
+    this.name,
     required this.options,
     required this.selected,
     required this.onSelect,
@@ -429,11 +452,19 @@ class _Segments extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = t.palette;
+    final lever = name ?? _LeverName.of(context) ?? '';
     return Row(
       children: [
         for (var i = 0; i < options.length; i++)
           Expanded(
-            child: InkWell(
+            child: Semantics(
+              button: true,
+              selected: i == selected,
+              enabled: onSelect != null,
+              label: lever.isEmpty ? options[i] : '$lever: ${options[i]}',
+              excludeSemantics: true,
+              onTap: onSelect == null ? null : () => onSelect!(i),
+              child: InkWell(
               onTap: onSelect == null ? null : () => onSelect!(i),
               child: Container(
                 height: 40,
@@ -456,6 +487,7 @@ class _Segments extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
             ),
           ),
       ],

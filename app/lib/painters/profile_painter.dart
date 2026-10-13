@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
+import '../theme/painter_text.dart';
 
 enum ProfileKind { dp, flood, weep, holdup, composition, components, temperature, vapour, liquid }
 
@@ -306,7 +307,7 @@ class ProfilePainter extends CustomPainter {
   }
 
   void _text(Canvas c, String t, Offset at, TextStyle st, Alignment a, {double maxWidth = double.infinity}) {
-    final tp = TextPainter(text: TextSpan(text: t, style: st), textDirection: TextDirection.ltr, maxLines: 1, ellipsis: '…')..layout(maxWidth: maxWidth);
+    final tp = TextPainter(text: TextSpan(text: t, style: st), textDirection: TextDirection.ltr, textScaler: PainterText.scaler, maxLines: 1, ellipsis: '…')..layout(maxWidth: maxWidth);
     tp.paint(c, Offset(at.dx - tp.width * (a.x + 1) / 2, at.dy - tp.height * (a.y + 1) / 2));
   }
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
+import '../theme/painter_text.dart';
 
 /// Plot area of the T-x-y chart (shared with tap picking).
 Rect txyPlotRect(Size size) {
@@ -261,7 +262,7 @@ class TxyPainter extends CustomPainter {
     ];
     var by = plot.top + 6;
     for (final b in banners) {
-      final tp = TextPainter(text: TextSpan(text: b, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr, maxLines: 1, ellipsis: '…')..layout(maxWidth: plot.width - 16);
+      final tp = TextPainter(text: TextSpan(text: b, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr, textScaler: PainterText.scaler, maxLines: 1, ellipsis: '…')..layout(maxWidth: plot.width - 16);
       final r = Rect.fromLTWH(plot.left + 8, by, tp.width + 10, tp.height + 4);
       canvas.drawRect(r, Paint()..color = p.bg.withValues(alpha: 0.88));
       canvas.drawRect(
@@ -289,7 +290,7 @@ class TxyPainter extends CustomPainter {
   }
 
   void _text(Canvas c, String t, Offset at, TextStyle st, Alignment a, {double maxWidth = double.infinity}) {
-    final tp = TextPainter(text: TextSpan(text: t, style: st), textDirection: TextDirection.ltr, maxLines: 1, ellipsis: '…')..layout(maxWidth: maxWidth);
+    final tp = TextPainter(text: TextSpan(text: t, style: st), textDirection: TextDirection.ltr, textScaler: PainterText.scaler, maxLines: 1, ellipsis: '…')..layout(maxWidth: maxWidth);
     tp.paint(c, Offset(at.dx - tp.width * (a.x + 1) / 2, at.dy - tp.height * (a.y + 1) / 2));
   }
 

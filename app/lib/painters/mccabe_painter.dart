@@ -7,6 +7,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
 import 'effects/glow.dart';
+import '../theme/painter_text.dart';
 
 /// Plot area of the McCabe-Thiele chart inside a panel of [size] (shared with tap picking).
 Rect mccabePlotRect(Size size) {
@@ -352,7 +353,7 @@ class McCabePainter extends CustomPainter {
         } else {
           canvas.drawLine(Offset(lx, ly), Offset(lx + 13, ly), pn);
         }
-        final tp = TextPainter(text: TextSpan(text: name, style: lab.style(12, p.inkMuted)), textDirection: TextDirection.ltr)..layout();
+        final tp = TextPainter(text: TextSpan(text: name, style: lab.style(12, p.inkMuted)), textDirection: TextDirection.ltr, textScaler: PainterText.scaler)..layout();
         tp.paint(canvas, Offset(lx + 16, ly - tp.height / 2));
         lx += 16 + tp.width + 9;
       }
@@ -390,7 +391,7 @@ class McCabePainter extends CustomPainter {
     if (blk != null) {
       final which = blk.side == AzeotropeSide.distillate ? 'x_D' : 'x_B';
       final msg = '$which is beyond the azeotrope (x = ${blk.xAzeotrope.toStringAsFixed(4)}): no reflux ratio reaches it';
-      final tp = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr, maxLines: 2, ellipsis: '…')..layout(maxWidth: plot.width - 20);
+      final tp = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr, textScaler: PainterText.scaler, maxLines: 2, ellipsis: '…')..layout(maxWidth: plot.width - 20);
       final r = Rect.fromLTWH(plot.left + 8, plot.bottom - tp.height - 14 - (compact ? 0 : 56), tp.width + 12, tp.height + 6);
       canvas.drawRect(r, Paint()..color = p.bg.withValues(alpha: 0.9));
       canvas.drawRect(r, Paint()
@@ -403,9 +404,9 @@ class McCabePainter extends CustomPainter {
     // --- transient stamp (inside the plot, top centre, on a backing pill)
     if (d.transient) {
       var msg = 'transient: stairs from live compositions, dashed lines from current flows';
-      final tp = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr)..layout();
+      final tp = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr, textScaler: PainterText.scaler)..layout();
       if (tp.width > plot.width - 12) msg = 'transient';
-      final w = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr)..layout();
+      final w = TextPainter(text: TextSpan(text: msg, style: lab.style(12, p.warn)), textDirection: TextDirection.ltr, textScaler: PainterText.scaler)..layout();
       final r = Rect.fromCenter(center: Offset(plot.right - (w.width + 12) / 2 - 6, plot.top + 30), width: w.width + 12, height: w.height + 4);
       canvas.drawRect(r, Paint()..color = p.bg.withValues(alpha: 0.85));
       canvas.drawRect(
@@ -493,7 +494,7 @@ class McCabePainter extends CustomPainter {
   }
 
   void _text(Canvas c, String t, Offset at, TextStyle st, Alignment a, {double maxWidth = double.infinity}) {
-    final tp = TextPainter(text: TextSpan(text: t, style: st), textDirection: TextDirection.ltr, maxLines: 1, ellipsis: '…')..layout(maxWidth: maxWidth);
+    final tp = TextPainter(text: TextSpan(text: t, style: st), textDirection: TextDirection.ltr, textScaler: PainterText.scaler, maxLines: 1, ellipsis: '…')..layout(maxWidth: maxWidth);
     tp.paint(c, Offset(at.dx - tp.width * (a.x + 1) / 2, at.dy - tp.height * (a.y + 1) / 2));
   }
 

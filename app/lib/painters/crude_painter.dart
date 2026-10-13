@@ -9,6 +9,7 @@ import '../theme/lowsys_theme.dart';
 import '../theme/themes/brass.dart';
 import 'column_painter.dart' show ColumnAnimation;
 import 'crude_geometry.dart';
+import '../theme/painter_text.dart';
 
 final CrudeThermo _th = CrudeThermo();
 
@@ -49,7 +50,7 @@ class CrudeFlowsheetPainter extends CustomPainter {
   TextStyle _num(double s, Color c) => theme.type.number.style(s, c);
 
   void _text(Canvas c, String text, Offset at, TextStyle st, {Alignment anchor = Alignment.topLeft, double maxWidth = 200}) {
-    final tp = TextPainter(text: TextSpan(text: text, style: st), textDirection: TextDirection.ltr, maxLines: 1, ellipsis: '…')
+    final tp = TextPainter(text: TextSpan(text: text, style: st), textDirection: TextDirection.ltr, textScaler: PainterText.scaler, maxLines: 1, ellipsis: '…')
       ..layout(maxWidth: maxWidth);
     tp.paint(c, Offset(at.dx - tp.width * (anchor.x + 1) / 2, at.dy - tp.height * (anchor.y + 1) / 2));
   }

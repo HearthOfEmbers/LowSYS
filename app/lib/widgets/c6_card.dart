@@ -5,6 +5,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../theme/lowsys_theme.dart';
 import 'loops_panel.dart' show checkColor;
+import '../theme/painter_text.dart';
 
 /// C6 (PHYSICS.md 14.6): the plant-view temperature profile. Dots at the instrumented trays, the reference profile as
 /// a ghost line and a bar chart of the change since the reference per TI, flagged TIs in red. A lying TI is a lone
@@ -103,7 +104,7 @@ class _C6Painter extends CustomPainter {
     void label(String s, Offset o, {Alignment a = Alignment.centerRight, Color? c}) {
       final tp = TextPainter(
         text: TextSpan(text: s, style: t.type.number.style(10.5, c ?? p.inkMuted)),
-        textDirection: TextDirection.ltr,
+        textDirection: TextDirection.ltr, textScaler: PainterText.scaler,
       )..layout();
       canvas.save();
       canvas.translate(o.dx - tp.width * (a.x + 1) / 2, o.dy - tp.height * (a.y + 1) / 2);
