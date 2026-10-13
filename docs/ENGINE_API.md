@@ -522,7 +522,9 @@ class InstrumentReading {
   final double lastGoodValue;       // shown greyed when BAD
   final double sigma5min;           // std of the readings over the last 300 s (signal look)
   final double typicalSigma;        // σ_disp of a healthy transmitter (PHYSICS.md §10.5 table); for flows moved by a
-                                    // level loop (FT-104, FT-105) σ_typ including the loop's noise (PHYSICS.md §10.5)
+                                    // level loop (FT-104, FT-105) σ_typ including the loop's noise (PHYSICS.md §10.5);
+                                    // Tiers 2/3: PT-101, TI-100, FT-201, TI-202 add σ_proc from window means of
+                                    // readings and PC-101's mode (PHYSICS.md §10.5), so it changes with time
   final double digitsAge;           // s since the displayed digits last changed (Fmt resolution)
   final double? resultAge;          // AT only: age of the shown result (s)
   final String? loopTag;            // loop that uses it as PV, if any
@@ -1163,7 +1165,7 @@ Every candidate in a drill must satisfy these rules. VALIDATION.md §H tests the
 
 1. **Signal-to-noise.** Within 20 min of t₀ (for drifts: of t₀ plus 10 min), the key evidence reaches at least one of the following with the default 600-s window:
    - a cross-check residual ≥ 2 × its band (status `fail`) held for ≥ 60 s;
-   - a signal-look ratio σ_5min/σ_disp ≤ 0.2 (frozen or too steady) or ≥ 5 (erratic);
+   - a signal-look ratio σ_5min/typicalSigma ≤ 0.2 (frozen or too steady) or ≥ 5 (erratic);
    - a BAD alarm.
 
    The minimum magnitudes that follow from the PHYSICS.md §14.6 bands are:
