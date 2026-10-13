@@ -172,6 +172,20 @@ Used for T_r ≥ 0.30. Above T_c the formula is evaluated as is (smooth extrapol
 | `deprop` | same six | 2.172, 1.000, 0.747, 0.378, 0.330, 0.157 | DePriester | 17.24 bar | LK propane, HK isobutane |
 | `crude` | PC1…PC9 + water (steam) | – (Tier 1 locked) | = Tier 2 | 1.6 bar | §9 |
 
+**Operating defaults of each preset** (M5 readiness; the steady states are VALIDATION.md VC-27 and VC-28). Every preset uses the B-T tray geometry (D_c 1.2 m, TS 0.9 m), drum 3 m³, sump 1.131 m² × 2.4 m and overhead 3 m³. Feeds are saturated liquid, F = 100 kmol/h; the steam header is 3.5 bar(g) and CW enters at 30 °C. UA values follow the procedure of §7.2 (50 % CW) and §8.2 (60 % of Q_max).
+
+| Preset | Trays / feed tray | z (light) | P_top | L₀ (kmol/h) | Tier-1 V_B | Tier-2/3 duty | D | UA_clean (kW/K) | UA_R,clean (kW/K) | Relief set |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `bt` | 20 / 10 | 0.50 | 1.01325 bar | 100 | 150 | 1301.5 kW (E = 1) | 50 | 29.9 | 57.5 | 3.5 bar(a) |
+| `mw` | 20 / 12 | 0.30 | 1.01325 bar | 60 | 90 | 890.4 kW (T2) | 30 | 29.76 | 30.65 | 3.5 bar(a) |
+| `ew` | 40 / 30 | 0.10 | 1.01325 bar | 100 | 110 | 1206.8 kW (T3, E = 1) | 10 | 28.83 | 38.98 | 3.5 bar(a) |
+| `ac` | 30 / 15 | 0.60 | 1.01325 bar | 150 | 188 | 1515.9 kW (T3, E = 1) | 38 | 83.7 | 30.24 | 3.5 bar(a) |
+| `c4` | 60 / 30 | 0.40 | 7.0 bar | 280 | 320 | 1542.6 kW (T2 Lee–Kesler, E = 0.7) | 40 | 122.8 | 30.15 | 10.5 bar(a) (1.5 × P_design) |
+
+- **Lever ranges.** SCOPE.md §4.1's flow ranges are the B-T ones. For every other preset, the flow and duty levers (and the matching FT spans) run from 0 to 2 × the preset's default. Example: the `c4` boilup goes up to 640 kmol/h, so its default of 320 is not outside the B-T range of 300.
+- **`ac`** has a small condenser ΔT (57 °C distillate against 30 °C CW), hence the large UA; `c4` likewise (51 °C).
+- **`c4` Tier 3** (DePriester) is not prototyped. Its steady state is recorded by the implementer the first time it runs (VC-28.4).
+
 Tier-1 α values for the non-ideal binaries are the geometric mean of the Tier-3 α at x = 0.1, 0.5 and 0.9 (1 atm); for `debut`/`deprop` they are the geometric mean of the DePriester α at the top and bottom temperatures of the FUG design case (VALIDATION.md VC-9). They are stored constants, not recomputed.
 
 Tier-1 constant properties (used for hydraulics in Tier 1, and as the initial guess elsewhere):
@@ -253,7 +267,21 @@ Parameters (T in K) from Beneke, Peters, Glasser and Hildebrandt, *Understanding
 
 With the vapour-pressure models of §2.2 these give: ethanol–water azeotrope x = 0.8956, 78.14 °C at 1 atm (experiment 0.894, 78.15 °C); acetone–chloroform maximum-boiling azeotrope x_acetone = 0.3335, 64.61 °C (experiment ≈ 0.34, 64.4 °C); methanol–water y = 0.4223 at x = 0.10 (experiment 0.418). See VALIDATION.md VC-10.
 
-γ depends on T only through τ; inside the bubble-point Newton iteration dγ/dT is ignored (§3.6), which converges in 3–5 iterations anyway.
+**Validation and sources (M5 readiness, 2026-10-12).** The parameters are Dortmund Data Bank regressions (via Aspen Plus, tabulated by Beneke et al. 2013), which is the same family of fits as the DECHEMA Chemistry Data Series; the DECHEMA tables themselves are not openly available, so the check is against experiment. An independent re-implementation reproduces every VC-10.4–10.6 value to the printed digits:
+- ethanol–water: azeotrope 0.8956 / 78.141 °C at 1 atm, against Horsley (1973) and the CRC Handbook: 95.57 wt% ethanol = x 0.8947, 78.15 °C;
+- acetone–chloroform: maximum-boiling azeotrope 0.3334 / 64.61 °C, against Horsley: 20 wt% acetone ≈ x 0.34, 64.4–64.7 °C;
+- methanol–water: Perry's VLE to ± 0.01 in y.
+
+**Pressure dependence is qualitative.** The azeotrope moves the right way: ethanol–water 0.9292 at 0.2 atm, 0.9105 at 0.5 atm, 0.8713 at 3 atm; acetone–chloroform 0.359 at 0.5 atm, 0.246 at 3 atm. But the 1-atm parameters keep the ethanol–water azeotrope down to at least 0.08 atm (x 0.946), whereas experiments have it vanishing below about 70 mmHg (≈ 0.09 atm). Scenarios and debriefs may say "lower pressure moves the azeotrope to more ethanol"; they must not say "vacuum breaks it" (G9).
+
+**Bubble-point Newton.** γ depends on T only through τ, and inside the bubble-point Newton dγ/dT is ignored (§3.6). Convergence is then linear when τ varies strongly with T: acetone–chloroform has b_ij = −590 K. Measured on a 2001-point grid at 0.1, 1 and 5 atm, with the cold guess Σ x_i T_sat,i(P) and no fallback anywhere:
+
+| System | Cold start | Warm start |
+|---|---|---|
+| ethanol–water, methanol–water | ≤ 6 iterations | ≤ 5 |
+| acetone–chloroform | ≤ 7 iterations (25 % of points need 7) | ≤ 6 |
+
+The 20-iteration cap of §3.6.1 is ample.
 
 #### 3.4.2 DePriester K-values (light hydrocarbons)
 
@@ -1842,7 +1870,7 @@ The state X is the same in every tier. On a switch:
 | T1 → T2/T3 | Compute bubble points and enthalpies from the current x and P_top (= preset P); T^(n−1) := T. Set FC-103 SP (duty) so that the **top vapour V_1 (and hence D) is continuous**: Q_R = V_1 (H_V(y_1, T_1) − h_L(x_0, T_0)) + D h_D + B h_B − F h_F, the steady energy balance evaluated with Tier-2 enthalpies on the current state. Initialise n_V and n_V,i = n_V y_1 from P_top. PC-101 SP = P_top, OP as initialised (70 %). |
 | T2/T3 → T1 | Set the boilup lever V_B = current V_1 − (1 − q)F (top vapour continuous). Vapour flows become CMO at the next step, so the learner sees the profile flatten (the teaching point), while D and the product split stay put. |
 
-**Why the top vapour, not the boilup** (M4 prototype finding). Keeping V_B continuous (v1.0) lets the non-CMO top vapour grow, by +4.3 % for B-T. Under LV control D jumps by the same kmol/h: B-T default went from D 50 → 56.4 and xD 0.981 → 0.883 at the new Tier-2 steady state, a collapse caused by the switch alone. Keeping V_1 gives D 49.96, xD 0.9784 and P within 0.25 kPa of SP; the stripping-section vapour steps by up to −6 %, which is the non-CMO profile appearing. Liquid flows on individual trays step by up to 13 % at dt = 0.5 s as the liquid profile redistributes (VALIDATION.md VC-8.9).
+**Why the top vapour, not the boilup** (M4 prototype finding). Keeping V_B continuous (v1.0) lets the non-CMO top vapour grow: at the new Tier-2 steady state V₁ = 156.4 kmol/h, +4.3 % on its Tier-1 value of 150, with V_B settling at 149.1. Under LV control D rises by the same kmol/h: B-T default went from D 50 → 56.4 and xD 0.981 → 0.883, a collapse caused by the switch alone. Keeping V_1 gives D 49.96, xD 0.9784 and P within 0.25 kPa of SP. V_B steps to 141.9 kmol/h at the first Tier-2 step (−5.4 %) and settles at 141.0; this −4 … −6 % is the non-CMO profile appearing. Liquid flows on individual trays step by up to 13 % at dt = 0.5 s as the liquid profile redistributes (VALIDATION.md VC-8.9).
 | T2 ↔ T3 | Only the K model changes; temperatures re-converge in the next bubble-point solve. |
 
 Switching never resets compositions or holdups.
@@ -1864,14 +1892,14 @@ All series are produced by the engine (`McCabeThieleData`, ENGINE_API.md §7) fr
 | Diagonal | y = x | |
 | Equilibrium curve | Tier 1: y = αx/(1 + (α − 1)x). Tiers 2/3: bubble-point y*(x) on 101 points (refined near the ends) at P_top, plus a second curve at P_{N+1}; the band between them is shaded | The band shows that a real column does not have one equilibrium curve |
 | Local equilibrium points | (x_j, y*_j) for every stage at its own T_j, P_j (hollow circles) | |
-| q-line | Through (z, z) with slope q/(q − 1) (vertical at q = 1), from (z, z) to its intersection with the equilibrium curve at the feed-tray pressure. Tiers 2/3 use q from (3.15) | |
+| q-line | Through (z, z) with slope q/(q − 1) (vertical at q = 1), from (z, z) to its intersection with the equilibrium curve at the feed-tray pressure. Tiers 2/3 use q from (3.15). **Azeotropic curves can cross the line more than once:** walk along the q-line from (z, z) away from the diagonal (towards larger y for q ≥ 1 and for q ≤ 0, towards smaller x for 0 < q < 1) in steps of 1×10⁻³ in x, take the *first* sign change of y_line − y*, and refine it by bisection to 1×10⁻⁸. No sign change before x = 0 or 1: draw the line to the frame edge and show no pinch | |
 | CMO reference operating lines (dashed) | Rectifying: y = (L_0/V_1) x + D x_D / V_1 with the *external* flows (reflux L_0, V_1 = L_0 + D, x_D = drum liquid). Stripping: y = (L̄/V̄) x − B x_B / V̄ with V̄ = V_{N+1}, L̄ = V̄ + B. Drawn from x_D to their intersection and from there to x_B | What a textbook would draw from the product flows |
 | Actual operating locus (solid, dots) | Passing-stream points (x_j, y_{j+1}) for j = 0 … N | Tier 1 at steady state: lies exactly on the CMO lines. Tiers 2/3: a curve; the gap to the dashed lines is "what CMO hides" |
 | Live staircase | (x_0, x_0) → (x_0, y_1) → (x_1, y_1) → (x_1, y_2) → (x_2, y_2) → … → (x_{N+1}, y_{N+1}) → (x_{N+1}, x_{N+1}). Corner (x_j, y_j) is labelled with the stage number; the feed stage is highlighted | Built from live compositions, so it moves during transients |
 | Murphree pseudo-equilibrium | Tier 1: y_pe(x) = y_op(x) + E (y*(x) − y_op(x)) with y_op the CMO lines, on 101 points (dotted). Tiers 2/3: a line through the corners (x_j, y_j) | Corners sit on it at steady state |
 | Murphree gap markers | For the selected tray: vertical bars showing (y_j − y_{j+1}) and (y*_j − y_{j+1}); their ratio is E_j | Visual definition of Murphree efficiency |
 | Markers | x_F = z, x_D, x_B on the diagonal | |
-| Minimum-reflux construction (toggle) | s_min = max over x ∈ [x_q, x_D) of (x_D − y*(x))/(x_D − x) on the equilibrium curve (x_q = q-line intersection); R_min = s_min/(1 − s_min); draw the line from (x_D, x_D) with slope s_min | Handles tangent pinches (ethanol–water) as well as feed pinches |
+| Minimum-reflux construction (toggle) | s_min = max over x ∈ [x_q, x_D) of (x_D − y*(x))/(x_D − x) on the equilibrium curve (x_q = q-line intersection); R_min = s_min/(1 − s_min); draw the line from (x_D, x_D) with slope s_min. **Azeotropes:** if the equilibrium curve meets or crosses the diagonal anywhere in (x_q, x_D) (y*(x) ≤ x there; ethanol–water with x_D ≥ 0.8956), then x_D cannot be reached by any reflux: R_min = ∞; draw no line and show the banner "x_D is beyond the azeotrope (x = 0.8956): no reflux ratio reaches it". For a maximum-boiling system (acetone–chloroform) the same test applies to the stripping side: with x_B < x_az and the feed above it, show "x_B is beyond the azeotrope (x = 0.333)" | Handles tangent pinches (ethanol–water below the azeotrope) as well as feed pinches |
 | Pinch shading | Shade where ≥ 3 consecutive steps advance x by < 0.002 | |
 | Transient flag | When the steady-state monitor is false: caption "transient — operating lines are not yet consistent" | |
 
@@ -1907,6 +1935,30 @@ Shown next to the rigorous column: actual stages × average efficiency, actual R
 ### 14.4 Crude diagrams
 
 TBP curves (feed and each product), D86 curves (naphtha to AGO), 5–95 gap/overlap bars between adjacent products (green = gap, red = overlap), temperature profile with draw and return stages marked, internal reflux (liquid traffic) profile, overflash and product yields (vol % of crude) versus the ideal TBP-cut yields.
+
+### 14.4b T-x-y and x-y diagrams (M5)
+
+`TxyData.build(model, P)` makes, for a binary at pressure P:
+- the bubble curve T_bub(x) and the dew curve T_dew(y), on 201 points in x;
+- the x-y equilibrium curve;
+- azeotrope markers, with their x and T.
+
+Points:
+- The grid is uniform with spacing 0.005.
+- It is refined with 21 extra points within ± 0.02 of each azeotrope, and with 10 log-spaced points in (0, 0.01) and (0.99, 1).
+
+Curves:
+- The dew curve is computed as the bubble point at each grid x paired with its y*: the point (y*, T) lies on the dew curve, so both curves come from one bubble-point sweep, without a separate dew solve. The pairs are sorted by y before drawing.
+- Azeotropes are found as in VALIDATION.md VC-10.5: sign changes of y* − x on the grid, refined by bisection to 1×10⁻⁸.
+
+Overlays:
+- The column's stages at their own (x_j, T_j); the drum and sump points labelled D and B.
+- A second pair of curves at P_{N+1} when the column pressure drop exceeds 1 kPa.
+
+Caching and limits:
+- Recomputed only when P changes by more than 100 Pa or the tier changes (cost ≈ 400 bubble points ≈ 1 ms).
+- In Tier 1 the curves come from constant α; for `ac` they show the Tier-1 banner of §2.3.
+- Multicomponent presets get no T-x-y, only the profile charts.
 
 ### 14.5 Profiles (all systems)
 
