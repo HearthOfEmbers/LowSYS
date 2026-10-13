@@ -104,10 +104,8 @@ void main() {
             .copyWith(tier: ThermoTier.t2, hydraulics: HydraulicsMode.full),
         options: const SimOptions(seed: 9));
     sim.setLever('tc101Enable', 1);
-    // The default 1e-11 polish is not reached in this configuration at
-    // e1d4ae4 (residual floor ≈ 6e-11, DEVIATIONS.md "M4 validation" V4);
-    // this row tests save/restore, so a 1e-9 polish is enough here.
-    final r = sim.runToSteadyState(polishTolerance: 1e-9);
+    // Default 1e-11 polish again: V4 is fixed at 1155f40 (m4_e50_v4_test.dart).
+    final r = sim.runToSteadyState();
     expect(r.reached, isTrue, reason: 'residual ${r.residual}');
     sim.setLever('noise', 1);
     sim.setLever('view', 1);
