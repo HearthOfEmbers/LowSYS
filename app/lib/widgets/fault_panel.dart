@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -136,7 +137,7 @@ class _FaultPanelState extends State<FaultPanel> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(border: Border.all(color: p.warn)),
                 child: Text(
-                  'Tray faults need full hydraulics. Switch Internals > Hydraulics to Full on the Levers tab.',
+                  S.trayFaultsNeedFullHydraulics,
                   style: t.type.label.style(13, p.warn),
                 ),
               ),
@@ -144,7 +145,7 @@ class _FaultPanelState extends State<FaultPanel> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'ACTIVE',
+                  S.active,
                   style: t.type.display.style(
                     14,
                     p.accent,
@@ -163,14 +164,14 @@ class _FaultPanelState extends State<FaultPanel> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${f.description}\nseverity ${(100 * f.severity).toStringAsFixed(0)} % (final ${(100 * f.finalSeverity).toStringAsFixed(0)} %)',
+                          S.faultSeverityLine(f.description, f.severity, f.finalSeverity),
                           style: t.type.label.style(13, p.ink),
                         ),
                       ),
                       TextButton(
                         onPressed: () => sim.clearFault(f.id),
                         child: Text(
-                          'Clear',
+                          S.clear,
                           style: t.type.label.style(
                             13.5,
                             p.ok,
@@ -184,14 +185,14 @@ class _FaultPanelState extends State<FaultPanel> {
             ],
             if (s.beds.isNotEmpty)
               card(
-                'Packing maldistribution',
-                'F21: a plugged distributor sends more liquid to one side of the bed (f = 0.6 s). The pressure drop hardly moves; the separation and the bed temperature profile do.',
+                S.packingMaldistribution,
+                S.f21APluggedDistributor,
                 [
-                  slider('Bed', bed.toDouble(), 1, s.beds.length.toDouble(), s.beds.length > 1 ? s.beds.length - 1 : null,
+                  slider(S.bed, bed.toDouble(), 1, s.beds.length.toDouble(), s.beds.length > 1 ? s.beds.length - 1 : null,
                       (x) => bed = x.round(), (v) => '${v.round()}'),
-                  slider('Severity', sMal, 0.1, 1, 9, (x) => sMal = x, (v) => '${(100 * v).round()}%'),
+                  slider(S.severity, sMal, 0.1, 1, 9, (x) => sMal = x, (v) => '${(100 * v).round()}%'),
                 ],
-                'Plug the distributor',
+                S.plugTheDistributor,
                 () => sim.injectFault(FaultSpec(
                   type: FaultType.packingMaldistribution,
                   location: FaultLocation.bed(bed),
@@ -202,14 +203,14 @@ class _FaultPanelState extends State<FaultPanel> {
               ),
             if (s.beds.isNotEmpty)
               card(
-                'Crushed packing',
-                'F23: the packing factor rises by 150 % of s and the bed gets 15 % of s shorter. Higher dP at the same load, earlier flooding.',
+                S.crushedPacking,
+                S.f23ThePackingFactor,
                 [
-                  slider('Bed', bed.toDouble(), 1, s.beds.length.toDouble(), s.beds.length > 1 ? s.beds.length - 1 : null,
+                  slider(S.bed, bed.toDouble(), 1, s.beds.length.toDouble(), s.beds.length > 1 ? s.beds.length - 1 : null,
                       (x) => bed = x.round(), (v) => '${v.round()}'),
-                  slider('Severity', sCrush, 0.1, 1, 9, (x) => sCrush = x, (v) => '${(100 * v).round()}%'),
+                  slider(S.severity, sCrush, 0.1, 1, 9, (x) => sCrush = x, (v) => '${(100 * v).round()}%'),
                 ],
-                'Crush the packing',
+                S.crushThePacking,
                 () => sim.injectFault(FaultSpec(
                   type: FaultType.packingCrush,
                   location: FaultLocation.bed(bed),
@@ -218,11 +219,11 @@ class _FaultPanelState extends State<FaultPanel> {
                 )),
               ),
             card(
-              'Broken tray',
-              'F04: part of the deck is missing. Liquid and vapour bypass it.',
+              S.brokenTray,
+              S.f04PartOfThe,
               [
                 slider(
-                  'Tray',
+                  S.tray,
                   tray.toDouble(),
                   1,
                   n.toDouble(),
@@ -231,7 +232,7 @@ class _FaultPanelState extends State<FaultPanel> {
                   (v) => '${v.round()}',
                 ),
                 slider(
-                  'Opening',
+                  S.opening,
                   sBroken,
                   0.1,
                   1,
@@ -240,7 +241,7 @@ class _FaultPanelState extends State<FaultPanel> {
                   (v) => '${(100 * v).round()}%',
                 ),
               ],
-              'Break tray',
+              S.breakTray,
               () => sim.injectFault(
                 FaultSpec(
                   type: FaultType.trayDamage,
@@ -251,21 +252,21 @@ class _FaultPanelState extends State<FaultPanel> {
               ),
             ),
             card(
-              'Fouled trays',
-              'F05: plugged holes or a blocked downcomer. Pressure drop creeps up first.',
+              S.fouledTrays,
+              S.f05PluggedHolesOr,
               [
-                slider('From', fromTray.toDouble(), 1, n.toDouble(), n - 1, (
+                slider(S.from, fromTray.toDouble(), 1, n.toDouble(), n - 1, (
                   x,
                 ) {
                   fromTray = x.round();
                   if (toTray < fromTray) toTray = fromTray;
                 }, (v) => '${v.round()}'),
-                slider('To', toTray.toDouble(), 1, n.toDouble(), n - 1, (x) {
+                slider(S.to, toTray.toDouble(), 1, n.toDouble(), n - 1, (x) {
                   toTray = x.round();
                   if (fromTray > toTray) fromTray = toTray;
                 }, (v) => '${v.round()}'),
                 slider(
-                  'Plugging',
+                  S.plugging,
                   sFoul,
                   0.1,
                   1,
@@ -289,7 +290,7 @@ class _FaultPanelState extends State<FaultPanel> {
                         selectedColor: p.accent,
                         onSelected: (_) => setState(() => foulMode = m),
                       ),
-                    for (final r in [(0.0, 'step'), (3600.0, '1 h ramp')])
+                    for (final r in [(0.0, S.step), (3600.0, S.oneHourRamp)])
                       ChoiceChip(
                         label: Text(
                           r.$2,
@@ -305,7 +306,7 @@ class _FaultPanelState extends State<FaultPanel> {
                   ],
                 ),
               ],
-              'Foul trays',
+              S.foulTrays,
               () => sim.injectFault(
                 FaultSpec(
                   type: FaultType.trayFouling,
@@ -318,11 +319,11 @@ class _FaultPanelState extends State<FaultPanel> {
               ),
             ),
             card(
-              'Foaming',
-              'F06: the froth gets lighter and the flood capacity falls. Antifoam works after a delay.',
+              S.foaming,
+              S.f06TheFrothGets,
               [
                 slider(
-                  'Severity',
+                  S.severity,
                   sFoam,
                   0.1,
                   1,
@@ -331,7 +332,7 @@ class _FaultPanelState extends State<FaultPanel> {
                   (v) => '${(100 * v).round()}%',
                 ),
               ],
-              'Start foaming',
+              S.startFoaming,
               () => sim.injectFault(
                 FaultSpec(
                   type: FaultType.foaming,
@@ -343,11 +344,11 @@ class _FaultPanelState extends State<FaultPanel> {
               ),
             ),
             card(
-              'Feed composition upset',
-              'F07: more of the light component in the feed (+15 points at full severity).',
+              S.feedCompositionUpset,
+              S.f07MoreOfThe,
               [
                 slider(
-                  'Size',
+                  S.size,
                   sFeed,
                   0.1,
                   1,
@@ -356,7 +357,7 @@ class _FaultPanelState extends State<FaultPanel> {
                   (v) => '${(100 * v).round()}%',
                 ),
               ],
-              'Upset the feed',
+              S.upsetTheFeed,
               () => sim.injectFault(
                 FaultSpec(
                   type: FaultType.feedComposition,
@@ -431,12 +432,12 @@ class ControlTabs extends StatelessWidget {
             final wide = c.maxWidth >= 6 * 72;
             final row = Row(
               children: [
-                btn('LEVERS', Icons.tune, 0),
-                btn('LOOPS', Icons.settings_input_component, 1),
-                btn('BALANCE', Icons.balance, 2),
-                btn('TRENDS', Icons.show_chart, 3),
-                btn('FAULTS', Icons.warning_amber, 4),
-                btn('ENERGY', Icons.local_fire_department, 5),
+                btn(S.tabLevers, Icons.tune, 0),
+                btn(S.tabLoops, Icons.settings_input_component, 1),
+                btn(S.tabBalance, Icons.balance, 2),
+                btn(S.tabTrends, Icons.show_chart, 3),
+                btn(S.tabFaults, Icons.warning_amber, 4),
+                btn(S.tabEnergy, Icons.local_fire_department, 5),
               ],
             );
             // six tabs of 12 sp text need 72 dp each; narrower panels scroll the strip
@@ -558,7 +559,7 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Instrument fault',
+            S.instrumentFault,
             style: t.type.display.style(
               14.5,
               p.accent,
@@ -566,7 +567,7 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
             ),
           ),
           Text(
-            'F19 and F28: a transmitter lies, freezes, plugs or fails. Use the Balance tab and the signal look to find it.',
+            S.f19AndF28A,
             style: t.type.label.style(12.5, p.inkMuted),
           ),
           const SizedBox(height: 4),
@@ -578,7 +579,7 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
               SizedBox(
                 width: 62,
                 child: Text(
-                  'Severity',
+                  S.severity,
                   style: t.type.label.style(13, p.inkMuted),
                 ),
               ),
@@ -605,18 +606,18 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
             Wrap(
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text('Reads', style: t.type.label.style(13, p.inkMuted)),
+                Text(S.reads, style: t.type.label.style(13, p.inkMuted)),
                 const SizedBox(width: 8),
                 ChoiceChip(
                   visualDensity: VisualDensity.compact,
-                  label: const Text('high'),
+                  label: const Text(S.high),
                   selected: !negative,
                   onSelected: (_) => setState(() => negative = false),
                 ),
                 const SizedBox(width: 6),
                 ChoiceChip(
                   visualDensity: VisualDensity.compact,
-                  label: const Text('low'),
+                  label: const Text(S.low),
                   selected: negative,
                   onSelected: (_) => setState(() => negative = true),
                 ),
@@ -637,7 +638,7 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
                 ),
               ),
               child: Text(
-                'Inject on $tag',
+                S.injectOn(tag),
                 style: t.type.label.style(
                   13.5,
                   p.warn,
@@ -648,7 +649,7 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
           ),
           const Divider(),
           Text(
-            'Valve fault (F20)',
+            S.valveFaultF20,
             style: t.type.display.style(
               14.5,
               p.accent,
@@ -656,7 +657,7 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
             ),
           ),
           Text(
-            'A stuck valve moves nothing while its OP wanders. Open the bypass to work around it.',
+            S.stuckValveNote,
             style: t.type.label.style(12.5, p.inkMuted),
           ),
           chips([for (final v in s.valves) v.id], valveId, (k) => valveId = k),
@@ -678,7 +679,7 @@ class _InstrumentFaultCardState extends State<InstrumentFaultCard> {
                 ),
               ),
               child: Text(
-                'Inject on $valveId',
+                S.injectOn(valveId),
                 style: t.type.label.style(
                   13.5,
                   p.warn,

@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lowsys_app/theme/lowsys_theme.dart';
 import 'package:lowsys_app/theme/themes/brass.dart' show brassParchment;
 import 'package:lowsys_app/theme/themes/registry.dart';
 

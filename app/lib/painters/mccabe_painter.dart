@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import '../l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -73,7 +74,7 @@ class McCabePainter extends CustomPainter {
     canvas.save();
     canvas.translate(8, plot.center.dy);
     canvas.rotate(-math.pi / 2);
-    _text(canvas, 'y  vapour', Offset.zero, lab.style(12, p.inkMuted), Alignment.center);
+    _text(canvas, S.yVapour, Offset.zero, lab.style(12, p.inkMuted), Alignment.center);
     canvas.restore();
 
     canvas.save();
@@ -272,7 +273,7 @@ class McCabePainter extends CustomPainter {
         canvas.drawLine(o + const Offset(3, -3), tip, Paint()
           ..color = p.qLine
           ..strokeWidth = 0.9);
-        _text(canvas, 'pinch', tip + const Offset(2, 0), lab.style(12, p.qLine), Alignment.bottomLeft);
+        _text(canvas, S.pinch, tip + const Offset(2, 0), lab.style(12, p.qLine), Alignment.bottomLeft);
       }
     }
 
@@ -358,11 +359,11 @@ class McCabePainter extends CustomPainter {
     }
     if (!compact) {
       final items = [
-        ('equilibrium', p.eqCurve, false),
+        (S.equilibrium, p.eqCurve, false),
         (tier2 ? 'textbook CMO lines' : 'operating (CMO)', p.opLineCmo, true),
-        if (tier2) ('actual operating locus', p.opLine, false),
-        ('q-line', p.qLine, false),
-        ('stages', p.stepLine, false),
+        if (tier2) (S.actualOperatingLocus, p.opLine, false),
+        (S.qLine, p.qLine, false),
+        (S.stages, p.stepLine, false),
       ];
       var y = plot.top + 8;
       for (final (name, color, dashed) in items) {

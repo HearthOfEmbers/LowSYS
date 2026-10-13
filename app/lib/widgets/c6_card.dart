@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -37,17 +38,17 @@ class TrayTemperatureCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('C6  Tray temperatures', style: t.type.display.style(14, p.ink, weight: FontWeight.w700)),
+                child: Text(S.c6TrayTemperatures, style: t.type.display.style(14, p.ink, weight: FontWeight.w700)),
               ),
               TextButton(
                 style: TextButton.styleFrom(minimumSize: const Size(44, 30), padding: const EdgeInsets.symmetric(horizontal: 8)),
                 onPressed: sim.setTemperatureReference,
-                child: Text('Set reference', style: t.type.label.style(13, p.accent, weight: FontWeight.w700)),
+                child: Text(S.setReference, style: t.type.label.style(13, p.accent, weight: FontWeight.w700)),
               ),
             ],
           ),
           if (live.isEmpty)
-            Text('Collecting data', style: t.type.label.style(12.5, p.inkFaint))
+            Text(S.collectingData, style: t.type.label.style(12.5, p.inkFaint))
           else ...[
             SizedBox(
               height: 118,

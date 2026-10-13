@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -18,13 +19,13 @@ const Map<String, String> kLoopValve = {
 const Map<String, String> kLoopMeter = {'PC-101': 'FT-201'};
 
 const Map<String, String> kLoopTitle = {
-  'FC-101': 'Feed flow',
-  'FC-102': 'Reflux flow',
-  'FC-103': 'Boilup',
-  'LC-101': 'Drum level',
-  'LC-102': 'Sump level',
-  'PC-101': 'Top pressure',
-  'TC-101': 'Tray temperature',
+  'FC-101': S.feedFlow,
+  'FC-102': S.refluxFlow,
+  'FC-103': S.boilup,
+  'LC-101': S.drumLevel,
+  'LC-102': S.sumpLevel,
+  'PC-101': S.topPressure,
+  'TC-101': S.trayTemperature,
 };
 
 const Map<String, String> kLoopGauge = {'LC-101': 'LG-101', 'LC-102': 'LG-102'};
@@ -38,7 +39,7 @@ String qualityBadge(InstrumentReading r) {
     case Quality.bad:
       return r.qualityText ?? 'BAD';
     case Quality.oos:
-      return 'OOS';
+      return S.oos;
   }
 }
 
@@ -279,7 +280,7 @@ class Faceplate extends StatelessWidget {
                       child: TextButton(
                         onPressed: () => sim.setLever('tc101Enable', 1),
                         child: Text(
-                          'Enable the cascade (FC-103 goes to CAS)',
+                          S.enableTheCascadeFC,
                           style: t.type.label.style(
                             13,
                             p.accent,
@@ -291,13 +292,13 @@ class Faceplate extends StatelessWidget {
                   else
                     Row(
                       children: [
-                        modeButton('MAN', LoopMode.man),
+                        modeButton(S.man, LoopMode.man),
                         const SizedBox(width: 6),
-                        modeButton('AUTO', LoopMode.auto, enabled: !bad),
+                        modeButton(S.auto, LoopMode.auto, enabled: !bad),
                         if (tag == 'FC-103') ...[
                           const SizedBox(width: 6),
                           modeButton(
-                            'CAS',
+                            S.cas,
                             LoopMode.cas,
                             enabled: cascadeOn && !bad,
                           ),
@@ -308,14 +309,14 @@ class Faceplate extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        'SP tracked the PV when you switched to AUTO.',
+                        S.spTrackedPv,
                         style: t.type.label.style(12, p.inkMuted),
                       ),
                     ),
                   const SizedBox(height: 6),
                   _slider(
                     context,
-                    label: 'SP',
+                    label: S.sp,
                     enabled: !iman && !(cas && tag == 'FC-103'),
                     value: u.fromSI(q, loop.sp),
                     min: u.fromSI(q, loop.spLo),
@@ -328,7 +329,7 @@ class Faceplate extends StatelessWidget {
                   ),
                   _slider(
                     context,
-                    label: 'OP',
+                    label: S.op,
                     enabled: man && !iman,
                     value: loop.op,
                     min: loop.opLo,
@@ -343,7 +344,7 @@ class Faceplate extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            'Signal look (5 min σ)',
+                            S.signalLook5Min,
                             style: t.type.label.style(12.5, p.inkMuted),
                           ),
                         ),
@@ -360,7 +361,7 @@ class Faceplate extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            'Digits last changed',
+                            S.digitsLastChanged,
                             style: t.type.label.style(12.5, p.inkMuted),
                           ),
                         ),
@@ -464,7 +465,7 @@ class Faceplate extends StatelessWidget {
                       TextButton(
                         onPressed: () => sim.openMath(ExplainLoop(tag)),
                         child: Text(
-                          'Show the PID math',
+                          S.showThePIDMath,
                           style: t.type.label.style(13, p.inkMuted),
                         ),
                       ),
@@ -565,7 +566,7 @@ class _BypassRow extends StatelessWidget {
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text('Bypass', style: t.type.label.style(12.5, p.inkMuted)),
+        Text(S.bypass, style: t.type.label.style(12.5, p.inkMuted)),
         const SizedBox(width: 6),
         SizedBox(
           height: 28,

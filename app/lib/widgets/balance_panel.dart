@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -74,15 +75,15 @@ class BalancePanel extends StatelessWidget {
         String title(CrossCheckResult c) {
           switch (c.id.split(':').first) {
             case 'C1':
-              return 'C1  Material balance';
+              return S.c1MaterialBalance;
             case 'C2':
-              return 'C2  Component balance';
+              return S.c2ComponentBalance;
             case 'C3':
-              return 'C3  Top vapour';
+              return S.c3TopVapour;
             case 'C3a':
-              return 'C3a  Top vapour from the condenser duty';
+              return S.c3aTopVapourFrom;
             case 'C3b':
-              return 'C3b  Column energy balance';
+              return S.c3bColumnEnergyBalance;
             case 'C7':
               return 'C7  Bubble point (${c.id.split(':').last})';
             case 'C4':
@@ -103,7 +104,7 @@ class BalancePanel extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6, bottom: 4),
               child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, 
                 children: [
-                  Text('Window', style: t.type.label.style(13, p.inkMuted)),
+                  Text(S.window, style: t.type.label.style(13, p.inkMuted)),
                   const SizedBox(width: 8),
                   for (final x in windows)
                     Padding(
@@ -126,7 +127,7 @@ class BalancePanel extends StatelessWidget {
               ),
             ),
             Text(
-              'Every check uses meters and analysers only. A fault larger than about twice the band is unambiguous.',
+              S.checksUseMetersOnly,
               style: t.type.label.style(12, p.inkMuted),
             ),
             ...() {

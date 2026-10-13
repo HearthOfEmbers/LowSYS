@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:flutter/rendering.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -21,11 +22,11 @@ String _clock(double t) {
 String figureCaption(int n, String diagram, ColumnConfig cfg, SimSnapshot s, UnitSystem u) {
   final model = switch (s.tier) {
     ThermoTier.t1 => '',
-    ThermoTier.t2 => ' (Raoult)',
+    ThermoTier.t2 => S.raoult,
     ThermoTier.t3 => switch (cfg.tier3Model) {
-        Tier3Model.nrtl => ' (NRTL)',
-        Tier3Model.dePriester => ' (DePriester)',
-        Tier3Model.sameAsTier2 => ' (Raoult)',
+        Tier3Model.nrtl => S.nrtl,
+        Tier3Model.dePriester => S.dePriester,
+        Tier3Model.sameAsTier2 => S.raoult,
       },
   };
   final p = s.kpis.pTop.isFinite ? s.kpis.pTop : cfg.condenser.pTopDesign;

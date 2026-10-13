@@ -110,10 +110,10 @@ class LeverPanel extends StatelessWidget {
               group('STEAM', [tile('steam.bottom'), tile('steam.ss1'), tile('steam.ss2'), tile('steam.ss3')]);
               group('INTERNALS', [
                 _Labeled(
-                  label: 'Hydraulics',
+                  label: S.hydraulics,
                   t: t,
                   child: _Segments(
-                    options: const ['Ideal', 'Full'],
+                    options: const [S.idealCap, S.full],
                     selected: full ? 1 : 0,
                     onSelect: locked.contains('hydraulics') ? null : (i) => sim.setLever('hydraulics', i.toDouble()),
                     t: t,
@@ -133,7 +133,7 @@ class LeverPanel extends StatelessWidget {
             ]);
             group('TOP', [
               _Segments(
-                options: const ['Reflux flow', 'Reflux ratio'],
+                options: const [S.refluxFlow, S.refluxRatio],
                 selected: ratioMode ? 1 : 0,
                 onSelect: (i) => sim.setLever('refluxMode', i.toDouble()),
                 t: t,
@@ -150,10 +150,10 @@ class LeverPanel extends StatelessWidget {
             if (t2) {
               group('UTILITIES', [
                 _Labeled(
-                  label: 'Condenser',
+                  label: S.condenser,
                   t: t,
                   child: _Segments(
-                    options: const ['Total', 'Partial'],
+                    options: const [S.total, S.partial],
                     selected: (values['condenserType'] ?? 0) >= 0.5 ? 1 : 0,
                     onSelect: locked.contains('condenserType')
                         ? null
@@ -169,7 +169,7 @@ class LeverPanel extends StatelessWidget {
                   t: t,
                   child: _Segments(
                     key: const ValueKey('lever-reboiler-type'),
-                    options: const ['Kettle', 'Thermosyphon'],
+                    options: const [S.kettle, S.thermosyphon],
                     selected: (values['reboilerType'] ?? 0) >= 0.5 ? 1 : 0,
                     onSelect: locked.contains('reboilerType') || !sim.paused
                         ? null
@@ -184,10 +184,10 @@ class LeverPanel extends StatelessWidget {
               ]);
               group('TRAY TEMPERATURE CONTROL', [
                 _Labeled(
-                  label: 'TC-101 (cascade to the reboiler duty)',
+                  label: S.tc101Cascade,
                   t: t,
                   child: _Segments(
-                    options: const ['Off', 'On'],
+                    options: const [S.off, S.onLabel],
                     selected: (values['tc101Enable'] ?? 0) >= 0.5 ? 1 : 0,
                     onSelect: locked.contains('tc101Enable')
                         ? null
@@ -214,7 +214,7 @@ class LeverPanel extends StatelessWidget {
                   t: t,
                   child: _Segments(
                     key: const ValueKey('lever-internals'),
-                    options: const ['Trays', 'Packing', 'Mixed'],
+                    options: const [S.trays, S.packing, S.mixed],
                     selected: (values['internals'] ?? 0).round().clamp(0, 2),
                     onSelect: locked.contains('internals') || !sim.paused
                         ? null
@@ -223,10 +223,10 @@ class LeverPanel extends StatelessWidget {
                   ),
                 ),
               _Labeled(
-                label: 'Hydraulics',
+                label: S.hydraulics,
                 t: t,
                 child: _Segments(
-                  options: const ['Ideal', 'Full'],
+                  options: const [S.idealCap, S.full],
                   selected: full ? 1 : 0,
                   onSelect: locked.contains('hydraulics')
                       ? null
@@ -236,10 +236,10 @@ class LeverPanel extends StatelessWidget {
               ),
               if (full && trayLever != null)
                 _Labeled(
-                  label: 'Tray type',
+                  label: S.trayType,
                   t: t,
                   child: _Segments(
-                    options: const ['Sieve', 'Valve'],
+                    options: const [S.sieve, S.valve],
                     selected: (values[trayLever] ?? 0) >= 0.5 ? 1 : 0,
                     onSelect: locked.contains(trayLever)
                         ? null
@@ -249,10 +249,10 @@ class LeverPanel extends StatelessWidget {
                 ),
               if (full)
                 _Labeled(
-                  label: 'Antifoam',
+                  label: S.antifoam,
                   t: t,
                   child: _Segments(
-                    options: const ['Off', 'On'],
+                    options: const [S.off, S.onLabel],
                     selected: (values['antifoam'] ?? 0) >= 0.5 ? 1 : 0,
                     onSelect: (i) => sim.setLever('antifoam', i.toDouble()),
                     t: t,
@@ -261,10 +261,10 @@ class LeverPanel extends StatelessWidget {
             ]);
             group('INSTRUMENTS', [
               _Labeled(
-                label: 'Measurement noise',
+                label: S.measurementNoise,
                 t: t,
                 child: _Segments(
-                  options: const ['Off', 'On'],
+                  options: const [S.off, S.onLabel],
                   selected: (values['noise'] ?? 0) >= 0.5 ? 1 : 0,
                   onSelect: locked.contains('noise')
                       ? null
@@ -273,13 +273,13 @@ class LeverPanel extends StatelessWidget {
                 ),
               ),
               _Labeled(
-                label: 'View',
+                label: S.view,
                 t: t,
                 child: _Segments(
                   options: const [
-                    'Model (true values)',
-                    'Plant (readings only)',
-                    'Plant + calculations',
+                    S.modelTrueValues,
+                    S.plantReadingsOnly,
+                    S.plantCalculations,
                   ],
                   selected: (values['view'] ?? 0).round().clamp(0, 2),
                   onSelect: locked.contains('view')
@@ -289,10 +289,10 @@ class LeverPanel extends StatelessWidget {
                 ),
               ),
               _Labeled(
-                label: 'Loop on a bad signal',
+                label: S.loopOnBadSignal,
                 t: t,
                 child: _Segments(
-                  options: const ['Keeps running', 'Drops to MAN'],
+                  options: const [S.keepsRunning, S.dropsToMAN],
                   selected: (values['badPvShed'] ?? 1) >= 0.5 ? 1 : 0,
                   onSelect: locked.contains('badPvShed')
                       ? null
@@ -316,30 +316,30 @@ class LeverPanel extends StatelessWidget {
 /// Noise, view and bad-signal segments (the INSTRUMENTS group of the crude unit).
 List<Widget> _instrumentTiles(Map<String, double> values, Set<String> locked, SimController sim, LowsysTheme t) => [
       _Labeled(
-        label: 'Measurement noise',
+        label: S.measurementNoise,
         t: t,
         child: _Segments(
-          options: const ['Off', 'On'],
+          options: const [S.off, S.onLabel],
           selected: (values['noise'] ?? 0) >= 0.5 ? 1 : 0,
           onSelect: locked.contains('noise') ? null : (i) => sim.setLever('noise', i.toDouble()),
           t: t,
         ),
       ),
       _Labeled(
-        label: 'View',
+        label: S.view,
         t: t,
         child: _Segments(
-          options: const ['Model (true values)', 'Plant (readings only)', 'Plant + calculations'],
+          options: const [S.modelTrueValues, S.plantReadingsOnly, S.plantCalculations],
           selected: (values['view'] ?? 0).round().clamp(0, 2),
           onSelect: locked.contains('view') ? null : (i) => sim.setLever('view', i.toDouble()),
           t: t,
         ),
       ),
       _Labeled(
-        label: 'Loop on a bad signal',
+        label: S.loopOnBadSignal,
         t: t,
         child: _Segments(
-          options: const ['Keeps running', 'Drops to MAN'],
+          options: const [S.keepsRunning, S.dropsToMAN],
           selected: (values['badPvShed'] ?? 1) >= 0.5 ? 1 : 0,
           onSelect: locked.contains('badPvShed') ? null : (i) => sim.setLever('badPvShed', i.toDouble()),
           t: t,
@@ -531,11 +531,11 @@ class LeverTile extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text(S.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, double.tryParse(ctl.text)),
-            child: const Text('Set'),
+            child: const Text(S.set),
           ),
         ],
       ),
@@ -603,7 +603,7 @@ class LeverTile extends StatelessWidget {
                       border: Border.all(color: p.inkFaint),
                     ),
                     child: Text(
-                      'SP',
+                      S.sp,
                       style: t.type.number.style(12, p.inkMuted),
                     ),
                   ),
