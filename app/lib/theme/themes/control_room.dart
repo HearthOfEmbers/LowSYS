@@ -27,7 +27,7 @@ const LowsysTheme controlRoomTheme = LowsysTheme(
     vapor: Color(0xFFB4F1FF),
     hot: Color(0xFFFF8A3D),
     cold: Color(0xFF31C4F3),
-    ok: Color(0xFF34C759),
+    ok: Color(0xFF217E38),
     warn: Color(0xFFFFCC00),
     alarm: Color(0xFFFF3B30),
     info: Color(0xFF5AC8FA),

@@ -26,7 +26,7 @@ const LowsysTheme blueprintTheme = LowsysTheme(
     vapor: Color(0x8CFFFFFF),
     hot: Color(0xFFFF9F6E),
     cold: Color(0xFF9BE7FF),
-    ok: Color(0xFF7CE0A3),
+    ok: Color(0xFF9DE8BA),
     warn: Color(0xFFFFD166),
     alarm: Color(0xFFFF6B6B),
     info: Color(0xFF9BE7FF),

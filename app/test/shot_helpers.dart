@@ -33,16 +33,14 @@ Future<void> loadFonts() async {
   await load('MaterialIcons', 'C:/dev/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
   await load('Architects Daughter', 'assets/fonts/ArchitectsDaughter-Regular.ttf');
   await load('Share Tech Mono', 'assets/fonts/ShareTechMono-Regular.ttf');
-  // VT323 is not bundled (Phosphor falls back to the platform monospace); screenshots use Share Tech Mono as a stand-in
-  await load('VT323', 'assets/fonts/ShareTechMono-Regular.ttf');
+  await load('VT323', 'assets/fonts/VT323-Regular.ttf');
   await load('STIX Two Math', 'assets/fonts/STIXTwoMath-Regular.ttf');
   await load('Rajdhani', 'assets/fonts/Rajdhani-Medium.ttf');
   await load('JetBrains Mono', 'assets/fonts/JetBrainsMono-VF.ttf');
   await load('Source Sans 3', 'assets/fonts/SourceSans3-VF.ttf');
-  // Brass fonts are not bundled (no downloads): stand-ins for the screenshots
-  await load('Cinzel', 'assets/fonts/Rajdhani-SemiBold.ttf');
-  await load('IM Fell English', 'assets/fonts/SourceSerif4-Italic-VF.ttf');
-  await load('Courier Prime', 'assets/fonts/JetBrainsMono-VF.ttf');
+  await load('Cinzel', 'assets/fonts/Cinzel-VF.ttf');
+  await load('IM Fell English', 'assets/fonts/IMFeENrm28P.ttf');
+  await load('Courier Prime', 'assets/fonts/CourierPrime-Regular.ttf');
   // the italic is the only Source Serif face the Paper captions use
   await load('Source Serif 4', 'assets/fonts/SourceSerif4-Italic-VF.ttf');
 }

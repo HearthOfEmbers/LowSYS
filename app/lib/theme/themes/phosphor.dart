@@ -4,8 +4,7 @@ import '../lowsys_theme.dart';
 
 /// T-3 Phosphor, "Green Screen CRT" (SCOPE.md 7.2). A single hue: the series are told apart by dash pattern and
 /// intensity (seriesDash1..6), amber is only the selection cursor and warn, and alarm is inverse video (a green
-/// block with black text, blinking). "VT323" is not bundled (no downloads, docs/DEVIATIONS.md A1), so the monospace
-/// fallbacks apply.
+/// block with black text, blinking). VT323 is bundled (M10, OFL).
 const LowsysTheme phosphorTheme = LowsysTheme(
   id: 'phosphor',
   name: 'Phosphor',
