@@ -72,10 +72,11 @@ void main() {
     expect(jsonEncode(copy.saveState()), equals(jsonEncode(sim.saveState())));
   });
 
-  // M4 validation: both Tier-2 rows fail at c4e1f17 (DEVIATIONS.md "M4
-  // validation" V1, V2): full hydraulics restores a different T / y profile,
-  // and a PC-101 SP away from the design pressure shifts PT-101 after
-  // restore by 7.8e-4 × (SP − P_design) Pa in the first step.
+  // VC-20.4 in Tier 2. Both rows found engine bugs at c4e1f17 (DEVIATIONS.md
+  // "M4 validation" V1: full hydraulics restored a different T / y profile;
+  // V2: a PC-101 SP off the design pressure shifted PT-101 after a restore),
+  // fixed in 7312519. The SP here goes through `control.setSp`, which now
+  // re-ranges PT-101 (E48, PHYSICS.md §10.7).
   test(
       'VC-20.4 Tier 2 (M4), ideal hydraulics: save/restore with noise and the PC-101 SP moved off the design pressure',
       () {
@@ -103,7 +104,11 @@ void main() {
             .copyWith(tier: ThermoTier.t2, hydraulics: HydraulicsMode.full),
         options: const SimOptions(seed: 9));
     sim.setLever('tc101Enable', 1);
-    runSteady(sim);
+    // The default 1e-11 polish is not reached in this configuration at
+    // e1d4ae4 (residual floor ≈ 6e-11, DEVIATIONS.md "M4 validation" V4);
+    // this row tests save/restore, so a 1e-9 polish is enough here.
+    final r = sim.runToSteadyState(polishTolerance: 1e-9);
+    expect(r.reached, isTrue, reason: 'residual ${r.residual}');
     sim.setLever('noise', 1);
     sim.setLever('view', 1);
     sim.faults.inject(FaultSpec(
@@ -131,10 +136,23 @@ void main() {
     sim.advance(1800);
     copy.advance(1800);
     expect(jsonEncode(copy.saveState()), equals(jsonEncode(sim.saveState())));
+    // Plant view (the drill configuration) shows only readings: PT-101 and
+    // PT-201 must agree bit for bit.
+    for (final tag in ['PT-101', 'PT-201', 'TI-100']) {
+      expect(reading(copy.snapshot(), tag).value,
+          reading(sim.snapshot(), tag).value,
+          reason: '$tag reading after restore');
+    }
+    // The inert fraction is model-only (NaN in plant view, PHYSICS.md 10.9),
+    // so the fault's progress is read in the model view (V3).
+    for (final s in [sim, copy]) {
+      s.setLever('view', 0);
+    }
     final a = copy.snapshot(), b = sim.snapshot();
     expect(a.kpis.pTop, b.kpis.pTop);
     expect(a.condenser!.inertFraction, b.condenser!.inertFraction);
-    expect(a.condenser!.inertFraction, greaterThan(0));
+    expect(a.condenser!.inertFraction, greaterThan(0),
+        reason: 'non-condensables building up');
     expect(a.reboiler.steamT, b.reboiler.steamT);
   });
 

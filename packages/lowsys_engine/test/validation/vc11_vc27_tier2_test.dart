@@ -300,21 +300,28 @@ void main() {
       sim.advance(2 * 3600);
       expect(sim.snapshot().kpis.qr / kw, lessThan(0.95 * r2.qR / 1000),
           reason: 'duty-limited at the 3.5 bar(g) header');
-      expect(
-          hasAlarm(sim.snapshot(), 'model.dutyLimited') ||
-              hasAlarm(sim.snapshot(), 'FC-103.OPSAT'),
-          isTrue);
+      // A clean exchanger short of ΔT shows as FC-103.OPSAT; model.dutyLimited
+      // means a degraded exchanger only (PHYSICS.md §8.2, 2026-10-12).
+      expect(hasAlarm(sim.snapshot(), 'FC-103.OPSAT'), isTrue);
+      expect(hasAlarm(sim.snapshot(), 'model.dutyLimited'), isFalse);
     });
     test(
-        'condenser at 0.5 bar(a) cannot condense even with CW at 15 °C; 0.7 bar can; 0.5 bar with CW at the 5 °C lever minimum can (max ≈ 1487 kW > ≈ 1330 kW; OPEN_ITEMS)',
+        'condenser: 0.5 bar(a) needs CW ≤ ≈ 10.7 °C (holds at 5 and 10 °C, not at 11.5 or 15 °C); 0.7 bar(a) holds with CW at 15 °C',
         () {
-      for (final (pBar, tCw, ok) in [
-        (0.5, 288.15, false),
-        (0.7, 288.15, true),
-        (0.5, 278.15, true)
+      // VALIDATION.md VC-27.3 note (corrected 2026-10-12): 27.53 kW/K ×
+      // (59.02 − T_cw,in) must cover ≈ 1330 kW at 0.5 bar(a), so the limit
+      // is T_cw,in ≈ 10.7 °C; at the 5 °C lever minimum the condenser gives
+      // ≈ 1487 kW. Engine e1d4ae4: CW OP 95.3 % at 10.5 °C, saturated with
+      // P +0.5 kPa at 11 °C. G8 starts at 0.7 bar(a) with CW at 15 °C.
+      for (final (pBar, tCwC, ok) in [
+        (0.5, 15.0, false),
+        (0.5, 11.5, false),
+        (0.5, 10.0, true),
+        (0.5, 5.0, true),
+        (0.7, 15.0, true)
       ]) {
         final sim = newSim(btT2(overrides: {
-          'condenser.cwInletT': tCw,
+          'condenser.cwInletT': tCwC + 273.15,
           'reboiler.steamHeaderPressure': 1101325.0
         }));
         final r = _refBt(p: pBar * 1e5, e: 0.7);
@@ -322,10 +329,15 @@ void main() {
         sim.setLever('pTop', pBar * 1e5);
         sim.advance(2 * 3600);
         final s = sim.snapshot();
-        final held = (s.kpis.pTop - pBar * 1e5).abs() < 2000;
-        expect(held, ok,
-            reason:
-                'P held at $pBar bar, CW ${tCw - 273.15} °C: ${s.kpis.pTop}; CW OP ${loopOf(s, 'PC-101').op}');
+        final op = loopOf(s, 'PC-101').op, dp = s.kpis.pTop - pBar * 1e5;
+        final why = '$pBar bar, CW $tCwC °C: P − SP $dp Pa, CW OP $op';
+        if (ok) {
+          expect(op, lessThan(99.9), reason: 'CW valve has room: $why');
+          expect(dp.abs(), lessThan(500), reason: 'P held: $why');
+        } else {
+          expect(op, greaterThanOrEqualTo(99.9), reason: 'CW saturated: $why');
+          expect(dp, greaterThan(200), reason: 'P above SP: $why');
+        }
       }
     });
   });

@@ -14,15 +14,13 @@ Collected by the lead from validation passes. Fix in the docs, then delete the i
 
 ## For validator
 
-- **VC-16.6 SP step after the E48 fix.** Once `setSp` re-ranges PT-101, the +10 kPa step runs on a 222.65 kPa span (PC-101's Pa-gain −9 %). Re-run the ±10 kPa criteria (within ± 1 kPa in 10 min, overshoot ≤ 30 %). If it fails, report here. Do not compensate Kc.
-- **Re-pinned M4 rows (docs now match the test changes).** VC-16.6c (50 → 100 % CW, 0.906 ± 0.005 bar(a)); VC-8.1 in Tier 2 (back to SP ± 0.2 kPa at steady state, transient ≤ 5 kPa); VC-11 further references (perfect condenser, CW inlet giving 50 % CW); VC-27.3 note (0.5 bar(a) holds with CW ≤ ≈ 10.7 °C); H9.12 (30 min). Check that the test comments cite these rows, not OPEN_ITEMS.
-- **H2 F11 and H4 F15 rows restated.** F11 at s = 1: the CW valve saturates within 30 min, then P rises; subcooling ≥ 3 K within 1 h. F15 (s ≥ 0.7): `FC-103.OPSAT`, and `model.dutyLimited` must stay clear. After the coder's dutyLimited change, also check that F13 and F14 still raise `model.dutyLimited`, and that a healthy run with noise on and FC-103 at 100 % OP does not.
-- **M6: H9.0/H10.0 in Tier 2** with the process-driven typical σ: four tags judged on 0.33–3; calibration check median 0.7–1.4 over seeds 1–3 (VALIDATION.md H9.0).
+- **M6: H9.0/H10.0 in Tier 2** with the process-driven typical σ: four tags judged on 0.33–3; calibration check median 0.7–1.4 over seeds 1–3 (VALIDATION.md H9.0). Not run in the 2026-10-13 pass: engine e1d4ae4 has no σ_proc yet.
 - **M6: re-derive VC-14.1 independently.** The table comes from the physics lead's loop prototype (`.scratch/m6/ts.dart`, gitignored), so it is a regression map of PHYSICS.md §8.3, not an independent reference. Spot-check about five rows with your own implementation from the equations: the 75 %, 50 %, 15 % / 100 %, 15 % / 16 % and K_out = 20 rows. Report any row outside the tolerances here, together with the term you suspect.
 - **M6: column-coupled thermosyphon numbers are loop-only estimates.** The numbers in VC-14.2, VC-14.3 and the H5 rows (in [ ]) freeze the VC-14.1 inputs. The engine's sump T and P shift I_s by up to ≈ ±0.05, and the ranges allow for that. Record the engine's I_s at 50 % and 15 % level and the G14 times. Report here if I_s at 15 % is below 1.10 (the surge would be too weak for G14) or above 0.90 at 50 %.
 
 ## For the physics lead
 
+- **H2 wording, "CW valve rises with P_top at SP" (validator, engine e1d4ae4).** While the valve rises, P is not at SP: PC-101 follows the growing load with a PI ramp lag, and P climbs from +0.1 to +2.1 kPa above SP over the ≈ 17 min (valve 48 → 100 % at 1005 s), then rises to 139 kPa at 1 h. It is the VC-8.1 mechanism. The test judges it on the VC-8.1 Tier-2 transient bound (≤ 5 kPa). Suggest "CW valve rises while P_top stays within ≈ 2 kPa of SP" or the 5-kPa bound.
 - **VC-28.1 x_B.** The [P] value is 0.012590 / T_B 96.496 °C. A re-run of the independent Newton MESH solve during the M5 pass gave 0.012564 / 96.502 °C, which is inside the 2×10⁻⁴ tolerance. The likely cause is a difference in feed temperature or ΔP handling between the two prototypes. Reconcile it once the engine's number exists.
 - **Prototype provenance.** The M5 [I] numbers (VC-10.9, VC-28.3 Tier 3, VC-28.7, §11.8 G9/G10) come from a binary MESH Newton solver with a numerical Jacobian, with P held and the same ideal enthalpies as Tier 2. It is not in the repo. If it should be kept for re-derivation, add it under `tools/` (owner decision, not the coder's).
 

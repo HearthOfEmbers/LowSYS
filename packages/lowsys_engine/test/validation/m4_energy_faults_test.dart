@@ -3,6 +3,8 @@
 // symptoms of F08–F15 (noise off, Tier 2).
 library;
 
+import 'dart:math' as math;
+
 import 'package:lowsys_engine/lowsys_engine.dart';
 import 'package:test/test.dart';
 
@@ -127,29 +129,32 @@ void main() {
       }
     });
     test(
-        'F11 non-condensables s 1: 10 mol inert/h into the 104-mol overhead; CW saturates within 10–30 min, then P rises (1 h: ≈ 139 kPa, y_I ≈ 0.072, extra subcooling 20·3·y_I ≈ 4.3 K; the doc\'s 0.09 / 5 K assume P held); vent restores P within 10 min',
+        'H2 / F11 non-condensables s 1 (transient): CW valve rises with P at SP, saturates within 30 min, then P rises (1 h ≈ 139 kPa, y_I ≈ 0.072); subcooling up ≥ 3 K within 1 h (≈ 4.3 K); vent restores P within 10 min',
         () {
       final sim = _steady();
       final s0 = sim.snapshot();
       final nTot0 = s0.condenser!.vaporMoles;
+      final op0 = loopOf(s0, 'PC-101').op;
       expect(nTot0, closeTo(f11.overheadMol, 1.5),
           reason: 'overhead at 1 atm (ideal gas, 3 m³)');
       _equip(sim, FaultType.nonCondensables, 'condenser');
-      // P rises above SP while the CW valve still has room (PI lag), then the
-      // valve saturates: blanketing (f = 3 y_I) and the lower condensable
-      // partial pressure eat the +7.9 % reserve of the 50 % design at
-      // y_I ≈ 0.02 (≈ 15 min at s = 1).
-      double? tSat, pAtSat;
-      var pRiseBeforeSat = false;
+      // PHYSICS.md §11 F11 / VALIDATION.md H2 (restated 2026-10-12): PC-101
+      // first holds P by opening the CW valve; blanketing (f = 3 y_I) and the
+      // lower condensable partial pressure use up the +7.9 % reserve of the
+      // 50 % design at y_I ≈ 0.02, so the valve saturates (engine ≈ 17 min)
+      // and P then rises.
+      double? tSat, pAtSat, tSub3;
+      var dpBeforeSat = 0.0;
       advanceSampling(sim, 3600, 5, (t, s) {
         final op = loopOf(s, 'PC-101').op;
-        if (tSat == null && s.kpis.pTop > 101325 + 300 && op < 95) {
-          pRiseBeforeSat = true;
+        if (tSat == null) {
+          dpBeforeSat = math.max(dpBeforeSat, (s.kpis.pTop - 101325).abs());
         }
         if (tSat == null && op >= 99.9) {
           tSat = t;
           pAtSat = s.kpis.pTop;
         }
+        tSub3 ??= s.condenser!.subcooling >= f11.subcoolMinH2 ? t : null;
       });
       final s = sim.snapshot();
       final c = s.condenser!;
@@ -157,25 +162,30 @@ void main() {
       final nI = c.vaporMoles * yI / (1 - yI);
       expect(nI, closeTo(f11.inertPerHour, 0.1),
           reason: 'ε_I F t = 1e-4 × 100 kmol/h × 1 h');
-      expect(pRiseBeforeSat, isTrue,
-          reason: 'P up while the CW valve is not saturated at first');
       expect(tSat, isNotNull, reason: 'CW valve saturates');
-      expect(tSat!, inInclusiveRange(600, 1800),
+      expect(tSat!, lessThanOrEqualTo(f11.tSatMax),
           reason: 'valve saturates at ${tSat! / 60} min (P ${pAtSat! / 1000} kPa)');
-      expect(s.kpis.pTop, greaterThan(101325 + 20000),
+      expect(tSat!, greaterThan(300), reason: 'the valve rises first (OP0 $op0)');
+      // "P_top at SP" while the valve rises: PC-101 follows the growing load
+      // with a PI ramp lag (engine 0.1 → 2.1 kPa above SP over the 17 min),
+      // judged on the VC-8.1 Tier-2 transient bound of 5 kPa (wording item in
+      // OPEN_ITEMS.md).
+      expect(dpBeforeSat, lessThanOrEqualTo(5000),
+          reason: 'P near SP while the valve rises: max |P − SP| $dpBeforeSat Pa');
+      expect(s.kpis.pTop, closeTo(f11.pTop1h, 5000),
           reason: 'P rises once the valve is saturated (engine 139 kPa)');
-      // The §11 figures (104 mol, y_I 0.09, f 0.27, +5 K) assume P held at
-      // 1 atm; with P at ≈ 139 kPa the overhead holds ≈ 139 mol, y_I ≈ 0.072
-      // and the extra subcooling is 20 × 3 y_I ≈ 4.3 K (OPEN_ITEMS.md).
+      // the model relations behind the §11 1-h numbers
       expect((nI + c.vaporMoles) * 8.314462618 * c.tCond / 3.0,
           closeTo(s.kpis.pTop, 0.002 * s.kpis.pTop),
           reason: 'P = (n_V + n_I) R T_0 / V_ovh');
-      expect(yI, inInclusiveRange(0.06, f11.yI1h + 0.005));
+      expect(yI, closeTo(f11.yI1h, 0.005));
       expect(c.subcooling, closeTo(20 * 3 * yI, 0.01),
           reason: 'ΔT_sub = 20 f_blanket');
+      expect(c.subcooling, closeTo(f11.subcool1h, 0.3));
       expect(c.tCond - reading(s, 'TI-100').value, closeTo(c.subcooling, 0.3),
           reason: 'TI-100 shows the subcooled reflux');
-      expect(c.subcooling, greaterThan(4.0), reason: 'subcooling up');
+      expect(tSub3, isNotNull,
+          reason: 'H2: subcooling up ≥ ${f11.subcoolMinH2} K within 1 h');
       sim.setLever('inertVent', 100);
       final tBack = firstTime(
           sim, 600, (st) => (st.kpis.pTop - 101325).abs() < 500,
@@ -236,7 +246,7 @@ void main() {
       expect(s.kpis.drumLevelPct, greaterThan(55));
     });
     test(
-        'F13 reboiler fouling (ramp 6 h): steam valve rises over ≥ 30 min then saturates; duty below SP after',
+        'F13 reboiler fouling (ramp 6 h): steam valve rises over ≥ 30 min then saturates; duty below SP after; model.dutyLimited raised',
         () {
       final sim = _steady();
       _equip(sim, FaultType.reboilerFouling, 'reboiler',
@@ -251,9 +261,12 @@ void main() {
       expect(tSat!, greaterThanOrEqualTo(1800), reason: 'rises over ≥ 30 min');
       final s = sim.snapshot();
       expect(s.kpis.qr, lessThan(loopOf(s, 'FC-103').sp - 20 * kw));
+      // PHYSICS.md §8.2 (2026-10-12): the flag means a degraded exchanger
+      expect(hasAlarm(s, 'model.dutyLimited'), isTrue,
+          reason: 'F13 raises model.dutyLimited');
     });
     test(
-        'F14 condensate backup (s 0.75): duty below SP within 5 min with the steam valve at 100 %',
+        'F14 condensate backup (s 0.75): duty below SP within 5 min with the steam valve at 100 %; model.dutyLimited raised',
         () {
       final sim = _steady();
       _equip(sim, FaultType.condensateBackup, 'reboiler',
@@ -267,24 +280,53 @@ void main() {
           sample: 5);
       expect(tHit, isNotNull);
       expect(tHit!, lessThanOrEqualTo(300));
+      // the alarm needs the condition held 60 s (PHYSICS.md §8.2)
+      final tFlag = firstTime(
+          sim, 300, (s) => hasAlarm(s, 'model.dutyLimited'),
+          sample: 5);
+      expect(tFlag, isNotNull, reason: 'F14 raises model.dutyLimited');
     });
     test(
-        'F15 steam header loss (s 0.85): header reading down, duty limited, T_st down',
+        'model.dutyLimited stays clear on a healthy exchanger with noise on and FC-103 at 100 % OP (SP above Q_max)',
+        () {
+      final sim = newSim(btT2(), options: const SimOptions(seed: 4));
+      runSteady(sim);
+      sim.setLever('noise', 1);
+      sim.control.setSp('FC-103', 1.3 * sim.snapshot().reboiler.qMax);
+      var raised = false;
+      var opMin = 100.0;
+      advanceSampling(sim, 3600, 5, (t, s) {
+        raised |= s.reboiler.dutyLimited || hasAlarm(s, 'model.dutyLimited');
+        if (t > 300) opMin = math.min(opMin, loopOf(s, 'FC-103').op);
+      });
+      expect(opMin, greaterThanOrEqualTo(99.9), reason: 'valve wide open');
+      expect(hasAlarm(sim.snapshot(), 'FC-103.OPSAT'), isTrue);
+      expect(raised, isFalse);
+    });
+    test(
+        'H4 F15 steam header loss (s 0.85): header reading down, FC-103.OPSAT, T_st down; model.dutyLimited stays clear',
         () {
       final sim = _steady();
       final pt0 = reading(sim.snapshot(), 'PT-201').value,
           tst0 = sim.snapshot().reboiler.steamT;
       _equip(sim, FaultType.steamHeaderLoss, 'reboiler',
           severity: 0.85, ramp: 120);
-      sim.advance(900);
+      // VALIDATION.md H4 (2026-10-12): the symptom is FC-103.OPSAT; a header
+      // loss lowers Q_v and Q_max together, so model.dutyLimited is not
+      // expected (PHYSICS.md §8.2).
+      var dutyLimited = false;
+      advanceSampling(sim, 900, 5, (t, st) {
+        dutyLimited |=
+            st.reboiler.dutyLimited || hasAlarm(st, 'model.dutyLimited');
+      });
       final s = sim.snapshot();
       expect(reading(s, 'PT-201').value, lessThan(pt0 - 1e5));
       expect(s.reboiler.steamT, lessThan(tst0 - 5));
-      expect(hasAlarm(s, 'model.dutyLimited') || hasAlarm(s, 'FC-103.OPSAT'),
-          isTrue);
-      // "Duty limited" is the evidence, not a size: as the duty falls the
-      // bottoms get lighter, T_B drops (≈ 103 °C) and Q_max = UA_R (T_st −
-      // T_B) recovers, so the self-consistent duty is ≈ 1200 kW, below SP.
+      expect(hasAlarm(s, 'FC-103.OPSAT'), isTrue);
+      expect(dutyLimited, isFalse, reason: 'model.dutyLimited raised by F15');
+      // "Limited" is an onset statement: as the duty falls the bottoms get
+      // lighter, T_B drops (≈ 103 °C) and Q_max = UA_R (T_st − T_B)
+      // recovers, so the self-consistent duty is ≈ 1200 kW, below SP.
       expect(s.kpis.qr, lessThan(loopOf(s, 'FC-103').sp - 20 * kw));
       expect(s.reboiler.qMax,
           closeTo(s.reboiler.uaEff * (s.reboiler.steamT - s.reboiler.tSump),
