@@ -42,7 +42,14 @@ class ColumnView extends StatelessWidget {
                 builder: (_, __) => CustomPaint(
                   isComplex: true,
                   willChange: false,
-                  painter: ColumnVesselPainter(theme: t, trays: sim.structure.value.trays, feedStage: sim.structure.value.feed, broken: sim.brokenStages.value),
+                  painter: ColumnVesselPainter(
+                    theme: t,
+                    trays: sim.structure.value.trays,
+                    feedStage: sim.structure.value.feed,
+                    broken: sim.brokenStages.value,
+                    trayHeightM: sim.config.traySection.geometry.traySpacing,
+                    diameterM: sim.config.traySection.geometry.diameter,
+                  ),
                 ),
               ),
             ),

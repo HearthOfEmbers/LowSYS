@@ -96,9 +96,15 @@ class OuNoise {
   final double sigma, tau;
   OuNoise(this.sigma, this.tau);
 
+  double _h = -1, _a = 0, _b = 0;
+
   double step(double h, Rng rng) {
-    final a = math.exp(-h / tau);
-    value = a * value + sigma * math.sqrt(1 - a * a) * rng.normal();
+    if (h != _h) {
+      _h = h;
+      _a = math.exp(-h / tau);
+      _b = sigma * math.sqrt(1 - _a * _a);
+    }
+    value = _a * value + _b * rng.normal();
     return value;
   }
 }

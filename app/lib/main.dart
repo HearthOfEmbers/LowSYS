@@ -31,9 +31,14 @@ void _runPerf(SimController sim) {
   Timer.periodic(const Duration(milliseconds: 200), (t) {
     if (!sim.loaded) return;
     if (!sw.isRunning) {
+      SimController.perfRecording = true;
       sim.setSpeed(100);
       sw.start();
       frames.clear();
+      SimController.perfAdvance.clear();
+      SimController.perfSnapshot.clear();
+      SimController.perfMccabe.clear();
+      SimController.perfNotify.clear();
     }
     if (sw.elapsed.inSeconds >= _perfSeconds) {
       t.cancel();
@@ -56,6 +61,12 @@ void _runPerf(SimController sim) {
         'over32ms=$over32 (${(over32 * 100 / (frames.isEmpty ? 1 : frames.length)).toStringAsFixed(2)}%) '
         'simTime=${sim.snapshot.value?.time.toStringAsFixed(0)}s achieved=${sim.achievedSpeed.value.toStringAsFixed(0)}x',
       );
+      String st(List<int> l) {
+        final v = l.map((e) => e / 1000).toList()..sort();
+        return v.isEmpty ? 'n/a' : 'p50=${pct(v, .5).toStringAsFixed(2)} p95=${pct(v, .95).toStringAsFixed(2)} max=${pct(v, 1).toStringAsFixed(2)}';
+      }
+
+      stdout.writeln('PERFPARTS advance_ms ${st(SimController.perfAdvance)} | snapshot_ms ${st(SimController.perfSnapshot)} | notify_ms ${st(SimController.perfNotify)} | mccabe_ms ${st(SimController.perfMccabe)}');
       exit(0);
     }
   });

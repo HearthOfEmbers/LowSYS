@@ -28,8 +28,13 @@ class BalancePanel extends StatelessWidget {
         String flow(double v) => Fmt.value(Quantity.molarFlow, v, u);
         final fu = u.symbol(Quantity.molarFlow);
         String rowText(CrossCheckResult c) {
-          if (c.status == CheckStatus.notAvailable)
+          if (c.status == CheckStatus.notAvailable) {
+            if (c.reason == 'collecting data') {
+              final have = (sim.trends.count * 5).clamp(0, sim.checkWindow.round());
+              return 'Collecting $have/${sim.checkWindow.round()} s';
+            }
             return 'Not available: ${c.reason ?? ''}';
+          }
           if (c.status == CheckStatus.transient)
             return 'Waiting for steady state (${c.reason ?? ''})';
           final tm = c.terms;
@@ -155,6 +160,16 @@ class BalancePanel extends StatelessWidget {
                               : p.inkMuted,
                         ),
                       ),
+                      if (c.reason == 'collecting data')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: LinearProgressIndicator(
+                            minHeight: 3,
+                            value: ((sim.trends.count * 5) / sim.checkWindow).clamp(0.0, 1.0),
+                            color: p.accent,
+                            backgroundColor: p.gridMajor,
+                          ),
+                        ),
                     ],
                   ),
                 ),
