@@ -29,8 +29,30 @@ Last updated 2026-10-12 by the outgoing coordinator.
 7. **Screenshots:** the coordinator reviews at most 1–2 per milestone, at reduced size.
 8. The coordinator keeps its own context small. Update this file at each milestone boundary and hand off to a fresh coordinator when the conversation gets long.
 
+## Relay protocol (the user is asleep or away; run autonomously until the scope is done)
+- **Goal:** finish M4–M10 per SCOPE.md. iOS can't be built on Windows: skip it, note it, and do Android, Windows and web.
+- **Who starts coordinators:** the scheduled task `lowsys-coordinator` fires every 30 minutes. It starts a new coordinator only when the repo has been quiet for 40 minutes, i.e. the previous coordinator died at a usage limit, or when `docs/.handoff_now` exists.
+- **Heartbeat:** touch `docs/.coordinator_heartbeat` whenever you act. Agents keep scratch and prototype work under `<repo>/.scratch/` (gitignored), so their activity counts as liveness.
+- **Handing off:** after about one milestone, or when your context is getting long:
+  1. Update this file (state and next steps).
+  2. Commit and push.
+  3. Create `docs/.handoff_now`.
+  4. Call the scheduled-tasks tool `run_scheduled_task` for `lowsys-coordinator`. If that tool is unavailable, the next 30-minute tick picks it up.
+  5. Stop. Don't start new agents after writing the handoff file.
+- **Parallel lanes.** Run lanes whenever their file sets don't overlap:
+  - **A:** Sonnet coder on the current milestone (engine plus app), in the main tree.
+  - **B:** a second Sonnet coder on disjoint work (themes, UI-only polish, web build), in `isolation: "worktree"`. Merge it to main when done.
+  - **C:** Opus `high`/`xhigh` readying the *next* milestone's spec and excerpt (docs only).
+  - **D:** Opus `xhigh` validating the previous checkpoint (`test/validation/` only).
+- **How many lanes:** start with A + C + D, and add B when there is disjoint work. Cut back a lane if you see merge conflicts, duplicated effort, or rework above roughly 15 % of a lane's output. Never run two writers on the same files.
+- **When a usage-limit error kills agents:** the coordinator dies too. The next tick after the reset resumes from this file, the git log and the DEVIATIONS handoff notes, starting fresh agents rather than resuming dead ones.
+- **When everything is done:**
+  1. Write a one-page summary in `docs/reports/`.
+  2. Set the status line at the top of this file to "COMPLETE".
+  3. Disable the `lowsys-coordinator` scheduled task.
+
 ## Next steps
-1. Read `DEVIATIONS.md` → "M3 handoff" and `git log -5`. **If there is no "M3 handoff" section yet,** the previous coder is still finishing. Delete `docs/.coordinator_started`, re-enable the `lowsys-coordinator` scheduled task if you disabled it, tell the user in one line, and stop. You'll retry next hour.
+1. Read `DEVIATIONS.md` → "M3 handoff" and `git log -5`.
 2. In parallel:
    - **Opus `high`:** apply `docs/OPEN_ITEMS.md` to the spec docs, then empty the file.
    - **Sonnet:** create `docs/milestones/M4.md`, a self-contained excerpt of only the M4 parts of SCOPE, PHYSICS, ENGINE_API and VALIDATION.
