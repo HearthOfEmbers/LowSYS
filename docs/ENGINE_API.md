@@ -220,9 +220,22 @@ class TraySection extends SectionConfig {
 }
 class PackedSection extends SectionConfig {
   final double bedHeight; final String packingId;  // PHYSICS.md §6.2
-  final double diameter; final double? designLiquidFlux; // kg/m2/s, for a_w,ref
+  final double diameter; final double? designLiquidFlux; // kg/m2/s: L'_des of (6.5); null = no wetting modifier
   // stageCount = max(1, round(bedHeight / HETP_ref))
 }
+// JSON: {"kind": "packed", "bedHeight": 4.5, "packingId": "struct250", "diameter": 1.2, "designLiquidFlux": 1.9}
+// M8 validate(): a feed only on a tray or on the first stage of a bed (PHYSICS.md §6.1); packingId known; bedHeight 0.5–15 m.
+
+// M8: alternative section sets selectable with lever `internals` (PHYSICS.md §13.4). `bt` and `bt_packed` carry
+// {0: 20 sieve trays, feed 10; 1: 2 × 4.5 m struct250, feed 10; 2: 4.5 m struct250 over 11 sieve trays, feed 10}.
+// The config's `sections` is always the active template's. An `overrides` of `sections` empties the list.
+@immutable
+class InternalsTemplate {
+  final int id; final String label;                  // "20 sieve trays" | "Structured packing, 2 × 4.5 m" | "Mixed: packed top, trays below"
+  final List<SectionConfig> sections; final int feedStage;
+  final List<int> temperatureTrays;                  // 0: [1,4,7,10,12,14,17,20]; 1: [1,3,5,7,9,10,12,14,16,18]; 2: [1,3,5,7,9,10,12,14,17,20]
+}
+// ColumnConfig gains: final List<InternalsTemplate> internalsTemplates;   // empty for every other preset
 
 @immutable
 class TrayGeometry {
@@ -294,6 +307,8 @@ New lever `cwOP`: CW valve OP (%), effective when PC-101 does not manipulate the
 ### 4.1 Presets to ship
 
 `bt` (M1), `bt_custom_alpha` (M1), `mw` (M4: Tier 1 and Tier 2, for G7; Tier 3 NRTL from M5), `ew`, `ac`, `c4` (M5), `debut`, `deprop` (M7), `bt_packed` (M8), `crude` (M9), plus scenario-specific variants defined inside scenario JSON as `overrides`.
+
+`bt_packed` (M8) is the `bt` JSON with `internals` = 1 (its `sections` are the two struct250 beds, feed stage 10), `"hydraulics": "full"`, display name "Benzene–toluene, packed (2 × 4.5 m structured)", and `bt`'s templates. In Tiers 2/3 its feed is `FeedVaporFraction(0)`. Everything else, including utilities and loops, is `bt`'s (PHYSICS.md §2.3, M8 rules).
 
 ---
 
@@ -407,6 +422,10 @@ M3 additions:
 - `badPvShed`: 1 shed (default) / 0 none (§10.2).
 - `bypass.<valveId>`: −1 closed (default) or 0–100 % (§10.3).
 - `feedFlowOp`, `refluxOp`, `boilupOp`: OP % of FC-101/102/103, effective in MAN, alongside the existing `distillateValve` and `bottomsValve`.
+
+M8 additions:
+- `internals`: 0 trays, 1 packed, 2 mixed (template ids of §4). `requiresPause`, group `advanced`. Offered only when `internalsTemplates` is not empty. The rebuild follows PHYSICS.md §13.4.
+- `murphree` is offered only when the column has a tray section, and it acts on trays only. `nTrays` is not offered when the column has a packed section, and `trayType.<section>` exists only for tray sections. `feedStage` offers trays and bed tops only (PHYSICS.md §6.1).
 
 **Lever-to-loop binding** (M3). Each loop-bound lever edits the SP while its loop is in AUTO and the OP lever while it is in MAN; in CAS the SP lever is read-only and shows the cascade SP.
 
@@ -611,8 +630,20 @@ class StageArrays {
   final Float64List holdup, hcl, froth;   // M_j (mol), clear liquid (m), froth height (m)
   final Float64List dp, jetFlood, dcFlood, frothFill, stability, weepFrac, efficiency;
   final Float64List hetp, packFlood;      // packed segments (NaN on trays)
+  final Float64List packHoldup, wetFrac;  // M8: h_L (volume fraction) and a_w/a per packed segment (NaN on trays); kept in plant views
   final Uint8List flags;                  // bit 0 dcLimited, 1 dumping, 2 overflowing, 3 dry, 4 flooding
   double xAt(int stage, int comp);
+}
+
+// M8: one entry per packed bed, top to bottom (SimSnapshot.beds; empty for an all-tray column).
+@immutable
+class PackedBedSnapshot {
+  final int bed;                         // 1-based, as in F21/F23 locations and PDT-(101 + bed)
+  final int firstStage, lastStage; final String packingId; final double height, diameter;
+  final double dp;                       // Pa, Σ ΔP_k; plant views: the PDT reading
+  final double maxFlood;                 // max φ_p (fraction); NaN in plant view, kept in plantCalc
+  final double nTheoretical;             // n_th = Σ min(1, H_k/HETP_k); NaN in plant views
+  final double eMal, maldistribution;    // E_mal and f; NaN in drills and in plant views (fault parameters)
 }
 
 @immutable
@@ -849,6 +880,11 @@ enum FaultType { trayDamage, trayFouling, foaming, feedComposition, feedThermal,
 //   F13/F14/F15: {"type": "reboilerFouling"|"condensateBackup"|"steamHeaderLoss", "location": {"equipment": "reboiler"}}
 //   F17/F18: {"type": "tsInletRestriction"|"tsOutletRestriction", "location": {"equipment": "reboiler"}}
 //        Injecting F17/F18 with a kettle reboiler is a ConfigException (ScenarioDef.validate() checks it too).
+// M8 location form (FaultLocation JSON key "bed", 1-based from the top, as PackedBedSnapshot.bed):
+//   F21: {"type": "packingMaldistribution", "location": {"bed": 1}}
+//   F23: {"type": "packingCrush",           "location": {"bed": 2}}
+//        A bed index the column does not have is a ConfigException. F22 is not injectable (an operating condition).
+//        {fault.magnitude} in debriefs: F21 "f = 0.30 (65 % of the liquid on one side)"; F23 "+45 % packing factor, 4.5 % shorter bed".
 
 @immutable
 class FaultSpec {
@@ -1050,7 +1086,8 @@ An objective counts for scoring if it is achieved when the scenario finishes. Ev
 **Metric paths**
 - `time`, `steady`, `tier` (1, 2 or 3), `preset` (string; `==`/`!=` only)
 - `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFraction (M2, DEVIATIONS.md E23), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, xDHeavy, xBLight (M7), balanceResidual.
-- `stage[<j>].<t|p|x|holdup|weepFrac|jetFlood>` (x = light component)
+- `stage[<j>].<t|p|x|holdup|weepFrac|jetFlood>` (x = light component); M8 adds `packFlood` and `hetp` (NaN on trays)
+- `bed[<b>].<dp|maxFlood|nTheoretical>` (M8; true values; Pa, fraction, stages)
 - `reboiler.<circulation|exitQuality|instabilityIndex|oscAmplitude|oscPeriod|inletValve>` (M6; true values; units kg/s, –, –, –, s, % open; NaN with a kettle). M3's `reboiler.<qr|steamValveOp>` below is unchanged
 - `loop[<tag>].<pv|sp|op|mode>` (pv is the reading)
 - `instrument[<tag>].<value|quality>`
@@ -1120,7 +1157,7 @@ The M2 runner implements `at`, `setLever`, `setLoopMode` (with `tag`), `injectFa
 |---|---|
 | `id` | |
 | `weight` | > 0; 0 disables the candidate |
-| `fault` | A FaultSpec (§9) with `severityRange: [lo, hi]` instead of `severity`, no `onset` (it is drawn), and `params.sign` allowed as `"random"` |
+| `fault` | A FaultSpec (§9) with `severityRange: [lo, hi]` instead of `severity`, no `onset` (it is drawn), and `params.sign` allowed as `"random"`. M8: `null` is allowed: nothing is injected, and the drill's own events are the cause (H7 `near_flood`, an operating condition). The four draws still happen. `validate()` rejects `{fault.*}` in such a candidate's debrief |
 | `answer` | `{category, location, mode?}` |
 | `protect` | Optional list of `{"tag": loopTag, "modes": [...]}`. The MAN-before-off-spec bonus is earned when, at some time t with t₀ ≤ t < t_os, any listed loop is in one of its listed modes |
 | `debrief` | Markdown template shown when this candidate was drawn |
@@ -1128,6 +1165,7 @@ The M2 runner implements `at`, `setLever`, `setLoopMode` (with `tag`), `injectFa
 **Diagnosis**
 - Locations `"instrument:*"` and `"valve:*"` expand to every instrument tag and valve id visible in the drill, in tag order.
 - M6 vocabulary. Categories add `restriction` (F17/F18) and `condensate` (F14). Locations add `column` (whole column, F06), `steamSupply` (F15), `tsInletLine` and `tsOutletLine` (F17/F18). The UI shows them as "Restriction", "Condensate / steam trap", "Whole column", "Steam supply", "Reboiler inlet line" and "Reboiler outlet line".
+- M8 vocabulary. Categories add `packingDamage` ("Packing damage (crushed)") and `flooding` ("Flooding (operating limit)"); `maldistribution` is already listed. Locations add `"bed:*"`, which expands to `bed:1`, `bed:2`, … for every packed bed ("Upper bed (PDT-102)", "Lower bed (PDT-103)"; a third bed would be "Bed 3 (PDT-104)").
 - `modes` lists the failure-mode choices offered when the category is `instrument`: `bias`, `drift`, `stuck`, `signalLoss`, `plugged`, `spiking`, `coated`. An empty list hides the mode question.
 - The `Diagnosis` object is `{category, location, mode?}`.
 
@@ -1238,7 +1276,7 @@ Scope of rule 1 (M6). Rule 1 applies to instrument and valve candidates (F19, F2
 4. **Time.** `onsetWindow[1] + 3600 ≤ timeLimit`, so a learner gets at least an hour after the latest onset.
 5. **Hints** point at a check or a habit, never at a tag. A hint costs 3 %, a wrong diagnosis 10 %, so reading hints is cheaper than guessing.
 6. **Decoys.** A drill whose title asks "process or instrument?" must contain at least one candidate whose answer is a process fault. Otherwise the category question answers itself.
-7. **Disturbance events.** Fixed-time events that reveal frozen or slow sensors must not, by themselves, make the product go off-spec. VALIDATION.md §H checks this with a healthy run.
+7. **Disturbance events.** Fixed-time events that reveal frozen or slow sensors must not, by themselves, make the product go off-spec. VALIDATION.md §H checks this with a healthy run. **Exception (M8): H7.** Its planning event *is* the `near_flood` candidate (F22, an operating condition with no injectable fault). The healthy run is that candidate, and VALIDATION.md §H checks its key evidence instead.
 
 ### 11.6 Drill H9 "Don't trust the gauge" (M6)
 
@@ -1466,6 +1504,9 @@ All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`,
 | G12 Turndown and weeping (shipped in M2) | as shipped | As shipped: o1 lever.feedFlow ≤ 11.12 mol/s ∧ lever.trayType.0 == 0 ∧ kpi.maxWeepFraction ≥ 0.3, hold 60, latch; o2 (after o1) the same throughput, lever.trayType.0 == 1, maxWeepFraction < 0.05, xB ≤ 0.03, hold 300. M3 adds o3: choice "Why don't valve trays weep yet?" → "closed valves keep the hole velocity up" | As shipped | VC-12.4 (w 0.51 on sieve trays at 35 %), VC-12.5 (w 0 on valve trays at 35 %) |
 | G13 Debutanizer keys and FUG (M7) | `debut` at its defaults: Tier 3, E 0.7, 32 trays / feed 16, ideal hydraulics, model view, noise off. `steady` start: r_LK 0.978, r_HK 0.978, L₀ 76.4 kmol/h, duty 679.68 kW. Locked: `nTrays`, `feedStage`, `murphree`, `tier`. Time limit 86 400 s, par 21 600 (estimates; VALIDATION.md VC-9.8 asks for the settling times) | o1 kpi.recoveryLK ≥ 0.98 ∧ kpi.recoveryHK ≥ 0.98 ∧ steady, hold 300; o2 (after o1) number "Underwood's R_min on the FUG panel" = 1.30 ± 0.03; o3 (after o2) number "Fenske's N_min on the FUG panel" = 10.9 ± 0.4 (live or 98/98 targets: 10.6–11.3); o4 (after o3) choice "The column has 32 trays at E = 0.7. How do its stages compare with Gilliland's N?" → "about 23 equilibrium stages (32 × 0.7 + the reboiler), close to N" (others: "32: every tray is a stage", "about 11: it runs near N_min", "about 46: twice N_min is the rule"); o5 (after o4) choice "Why does the Tier-3 column need a little more reflux than the FUG design (R = 1.70 for 98/98)?" → "α falls down the column (about 2.2 at the top, 1.9 at the bottom), and FUG uses one mean α" (others: "FUG ignores the reboiler", "the trays weep", "the feed is subcooled"). All latch | (1) at 0: "Open the Products tab. The FUG panel computes the shortcut design for the column you are running; switch it to targets 98 % / 98 %." (2) at 600 s: "Raise the reflux to 80 kmol/h and the duty to 698 kW together, so that D stays near 45 kmol/h." (3) after o1: "Read N_min and R_min off the panel, and compare N with 32 × 0.7 + 1." | [I] VC-9.8: the least reflux for 98/98 at D 44.94 is L₀ 77.95 (R 1.7345, Q_R 687.5 kW). Hint state L₀ 80 / 697.9 kW → 0.9821 / 0.9827, Q_C 634.2 kW (the condenser limit at 100 % CW is 677.8 kW, so above L₀ ≈ 88 P_top rises). FUG at 98/98: N_min 10.89–10.91, R_min 1.303–1.304, N 22.7–23.2 against N_act 23.4. VC-9.7 |
 | G14 Thermosyphon tuning (M6) | B-T, overrides tier t2, hydraulics full; model view, noise off. `levers.set`: `reboilerType` 1, `sumpLevelSp` 15 (%), `tsInletValve` 8 (%) (locked: `reboilerType`). `steady` start: stable (I_s ≈ 0.87) but duty-limited by mist flow (≈ 1090 kW loop-only, ≈ 1160 kW column-coupled, with FC-103 at 100 % OP; SP 1300 kW). Event at 0: `setLever tsInletValve` 100, text "The outside operator has opened the reboiler inlet valve fully." Time limit 14 400 s, par 3600 | o1 reboiler.oscAmplitude < 0.02 ∧ reboiler.instabilityIndex < 1 ∧ kpi.qr ≥ 1 260 000 W (97 % of the 1300 kW SP) ∧ loop[FC-103].op < 99 (FC-103 not saturated, so the duty is not mist-limited), hold 300, latch (ruling 2026-10-13: the former 90 % term was met by throttling to 10 %, column-coupled 1200 kW). At the start o1 is false through the duty terms. o2 (after o1) choice "Throttling the inlet valve calms a thermosyphon because…" → "extra single-phase friction at the inlet damps the density waves" (others: "it raises the circulation", "it lowers the exit quality", "it raises the sump level") | (1) at 0: "Open the Equipment tab. I_s above 1 means the loop will surge. Your handles: the sump level (driving head), the inlet valve (stabilising friction, but less circulation) and the duty." (2) when reboiler.oscAmplitude ≥ 0.05: "Raise the LC-102 set point to 40 %. More head means more circulation, an exit quality below 0.3 and I_s below 1." (3) after o1: "At 15 % level the inlet valve could only trade surge for duty: 16 % open still surged, and every opening that calmed it left FC-103 wide open and short of its set point." | [P-loop]: §8.3 alone with the VC-14.1 inputs (frozen column). Start: I_s 0.87, Q 1087 kW. After opening: I_s > 1 within 17 s; amplitude 0.05 at ≈ 5 min and 0.13 at ≈ 7 min (limit 0.141, period 8.6 s). A level ramp 15 → 40 % over 30 min gives I_s < 1 at 31 % level and amplitude < 0.02 about 6 min later. Inlet 16 % at 15 % level: limit 0.082, so o1 cannot be met by throttling. Inlet 10 %: stable, but duty-limited (loop 1147 kW, column-coupled 1200 kW; FC-103 at 100 %), so o1 is not met. Column-coupled (601f80e): start I_s 0.913, 1157 kW; the largest stable throttled duty at 15 % level is ≈ 1230 kW (≈ 11–12 % open, estimated from the 8 % and 10 % points). Level ≥ 32 % with the inlet open: stable at 1300 kW. The validator records the column-coupled times (VALIDATION.md VC-14.3) |
+| G15 Packing retrofit (M8) | `bt` in **Tier 1** with overrides hydraulics full (sieve trays, the VC-12.3 geometry); model view, noise off. `steady` start at the B-T defaults (L₀ 100, V_B 150 kmol/h). Locked: `nTrays`, `feedStage`, `murphree`, `tier`, `hydraulics`; `internals` stays free. Time limit 14 400 s, par 3600 (estimates; VALIDATION.md VC-13.6 asks for the settling time) | o1 number "Column ΔP with the 20 sieve trays" = 14.49 kPa ± 5 % rel (quantity pressure); o2 (after o1) lever.internals == 1 ∧ steady, hold 300; o3 (after o2) number "ΔP ratio, trays / packing" = 10.3 ± 10 % rel; o4 (after o3) choice "At the same L/V, how much more throughput can the packed column take before its max flood % reaches the trays' 63 %?" → "only about 6 %: the lower bed, with twice the liquid of the upper one, sets the limit" (others: "about 30 %: packing always has more capacity than trays", "about 2×: the ΔP is ten times lower", "none: it is already above 63 %"); o5 (after o4) choice "Why did x_D rise from 0.978 to 0.994 at the same reflux and boilup?" → "9 m of packing holds 18 theoretical stages (HETP 0.5 m); 20 trays at E = 0.7 give about 14" (others: "the lower ΔP raises α", "packing holds more liquid", "the packing stops the entrainment, which was the main loss"). All latch | (1) at 0: "The KPI strip shows the column ΔP and the max flood %. Note both for the trays." (2) after o1: "Pause, set Levers → Advanced → Internals to 'Structured packing, 2 × 4.5 m', resume at 300× and wait for steady state." (3) after o2: "Divide the two ΔPs. Then look at the flood % of each bed: which one is the limit, and how much liquid does it carry compared with the other?" | Trays [P] (VC-12.3, Tier 1 full): ΔP 14.49 kPa, max flood 62.9 % (tray 20, jet), x_D 0.97826. Packed [I] (VC-13.5): ΔP 1406 Pa (upper bed 587.4, lower 818.6), max flood 59.38 % (segment 18; upper bed 48.82 %), x_D 0.99383, x_B 0.00617, D 50.000 kmol/h; ratio 10.31; capacity gain 0.629/0.5938 − 1 = 5.9 % (upper bed alone 28.9 %) |
+
+**G15 debrief (M8)** must contain: "In this shell the packing wins on pressure drop (about 10× lower) and on stages (18 against about 14). Its capacity gain is small, about 6 %. Trays at 0.9 m spacing are already roomy, and the lower bed carries L/V = 1.33, which Robbins' liquid term penalises; the upper bed alone would gain about 29 %. In vacuum service the ΔP saving is what pays for a retrofit: 13 kPa is most of the pressure of a column at 0.2 bar."
 
 Every guided scenario's JSON carries these objectives verbatim. Its hints must, followed literally, complete it (SCOPE.md M3 acceptance; VC-26.4 plays G1–G6 automatically by applying the hint values).
 
@@ -1769,6 +1810,84 @@ Notes:
 - **Rule 1** (§11.5) applies to `fv102_stuck`. Its evidence is the H10 evidence (C4 for FV-102 after a set-point change), on a smaller span: FT-102 is 152.8 kmol/h here, against 300 for B-T. The validator runs the H10-style noise-on check for this candidate (VALIDATION.md §H). If it fails, set the weight to 0 and record it.
 - `feed_heavy_keys` and `reflux_pump` are process candidates, checked by their key-evidence rows.
 
+### 11.11 Drill H7 "Packed bed underperforms" (M8)
+
+Frame:
+- `bt_packed` in Tier 2 (locked), full hydraulics, with both beds narrowed to D_bed = 1.0 m through `overrides.sections`, which removes the internals templates (PHYSICS.md §2.3, "H7 column"). At the defaults the lower bed runs at 79 % of flood and the upper at 67 %.
+- CW at 15 °C (`levers.set`, locked). A planning event at 45 min raises F, L₀ and Q_R by 25 % together, and the condenser can follow only with the colder water.
+- `plantCalc` view: the calculated flood % and HETP of each bed stay visible, as a rating model would show them; E_mal does not (PHYSICS.md §10.9). Noise on, all loops in AUTO.
+- **Every candidate sees the planning event.** The faults start at 10–30 min (F21 ramps over 15 min) and are fully developed before it. `near_flood` has no fault: the event takes the healthy lower bed to φ_p 0.975. Rule 7 exception: §11.5.
+- The question the learner must answer is "what had changed **before** planning raised the rates?":
+  - a bed's ΔP stepped up at constant load: crushed packing;
+  - separation fell and a bed's temperature profile flattened with its ΔP flat: maldistribution;
+  - nothing, and then ΔP grew much faster than the load: flooding.
+- Severity ranges and every number come from the M8 prototype (VALIDATION.md §H, H7).
+
+```json
+{
+  "id": "H7_packed_bed", "kind": "drill", "title": "Packed bed underperforms", "milestone": 8, "topic": "packing",
+  "preset": "bt_packed",
+  "overrides": {"tier": "t2", "hydraulics": "full",
+    "sections": [{"kind": "packed", "bedHeight": 4.5, "packingId": "struct250", "diameter": 1.0, "designLiquidFlux": 1.9},
+                 {"kind": "packed", "bedHeight": 4.5, "packingId": "struct250", "diameter": 1.0, "designLiquidFlux": 4.0}]},
+  "start": "steady", "noise": true, "view": "plantCalc", "badPvShed": true,
+  "levers": {"set": {"cwInletT": 288.15},
+             "lock": ["internals", "feedStage", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType", "tier", "cwInletT"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "This benzene–toluene column runs on two 4.5 m beds of structured packing in a 1.0 m shell. Operations says the beds are not doing what the vendor promised. The cooling water is at 15 °C this winter, so at 45 minutes planning will raise the throughput by 25 % (feed, reflux and reboiler duty together). Watch both beds and find out what limits them: a plugged distributor, crushed packing, or the new rate itself?",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "maldist_upper", "weight": 1,
+     "fault": {"type": "packingMaldistribution", "location": {"bed": 1}, "severityRange": [0.5, 0.8], "ramp": 900},
+     "answer": {"category": "maldistribution", "location": "bed:1"},
+     "debrief": "**The upper bed's distributor partly plugged** from {fault.onset:time} ({fault.magnitude}). PDT-102 hardly moved: the same liquid and vapour still pass through the bed. But each side of the bed now runs at the wrong L/V, so the bed works like fewer stages. Its temperature profile (TI-101 to TI-109) flattened, and x_D fell, all before planning raised the rates. A plugged distributor needs a shutdown; until then, more reflux buys back part of the separation."},
+    {"id": "maldist_lower", "weight": 1,
+     "fault": {"type": "packingMaldistribution", "location": {"bed": 2}, "severityRange": [0.5, 0.8], "ramp": 900},
+     "answer": {"category": "maldistribution", "location": "bed:2"},
+     "debrief": "**The lower bed's distributor partly plugged** from {fault.onset:time} ({fault.magnitude}). PDT-103 stayed flat, while the lower bed's temperature profile (TI-110 to TI-118) flattened and AT-102 rose: benzene slipped into the bottoms. The feed distributor sits on top of this bed, so the feed itself was spread unevenly. A plugged distributor needs a shutdown; until then, more boilup buys back part of the separation."},
+    {"id": "crushed_upper", "weight": 1,
+     "fault": {"type": "packingCrush", "location": {"bed": 1}, "severityRange": [0.3, 0.5], "ramp": 0},
+     "answer": {"category": "packingDamage", "location": "bed:1"},
+     "debrief": "**Packing in the upper bed was crushed** at {fault.onset:time}: the bed settled shorter and denser ({fault.magnitude}). At constant rates PDT-102 stepped up by 45–80 %, and the calculated flood % rose with it, while the separation hardly changed. When planning raised the rates, this bed reached flood first. Cut the rates, and replace the packing at the next shutdown."},
+    {"id": "crushed_lower", "weight": 1,
+     "fault": {"type": "packingCrush", "location": {"bed": 2}, "severityRange": [0.3, 0.5], "ramp": 0},
+     "answer": {"category": "packingDamage", "location": "bed:2"},
+     "debrief": "**Packing in the lower bed was crushed** at {fault.onset:time} ({fault.magnitude}). At constant rates PDT-103 rose by 55–110 % and the bed's calculated flood % went from 79 % to 88–94 %. The planning increase then pushed it past flood: holdup built up, ΔP kept climbing and the bottoms went off-spec. Cut the rates, and replace the packing at the next shutdown."},
+    {"id": "near_flood", "weight": 2, "fault": null,
+     "answer": {"category": "flooding", "location": "bed:2"},
+     "debrief": "**Nothing was broken.** Both beds were healthy until planning's +25 % at 45 min. That took the lower bed from 79 % to about 97 % of flood. PDT-103 rose 1.8× for 1.25× the load (the square law alone gives 1.56×), liquid built up in the bed and its HETP grew by about a quarter, so benzene slipped into the bottoms. The lower bed carries twice the liquid of the upper one, so it floods first. Bring the rates back to about 110 %, where the lower bed sits near 86 % of flood."}
+  ],
+  "events": [
+    {"id": "planning", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 6.94444,
+     "text": "Planning: throughput +25 %: feed +25 kmol/h, reflux +25 kmol/h, duty +325 kW."},
+    {"at": 2700, "action": "setSp", "tag": "FC-102", "delta": 6.94444},
+    {"at": 2700, "action": "setSp", "tag": "FC-103", "delta": 325000}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.003},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.004}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1200, "cost": 0.03, "text": "Compare each bed's ΔP with the load. At constant rates a healthy bed's ΔP does not move."},
+    {"after": 2400, "cost": 0.03, "text": "Look at the temperatures inside each bed. A bed that works spreads its temperature change over its whole height."},
+    {"after": 3600, "cost": 0.03, "text": "Near flood, a bed's ΔP grows much faster than the square of the load, and its calculated flood % heads for 100. A damaged bed showed its change before the rates moved."}
+  ],
+  "diagnosis": {"categories": ["maldistribution", "packingDamage", "flooding", "instrument", "none"],
+                "locations": ["bed:*", "instrument:PDT-102", "instrument:PDT-103"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "First cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+Notes:
+- **M8 vocabulary**: categories `packingDamage` and `flooding`, locations `bed:*` (§11.2). F21 and F23 use the `{"bed": b}` location (§9).
+- **Time for `near_flood`.** Diagnosis time and off-spec time count from t₀, the drawn onset, as for every candidate. For `near_flood` the evidence starts only at 2700 s, so part of its time score is spent before there is anything to see. This is accepted (OPEN_ITEMS.md): the alternative, t₀ := 2700 s for this candidate, would let the scoring reveal the answer.
+- The drill-level `debrief` must not use `{fault.*}`, because `near_flood` has no fault.
+- **No instrument candidates**, so rule 1 does not apply. All five are process candidates, checked by their key-evidence rows. `instrument` stays in the categories as a decoy answer.
+- Event deltas are SI: 25 kmol/h = 6.94444 mol/s; 325 kW = 1.3 MW × 25 %. `cwInletT` is in K.
+- `{fault.magnitude}`: see §9 (F21: f and the liquid split; F23: the F_p increase and the bed shortening).
+
 ---
 
 ## 12. Units and formatting
@@ -1906,7 +2025,7 @@ Painters read only tokens and style enums; there is no `if (theme.id == …)` an
 
 ### 13.5 Column painter contract
 
-Input: `SimSnapshot`, `LowsysTheme`, viewport, selection. It draws, per stage: tray deck, weir, downcomer (with backed-up liquid height from `dcFlood`), clear liquid (`hcl`) and froth (`froth`) with the composition colour, vapour particles whose spawn rate ∝ V_j and rise speed ∝ hole velocity, entrainment spray when ψ > 0.02, with density growing with ψ and carryover streams to the tray above (and from tray 1 into the vapour line) when jetFlood ≥ 1 (jet flood is spray, not a full tray: the fill is about 0.35, PHYSICS.md §5.6); weep drips when weepFrac > 0.05; dumping (near-empty deck, liquid raining) and dry states; full-froth flooding overlay only when frothFill ≥ 1 or dcFlood ≥ 1 (SCOPE.md §7.4). Packed beds: bed texture with wetted fraction shading and HETP ticks. Drum and sump levels; condenser with CW flow animation; reboiler (kettle or thermosyphon loop with circulation arrows and quality-coloured riser). Hit-testing returns `ExplainTarget`s for taps. Particle positions use the UI clock (smooth at any sim speed); particle counts per SCOPE.md §7.3.
+Input: `SimSnapshot`, `LowsysTheme`, viewport, selection. It draws, per stage: tray deck, weir, downcomer (with backed-up liquid height from `dcFlood`), clear liquid (`hcl`) and froth (`froth`) with the composition colour, vapour particles whose spawn rate ∝ V_j and rise speed ∝ hole velocity, entrainment spray when ψ > 0.02, with density growing with ψ and carryover streams to the tray above (and from tray 1 into the vapour line) when jetFlood ≥ 1 (jet flood is spray, not a full tray: the fill is about 0.35, PHYSICS.md §5.6); weep drips when weepFrac > 0.05; dumping (near-empty deck, liquid raining) and dry states; full-froth flooding overlay only when frothFill ≥ 1 or dcFlood ≥ 1 (SCOPE.md §7.4). Packed beds (M8, SCOPE.md M8 "texture, wetting, liquid rivulets"): per segment, a packing texture (random rings or corrugated sheets by `packingId`) drawn at the segment's height; wetted-fraction shading from `wetFrac` (dry patches below 0.7); liquid rivulets whose count ∝ L'_k and whose width ∝ `packHoldup`; vapour particles rising through the voids at a speed ∝ u_V; HETP ticks on the bed edge (model view only); distributor and redistributor trays drawn between beds and above each bed. Flooding overlay when `packFlood` ≥ 1: liquid pooling from the top of the segment, spreading upward. The F21 side bias (rivulets crowded to one side in proportion to f) is drawn **only** from `PackedBedSnapshot.maldistribution`, which is NaN in drills and plant views, so a hidden fault is never painted. In plant views `packHoldup` and `wetFrac` stay (PHYSICS.md §10.9), and the rest of the painter's input is the masked snapshot. Drum and sump levels; condenser with CW flow animation; reboiler (kettle or thermosyphon loop with circulation arrows and quality-coloured riser). Hit-testing returns `ExplainTarget`s for taps. Particle positions use the UI clock (smooth at any sim speed); particle counts per SCOPE.md §7.3.
 
 ### 13.6 Fonts and assets
 

@@ -457,19 +457,25 @@ Fully broken tray 5 at TS 0.6 m and 0.9 m: the steady states at dt = 0.5, 2 and 
 
 ## VC-13 Packed sections [I]
 
-- **Robbins** (PHYSICS.md (6.1)): L' = 12.2, G' = 2.03 kg/m²/s, ρ_L = 1000, ρ_V = 1.1853 kg/m³, μ = 1 cP, F_pd = 24 ft⁻¹ → 309.83 Pa/m (619.66 Pa over 2 m; matches the reference example of the open-source `fluids` library, `fluids.packed_tower.Robbins`). Tolerance 0.01 Pa/m.
-- **Kister–Gill flood ΔP** (6.2): F_p = 20 → 0.9363 in H₂O/ft = 765.2 Pa/m; 27 → 944.0; 56 → 1573.1; 65 → 1746.1 Pa/m. Tolerance 0.1 Pa/m.
-- **B-T loads in a 1.2 m packed column** (G' = 3.132, L' = 2.088 kg/m²/s, ρ_L = 800, ρ_V = 2.9, μ = 0.27 cP):
+M8 readiness pass (2026-10-13): every number in VC-13 was re-derived with `tools/prototypes/m8/` (pure Dart: `vc13.dart`, `g15.dart`, `h7.dart`, `h7b.dart`). The column values come from an independent steady-state solver. It reproduces VC-4.1 (x_D 0.981183) and couples the packed hydraulics to the column by fixed-point iteration on E and P. Sub-numbers are new; v1.0's bullets are VC-13.1–13.4.
 
-| Packing | ΔP (Pa/m) | Flood ΔP (Pa/m) | Approach to flood | 
-|---|---|---|---|
-| struct250 (F_p 20) | 148.6 | 765 | 50.2 % |
-| pall50m (F_p 27) | 204.7 | 944 | 54.8 % |
-| pall25m (F_p 56) | 469.5 | 1573 | 69.9 % |
+- **VC-13.1 Robbins** (PHYSICS.md (6.1)): L' = 12.2, G' = 2.03 kg/m²/s, ρ_L = 1000, ρ_V = 1.1853 kg/m³, μ = 1 cP, F_pd = 24 ft⁻¹ → 309.83 Pa/m (619.66 Pa over 2 m; matches the reference example of the open-source `fluids` library, `fluids.packed_tower.Robbins`). Tolerance 0.01 Pa/m.
+- **VC-13.2 Kister–Gill flood ΔP** (6.2): F_p = 20 → 0.9363 in H₂O/ft = 765.2 Pa/m; 27 → 944.0; 34 → 1109.4; 56 → 1573.1; 65 → 1746.1 Pa/m. Tolerance 0.1 Pa/m.
+- **B-T loads in a 1.2 m packed column** (G' = 3.132, L' = 2.088 kg/m²/s, ρ_L = 800, ρ_V = 2.9, μ = 0.27 cP, σ = 0.020 N/m). M8 adds G'_fl, the holdup (6.3) and the Onda wetted fraction:
 
-Tolerance: ΔP ± 0.5 %, flood approach ± 0.5 points. Teaching cross-check: 20 sieve trays at the same load have ΔP = 14.5 kPa and 50–63 % jet flood (VC-12.3, TS 0.9 m); 9 m of struct250 gives ≈ 1.3 kPa and 50 % — the textbook retrofit argument (scenario G15) rests on the pressure drop, about 11× lower.
+| Packing | ΔP (Pa/m) | Flood ΔP (Pa/m) | G'_fl (kg/m²/s) | Approach to flood | h_L | a_w/a |
+|---|---|---|---|---|---|---|
+| struct250 (F_p 20) | 148.66 | 765.2 | 6.2390 | 50.20 % | 0.04070 | 0.8858 |
+| pall50m (F_p 27) | 204.75 | 944.0 | 5.7125 | 54.83 % | 0.02283 | 0.9471 |
+| pall25m (F_p 56) | 469.71 | 1573.1 | 4.4823 | 69.87 % | 0.03605 | 0.9023 |
+| raschig50c (F_p 65) | 570.62 | 1746.1 | 4.2493 | 73.71 % | 0.02137 | 0.9284 |
+| struct500 (F_p 34) | 263.13 | 1109.4 | 5.3117 | 58.96 % | 0.06467 | 0.8178 |
 
-- **Maldistribution** (parallel-column model, PHYSICS.md (6.6)):
+Tolerance: ΔP ± 0.5 %, flood approach ± 0.5 points, G'_fl ± 0.1 %, h_L and a_w/a ± 1×10⁻⁴. v1.0 printed 469.5 for pall25m; the formula gives 469.71, within the tolerance. Teaching cross-check: 20 sieve trays at the same load have ΔP = 14.5 kPa and 50–63 % jet flood (VC-12.3, TS 0.9 m). 9 m of struct250 at the `bt_packed` defaults gives 1.41 kPa and 59 % (VC-13.5). The retrofit argument of G15 rests on the pressure drop (10.3× lower) and the stages, not on capacity.
+
+- **struct250 along the flood line** (B-T load ratio L'/G' = 0.6667, same properties): ΔP/H at φ_p = 0.5 / 0.7 / 0.8 / 0.9 / 0.95 / 1.0 / 1.05 is 147.41 / 305.55 / 416.57 / 562.10 / 654.32 / 765.17 / 900.97 Pa/m, h_L is 0.04064 / 0.04599 / 0.05066 / 0.06451 / 0.08133 / 0.11263 / 0.16979, and g(φ) is 1 / 1 / 1 / 1.08 / 1.18 / 1.32 / 1.47. Between φ_p = 0.8 and 1.0, ΔP rises 1.84× while G' rises 1.25× (G² alone gives 1.56×). Tolerance 1×10⁻³ relative.
+
+- **VC-13.3 Maldistribution** (parallel-column model, PHYSICS.md (6.6)):
 
 | S | n | f | Φ_K uniform | Φ_mal | n_eff | E_O = n_eff/n | E_MV (Lewis) |
 |---|---|---|---|---|---|---|---|
@@ -481,11 +487,61 @@ Tolerance: ΔP ± 0.5 %, flood approach ± 0.5 points. Teaching cross-check: 20 
 | 0.7 | 10 | 0.4 | 0.69395 | 0.63859 | 3.969 | 0.3969 | 0.4401 |
 | 1.0 | 5 | 0.4 | 0.83333 | 0.75958 | 3.159 | 0.6319 | 0.6319 |
 | 1.2 | 20 | 0.3 | 0.99556 | 0.93856 | 6.943 | 0.3471 | 0.3267 |
+| 1.0 | 9 | 0.3 | 0.90000 | 0.83391 | 5.021 | 0.5579 | 0.5579 |
+| 1.0 | 9 | 0.6 | 0.90000 | 0.69722 | 2.303 | 0.2559 | 0.2559 |
+| 1.0 | 8.5 | 0.4 | 0.89474 | 0.78990 | 3.760 | 0.4423 | 0.4423 |
 
-Tolerance 1×10⁻⁴ (n_eff 1×10⁻³). Shape checks: E_mal decreases with n and with f; it is lowest near S = 1.
+Tolerance 1×10⁻⁴ (n_eff 1×10⁻³). Shape checks: E_mal decreases with n and with f; it is lowest near S = 1. The last row checks a fractional n (M8: n = n_th, PHYSICS.md §6.6).
 
 - **Lewis relation** (4.3): λ = 0.5, E_MV = 0.5 → E_O = 0.41504; λ = 1.5, 0.7 → 0.74015; λ = 2.0, 0.5 → 0.58496. Tolerance 1×10⁻⁵.
-- **Packing flooding develops over time [P-type check]:** B-T struct250 bed, raise V by steps of 10 % every 30 min: holdup and ΔP rise steeply once φ_p > 0.85; at φ_p ≥ 1 the bed ΔP exceeds the Kister–Gill flood ΔP and keeps rising for ≥ 5 min (not instantaneous); HETP_eff ≥ 1.3 × HETP_ref.
+- **VC-13.4 Packing flooding develops over time [P-type check]:** `bt_packed`, Tier 1, full hydraulics. Raise F, L₀ and V_B **together** by 10 % every 30 min. v1.0 raised V alone, which at constant L₀ makes D > F after four steps and empties the sump. Checks: holdup and ΔP rise steeply once φ_p > 0.85; at φ_p ≥ 1 the bed ΔP exceeds the Kister–Gill flood ΔP and keeps rising for ≥ 5 min (not instantaneous); HETP_eff ≥ 1.3 × HETP_ref. Steady-state guide values [I] for the lower bed (segment 18) at steps n = 0 … 6 (V_B 150 × 1.1ⁿ):
+
+| n | V_B (kmol/h) | φ_p lower / upper | ΔP lower / upper (Pa) | h_L (seg. 18) | HETP (seg. 18, m) | x_D / x_B |
+|---|---|---|---|---|---|---|
+| 0 | 150.0 | 0.5938 / 0.4882 | 818.6 / 587.4 | 0.05270 | 0.5000 | 0.99383 / 0.00617 |
+| 3 | 199.7 | 0.7903 / 0.6497 | 1596.5 / 1082.7 | 0.06115 | 0.5000 | 0.99383 / 0.00617 |
+| 4 | 219.6 | 0.8693 / 0.7153 | 2043.2 / 1338.5 | 0.07136 | 0.5192 | 0.99356 / 0.00644 |
+| 5 | 241.6 | 0.9555 / 0.7904 | 2692.7 / 1678.7 | 0.10265 | 0.5968 | 0.99168 / 0.00832 |
+| 6 | 265.7 | 1.0490 / 0.8754 | 3688.2 / 2154.3 | 0.20586 | 0.7335 | 0.98621 / 0.01379 |
+
+At n = 6 the lower-bed ΔP (3688 Pa) exceeds 765.17 × 4.5 = 3443 Pa. Its row is the steady state **without** carry-over, so the engine's ΔP should be higher. The n = 6 row is a lower bound; rows 0–5 are [I] (tolerance 0.5 %, x 1×10⁻⁴).
+
+- **VC-13.5 Column steady states [I]** (prototype; tolerance x 2×10⁻⁵, D 0.01 kmol/h, ΔP 0.5 %, φ_p 0.002, T 0.02 K):
+
+| Case | x_D | x_B | D (kmol/h) | Bed ΔP upper / lower (Pa) | max φ_p upper / lower | Other |
+|---|---|---|---|---|---|---|
+| `bt_packed` Tier 1, full (L₀ 100, V_B 150) | 0.99383 | 0.00617 | 50.000 | 587.4 / 818.6 | 0.4882 / 0.5938 | n_th 9 / 9; S 0.7685 / 1.1714; column ΔP 1406.0 Pa |
+| same, ideal hydraulics | 0.99383 | 0.00617 | 50.000 | 0 / 0 | – | E_O = 1 everywhere, so identical compositions |
+| `bt_packed` Tier 2, full (L₀ 100, 1300 kW) | 0.99339 | 0.01063 | 49.796 | 579.5 / 696.7 | 0.4699 / 0.5488 | T_B 110.56 °C, Q_C 1279.9 kW; TI-101/109/110/118 80.44 / 91.80 / 93.37 / 110.06 °C; λ 0.590 (seg. 1) … 1.638 (seg. 18) |
+| `bt_packed` Tier 2, ideal | 0.99326 | 0.01033 | 49.817 | 0 / 0 | – | T_B 110.14 °C |
+| Mixed template (bed 4.5 m over 11 sieve trays, feed 10), Tier 1, ideal | 0.99133 | 0.00867 | 50.000 | – | – | |
+| `bt` 20 trays, E 0.7, Tier 1, ideal (solver check, VC-4.1) | 0.981183 | 0.018817 | 50.000 | – | – | |
+
+Segmentation: struct250 4.5 m → 9 segments of 0.500 m; 4.05 m → 8 segments of 0.50625 m (round(8.1)); pall50m 4.5 m → 5 of 0.900 m.
+
+- **VC-13.6 G15 (ENGINE_API.md §11.8) [P/I]:** the tray side is VC-12.3 [P] (14.49 kPa, 62.9 %, x_D 0.97826). The packed side is VC-13.5 row 1 [I] after the `internals` switch: ratio 14.49/1.406 = 10.31, capacity gain 0.629/0.5938 − 1 = 5.9 % (upper bed alone 28.9 %). φ_p scales exactly with a ratio-preserving throughput factor k (k = 1.1 → 0.6532), which is why the gain is a ratio. The engine records G15's settling time after the switch (par 3600 s is an estimate). The hint player completes G15.
+
+- **VC-13.7 HETP modifiers [I]** (struct250, B-T Tier-1 properties, L'_des = 2.088): a_w/a at L' = 0.25 / 0.5 / 1.0 / 2.088 / 4.0 is 0.60480 / 0.70623 / 0.80138 / 0.88581 / 0.94005; HETP factor max(1, a_w,ref/a_w) is 1.46463 / 1.25427 / 1.10535 / 1 / 1 (no gain above design). Struct rule (§6.2): 250 → 0.5016 m, 500 → 0.3016 m. Tolerance 1×10⁻⁵.
+
+- **VC-13.8 Faults on the H7 column [I]** (`bt_packed` Tier 2 with D_bed 1.0 m, L₀ 100, 1300 kW; steady states):
+
+| Case | x_D | x_B | ΔP upper / lower (Pa) | max φ_p upper / lower | TI span upper (101−109) / lower (110−118) (K) | E_mal |
+|---|---|---|---|---|---|---|
+| healthy | 0.99357 | 0.01108 | 1263.2 / 1610.5 | 0.6747 / 0.7865 | 11.46 / 17.02 | 1 |
+| F21 upper, s 0.5 (f 0.3) | 0.97875 | 0.02803 | 1266.5 / 1567.4 | 0.6754 / 0.7832 | 8.09 / 17.76 | 0.5725 |
+| F21 upper, s 0.8 | 0.95247 | 0.05678 | 1272.5 / 1537.2 | 0.6771 / 0.7781 | 5.93 / 16.60 | 0.3277 |
+| F21 lower, s 0.5 | 0.97418 | 0.03646 | 1275.6 / 1603.2 | 0.6814 / 0.7797 | 14.47 / 12.97 | 0.5627 |
+| F21 lower, s 0.8 | 0.94334 | 0.07558 | 1290.3 / 1591.5 | 0.6869 / 0.7725 | 14.73 / 9.55 | 0.3353 |
+| F23 upper, s 0.3 | 0.99250 | 0.01160 | 1848.6 / 1600.8 | 0.7529 / 0.7850 | 11.41 / 17.12 | 1 |
+| F23 upper, s 0.5 | 0.99171 | 0.01199 | 2270.0 / 1593.9 | 0.7995 / 0.7839 | 11.37 / 17.18 | 1 |
+| F23 lower, s 0.3 | 0.99269 | 0.01385 | 1262.5 / 2534.6 | 0.6750 / 0.8814 | 11.89 / 16.76 | 1 |
+| F23 lower, s 0.5 | 0.99080 | 0.01771 | 1262.8 / 3331.6 | 0.6757 / 0.9358 | 12.58 / 16.23 | 1 |
+| healthy at +25 % (the H7 event) | 0.98989 | 0.01708 | 2121.5 / 2953.8 | 0.8427 / 0.9747 | 12.88 / 16.09 | 1 |
+| healthy at +10 % | 0.99339 | 0.01169 | 1563.9 / 2051.7 | 0.7416 / 0.8630 | | 1 |
+
+At +25 % the lower bed's HETP (segment 18) is 0.622 m (+24 %), its h_L 0.0627 → 0.1193, n_th 7.55, Q_C 1599 kW, D 62.05 kmol/h. F21 changes the ΔP of its own bed by less than 1 % (the other bed's by less than 5 %, through the changed T and composition), and F23 changes x by less than 0.007. Those are the H7 separations. Fault + event combinations put a bed past flood (F23 lower s 0.3 at +25 %: φ_p 1.08 without carry-over) and are [P]: the engine records them.
+
+- **VC-13.9 Structure [P-type]:** a feed on a mid-bed segment fails `validate()`; the `feedStage` lever offers stages 1 and 10 on `bt_packed`; `murphree` and `nTrays` are not offered on `bt_packed`, and on the mixed template `murphree` acts on trays 10–20 only; switching `internals` 0 → 1 → 2 → 0 while paused rebuilds without NaN and keeps TI tags that exist in both templates; PDT-102/103 exist only for packed beds and read 0 in ideal hydraulics; in plant view `hetp`, `packFlood` and `PackedBedSnapshot.maxFlood/nTheoretical/eMal` are NaN, in plantCalc `hetp`, `packFlood` and `maxFlood` are kept, and in every drill `eMal` and `maldistribution` are NaN; F21/F23 with a bed index the column lacks raise a `ConfigException`. Robustness (as VC-12): no NaN, no negative holdup over 4 h for every VC-13.8 case, including with the +25 % event.
 
 ## VC-14 Thermosyphon reboiler
 
@@ -989,9 +1045,13 @@ For each drill candidate the test injects the fault (fixed seed, onset at 600 s,
 | H6 | F12 reflux pump capacity loss (s = 0.585, the middle of [0.55, 0.62]; cap (1 − s) × 152.8 = 63.4 kmol/h; step). v1.0's s = 0.5 gives a cap equal to the design reflux (F_max is 2 × default) and so no symptom | FT-102 falls to the cap within 30 s and stays below SP; FC-102 OP at 100 % within 2 min (`FC-102.OPSAT`); D up ≥ 5 kmol/h within 30 min via LC-101 [steady 54.0]; TI-101 up ≥ 3 K [steady 64.2 °C]; `kpi.xDHeavy` up ≥ 0.05 [steady 0.168; AT-101 reads its 0.10 over-range]; AT-100 unchanged |
 | H6 | F20 FV-102 stuck, with the drill's planning event at 2700 s (FC-101, FC-102 and FC-103 SPs +8 %) | until 2700 s, no change beyond noise; after it, FC-102 OP rises ≥ 10 % within 10 min (it runs to 100 %) while FT-102 stays within ± 1 % of span of its pre-event value; C4:FV-102 `fail`; C3a `ok` (the meter is honest); D up ≥ 4 kmol/h against the healthy response [steady 52.6 vs 48.5]; `kpi.xDHeavy` up ≥ 0.02 [steady 0.079]. **Noise on (rule 1, ENGINE_API.md §11.10), seeds 1–3:** C4:FV-102 leaves `ok` within 10 min of the event, and FT-102's σ_5min stays within 0.5–2 × typical (a stuck valve leaves the meter's noise alone). Otherwise set the candidate's weight to 0 and record it |
 | H6 | none: the planning event alone, healthy (the H10.0 analogue) | `kpi.xDHeavy` and `kpi.xBLight` stay within ± 0.005 of their start values for 2 h, and the drill's off-spec predicate never holds. Uniform +8 % scaling of F, L₀ and Q_R leaves every steady composition unchanged [D 48.54; Q_C 665.6 kW, below the 677.8 kW at 100 % CW] |
-| H7 | F21 maldistribution f = 0.4 | bed ΔP change < 5 %; separation worse (x_D down); bed T profile flattens in the middle |
-| H7 | F22 near-flood (load +25 %) | bed ΔP rises ≥ 2× while load rises 25 % |
-| H7 | F23 crushed packing s = 0.5 | bed ΔP up ≥ 30 % at constant load |
+| H7 | Frame (M8 readiness; ENGINE_API.md §11.11): H7 column (VC-13.8: `bt_packed` T2, D_bed 1.0 m, CW 15 °C), noise off, with the drill's planning event (+25 % F, L₀, Q_R at 2700 s). Every fault row is checked **before** 2700 s, at the bottom of its severity range; [bracketed] values are prototype steady states. v1.0's rows (f = 0.4; "≥ 2× for +25 %"; s = 0.5) predated the H7 frame: Robbins gives 1.83× at +25 %, not 2× | – |
+| H7 | `maldist_upper`: F21 bed 1, s = 0.5 (f 0.3; ramp 900 s) | PDT-102 within ± 3 % of its start value [+0.3 %]; TI-101 − TI-109 down ≥ 2 K within 1 h of onset [11.46 → 8.09 K]; x_D down ≥ 0.008 [0.99357 → 0.97875], so the off-spec predicate holds within 1.5 h of onset; FT readings unchanged |
+| H7 | `maldist_lower`: F21 bed 2, s = 0.5 | PDT-103 within ± 3 % [−0.5 %]; TI-110 − TI-118 down ≥ 2 K within 1 h [17.02 → 12.97 K]; x_B up ≥ 0.01 [0.01108 → 0.03646]; AT-102 rises after its analyser delay |
+| H7 | `crushed_upper`: F23 bed 1, s = 0.3 (step) | PDT-102 up ≥ 30 % within 10 min at constant FT readings [+46 %: 1.26 → 1.85 kPa]; upper-bed calc flood % up ≥ 5 points [67.5 → 75.3]; x_D and x_B within 0.002 of their start values [−0.0011 / +0.0005] |
+| H7 | `crushed_lower`: F23 bed 2, s = 0.3 | PDT-103 up ≥ 40 % within 10 min [+57 %: 1.61 → 2.53 kPa]; lower-bed calc flood % up ≥ 7 points [78.7 → 88.1]; x_B within 0.004 [+0.0028] |
+| H7 | `near_flood`: no fault, the planning event only (rule-7 exception, ENGINE_API.md §11.5) | before 2700 s no change beyond noise; after it, PDT-103 ≥ 1.7× its pre-event value within 30 min while FT-101/102 and FT-103 rise 1.25× [steady 1.61 → 2.95 kPa, 1.83×; PDT-102 1.68×]; lower-bed calc flood % ≥ 95 [97.5]; calc HETP of stage 18 up ≥ 20 % [0.500 → 0.622 m]; x_B up ≥ 0.004 within 2 h [steady 0.01108 → 0.01708]; PC-101 holds P_top with the CW valve below 100 % [Q_C 1599 of 1795 kW] |
+| H7 | `crushed_lower` at s = 0.5 with the event (the hardest case) [P] | no NaN, no negative holdup; lower-bed φ_p > 1 and `model.flood` raised (plantCalc keeps it); PDT-103 keeps rising for ≥ 5 min after the event; the run completes the 7200-s time limit. The engine records the levels reached [no-carry-over steady-state bound: φ_p 1.14, ΔP 8.98 kPa, inside PDT-103's 0–10 kPa] |
 | H8 | F24 stripping steam loss | bottom T up; residue yield up; flash-zone T slightly up |
 | H8 | F25 pumparound trip | top T and Q_C up within 10 min; diesel D86 95 % up |
 | H8 | F26 COT −15 K | residue yield up; overflash down; AGO yield down |

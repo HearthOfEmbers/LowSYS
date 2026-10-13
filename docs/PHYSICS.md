@@ -183,6 +183,7 @@ Used for T_r ≥ 0.30. Above T_c the formula is evaluated as is (smooth extrapol
 | `c4` | 60 / 30 | 0.40 | 7.0 bar | 280 | 320 | 1542.6 kW (T2 Lee–Kesler, E = 0.7) | 40 | 122.8 | 30.15 | 10.5 bar(a) (1.5 × P_design) |
 | `debut` (M7) | 32 / 16 | SCOPE.md §4.3 (light cut 0.45) | 6.895 bar | 76.4 | 121.3 | 679.7 kW (T3 DePriester, E = 0.7) | 44.94 | 38.47 | 32.02 | 10.34 bar(a) (1.5 × P_design) |
 | `deprop` (M7) | 28 / 11 | SCOPE.md §4.3 (light cut 0.30) | 17.24 bar | 66.1 | 96.9 | 416.6 kW (T3 DePriester, E = 0.7) | 30.78 | 22.03 | 28.63 | 25.86 bar(a) (1.5 × P_design) |
+| `bt_packed` (M8) | 2 beds × 4.5 m struct250 (9 + 9 segments) / feed stage 10 (top of the lower bed) | 0.50 | 1.01325 bar | 100 | 150 | 1300 kW (T2) | 50 (T1), 49.80 (T2) | 29.9 | 57.5 | 3.5 bar(a) |
 
 - **Lever ranges.** SCOPE.md §4.1's flow ranges are the B-T ones. For every other preset, the flow and duty levers (and the matching FT spans) run from 0 to 2 × the preset's default. Example: the `c4` boilup goes up to 640 kmol/h, so its default of 320 is not outside the B-T range of 300.
 - **`ac`** has a small condenser ΔT (57 °C distillate against 30 °C CW), hence the large UA; `c4` likewise (51 °C).
@@ -203,6 +204,15 @@ Used for T_r ≥ 0.30. Above T_c the formula is evaluated as is (smooth extrapol
   - dT_bub/dP for the process-driven σ of TI-100 (§10.5): `debut` 0.062 K/kPa, `deprop` 0.026 K/kPa. This is the slope of the design distillate's Tier-3 bubble point at P_top.
   - The `deprop` bottoms (≈ 124 °C) are above propane's T_c (96.7 °C). In Tier 2, Lee–Kesler extrapolates and flags `supercriticalComponent`. In all tiers the Watson λ of propane is 0 there (§3.3). With x_B,C3 ≈ 0.004 the effect on the reboiler balance is below 0.3 %. DePriester covers this range (§3.4.2).
   - The analysers read key cuts (§10.5). At the defaults AT-101 reads 0.0112 / 0.0344 and AT-102 reads 0.0102 / 0.0041, so neither reaches the 0.05 HI alarm.
+- **Rules for the M8 preset** (`bt_packed`; M8 readiness pass 2026-10-13; prototype `tools/prototypes/m8/`, values in VALIDATION.md VC-13):
+  - `bt_packed` is `bt` with lever `internals` = 1 (§13.4): the B-T shell (D 1.2 m), drum, sump, utilities, loops and feed, with the 20 sieve trays replaced by two beds of struct250, 4.5 m each. With HETP_ref 0.50 m (§6.2) the beds give 9 + 9 segments, so N = 18 stages. The feed enters stage 10, the top of the lower bed, through a distributor. 9 m of packing replaces 18 m of trays (20 × TS 0.9 m).
+  - `designLiquidFlux` (L'_des, §6.4): 1.9 kg/m²/s for the upper bed and 4.0 for the lower bed. These are the smallest segment L' at the defaults (Tier 1: 1.924 and 4.201; Tier 2: 1.920 and 4.054), rounded down, so every segment has HETP = 0.50 m and E_O = 1 at the defaults.
+  - Default tier 1, as for `bt`. Default hydraulics `full`, unlike `bt`: ΔP, flooding and the HETP modifiers are what the preset is for.
+  - Feed: q = 1 (Tier 1); in Tiers 2/3, vapour fraction β = 0 at the feed-stage pressure (`FeedVaporFraction(0)`), as for the M5 presets. The bed ΔP is small (≈ 0.6 kPa above the feed), so this is within 0.2 K of `bt`'s 92.1 °C.
+  - Instruments: tray-TI list `temperatureTrays` [1, 3, 5, 7, 9, 10, 12, 14, 16, 18] (five per bed, top and bottom of each; tags TI-1jj, sump TI-119); PDT-101 (column) plus PDT-102 and PDT-103 (one per bed, §10.5).
+  - Steady states (L₀ 100 kmol/h): Tier 1 (V_B 150) x_D 0.99383, x_B 0.00617, column ΔP 1406 Pa, max flood 59.4 % (lower bed). Tier 2 (1300 kW) x_D 0.99339, x_B 0.01063, D 49.80 kmol/h, ΔP 1276 Pa, T_B 110.56 °C. `bt` with 20 trays at E = 0.7 gives 0.98118 (Tier 1, ideal), because 18 theoretical stages beat 20 × 0.7 = 14.
+  - **H7 column** (drill H7, ENGINE_API.md §11.11): `bt_packed` in Tier 2, full hydraulics, with both beds at D_bed = 1.0 m (L'_des unchanged) and CW at 15 °C. At the defaults the lower bed runs at φ_p 0.787 and the upper at 0.675 (bed ΔP 1.61 and 1.26 kPa; x_D 0.99357, x_B 0.01108, T_B 111.09 °C). At +25 % throughput the lower bed reaches 0.975 (g = 1.25, n_th 7.55 of 9) and Q_C 1599 kW, which the condenser covers only with the colder water (1795 kW at 100 % CW and 15 °C; 1382 kW at 30 °C).
+  - Templates on `bt` and `bt_packed` (lever `internals`, §13.4): 0 = 20 sieve trays (the `bt` sections); 1 = the two beds above; 2 = mixed, the upper bed (4.5 m struct250, 9 segments) above 11 sieve trays, feed on stage 10 (the first tray). Tier 1 ideal hydraulics, mixed: x_D 0.99133, x_B 0.00867.
 
 Tier-1 α values for the non-ideal binaries are the geometric mean of the Tier-3 α at x = 0.1, 0.5 and 0.9 (1 atm); for `debut`/`deprop` they are the geometric mean of the DePriester α at the top and bottom temperatures of the FUG design case (VALIDATION.md VC-9). They are stored constants, not recomputed. (M7 check: with the corrected VC-9.5 temperatures (distillate dew 55.25 / 49.52 °C, bottoms bubble 112.77 / 123.84 °C) the recomputed geometric means agree with the stored values within 0.003.)
 
@@ -454,7 +464,7 @@ E_j^eff = E_j · (1 − b_V,j) · min(1, h_cl,j / 0.005 m)
 - The reboiler (j = N+1) is an equilibrium stage: y_{N+1} = y*_{N+1}.
 - The vapour leaving a tray is at the tray liquid temperature T_j, whatever its composition (standard assumption).
 
-Overall-to-Murphree (Lewis, Ind. Eng. Chem. 28 (1936) 399), used for packed segments and in the math overlay, with stripping factor λ = m V / L (m = local slope of the equilibrium curve, dy*/dx):
+Overall-to-Murphree (Lewis, Ind. Eng. Chem. 28 (1936) 399), used for packed segments and in the math overlay, with stripping factor λ = m V / L (m = local slope of the equilibrium curve, dy*/dx; the exact definition used for packed segments is λ_k of §6.4):
 
 ```
 E_O = ln[1 + E_MV (λ − 1)] / ln λ          E_MV = (λ^E_O − 1) / (λ − 1)          (λ → 1: E_O = E_MV)    (4.3)
@@ -764,21 +774,40 @@ L_j = smin( L_weir(M_j), L_max,j ) + L_dump,j(M_j)      smin = plain min [impl m
 
 A packed bed of height H_bed with reference HETP_ref is split into n_seg = max(1, round(H_bed / HETP_ref)) segments of height H_k = H_bed / n_seg. Each segment is a stage in the chain (same component balance (4.1), same energy balance (4.6)) whose Murphree efficiency comes from the HETP (§6.4). A liquid feed or reflux enters the top segment of a bed through an ideal distributor unless the maldistribution fault is active (§6.6). Packed segments have no weeping, no downcomer and no entrainment terms.
 
+**Sections and mixed columns** (M8 readiness, 2026-10-13):
+- `ColumnConfig.sections` lists tray sections and packed beds from top to bottom. Stage numbers run on across sections (§0.2): a bed of n_seg segments takes n_seg consecutive stage numbers.
+- A feed enters a tray or the **top segment** of a bed (a feed distributor between beds). `validate()` rejects a feed into any other segment, and the `feedStage` lever offers only trays and bed tops.
+- Between two beds, and between a bed and a tray section, the liquid is collected and redistributed: it is perfectly mixed, so the maldistribution of one bed does not carry into the next. Supports, collectors and distributors add no ΔP and no holdup.
+- The global `murphree` lever applies to tray stages only. Packed segments take E from §6.4 in every tier. The lever is not offered when the column has no tray section; `nTrays` is not offered when it has a packed section (beds are edited in the Advanced drawer or through `internals`, §13.4).
+- Tray stages keep all of §5. In ideal hydraulics trays use only the Bennett weir and packed segments use (6.3) with φ_p = 0 and HETP = HETP_ref: no ΔP, no wetting or loading modifier, no flooding. Maldistribution (§6.6) still applies, because it is a distributor fault, not a hydraulic effect.
+- Metal heat capacity in (4.6) for a packed segment: m_metal,k = ρ_bed A_T H_k (ρ_bed from §6.2) instead of the tray's 75 kg/m² × A_T.
+- A dry segment cannot transfer mass. As the tray rule min(1, h_cl/5 mm) of (4.2), E_MV,k is multiplied by min(1, h_L,k / 0.005).
+
 ### 6.2 Packing data
 
-Packing factors F_p (ft⁻¹) and areas from Kister, *Distillation Design*, McGraw-Hill (1992), chapter 8, and vendor bulletins as summarised there; HETP rules of thumb from Kister (random: HETP[ft] ≈ 1.5 × nominal size [in]; structured: HETP[in] ≈ 1200/a[ft²/ft³] + 4). Values are representative, not vendor-certified.
+Packing factors F_p (ft⁻¹) and areas from Kister, *Distillation Design*, McGraw-Hill (1992), chapter 8, and vendor bulletins as summarised there; HETP rules of thumb from Kister (random: HETP[ft] ≈ 1.5 × nominal size [in]; structured: HETP[in] ≈ 1200/a[ft²/ft³] + 4). Values are representative, not vendor-certified. **The a, ε and F_p values are quoted from memory of Kister's tables and have not been checked against the book** (OPEN_ITEMS.md).
 
-| id | Packing | a (m²/m³) | ε | F_p (ft⁻¹) | Material σ_c (mN/m) | HETP_ref (m) |
-|---|---|---|---|---|---|---|
-| pall25m | 25 mm metal Pall rings | 205 | 0.94 | 56 | 75 (steel) | 0.46 |
-| pall50m | 50 mm metal Pall rings | 105 | 0.96 | 27 | 75 | 0.91 |
-| raschig50c | 50 mm ceramic Raschig rings | 92 | 0.74 | 65 | 61 (ceramic) | 0.91 |
-| struct250 | Structured, 250 m²/m³ (Mellapak 250Y class) | 250 | 0.98 | 20 | 75 | 0.45 |
-| struct500 | Structured, 500 m²/m³ (Mellapak 500Y class) | 500 | 0.975 | 34 | 75 | 0.30 |
+| id | Packing | a (m²/m³) | ε | F_p (ft⁻¹) | Material σ_c (mN/m) | HETP_ref (m) | ρ_bed (kg/m³) |
+|---|---|---|---|---|---|---|---|
+| pall25m | 25 mm metal Pall rings | 205 | 0.94 | 56 | 75 (steel) | 0.46 | 474 |
+| pall50m | 50 mm metal Pall rings | 105 | 0.96 | 27 | 75 | 0.91 | 316 |
+| raschig50c | 50 mm ceramic Raschig rings | 92 | 0.74 | 65 | 61 (ceramic) | 0.91 | 598 |
+| struct250 | Structured, 250 m²/m³ (Mellapak 250Y class) | 250 | 0.98 | 20 | 75 | 0.50 | 158 |
+| struct500 | Structured, 500 m²/m³ (Mellapak 500Y class) | 500 | 0.975 | 34 | 75 | 0.30 | 198 |
+
+- **struct250 HETP_ref is 0.50 m** (M8 readiness; v1.0 had 0.45). The rule quoted above gives 1200/76.2 + 4 = 19.75 in = 0.502 m, and 0.30 m for struct500 (which the table already had); 0.45 m was the only value off the stated rule. The owner may restore a vendor value (OPEN_ITEMS.md).
+- **ρ_bed** (M8) is the solid mass per m³ of bed, ρ_solid (1 − ε) with ρ_solid = 7900 kg/m³ for steel and 2300 kg/m³ for ceramic. It is used only for the metal heat capacity in (4.6) (§6.1), with c_p = 500 J/(kg·K) for both.
 
 ### 6.3 Holdup, pressure drop, flooding
 
 Superficial velocities: u_L = L v_L / A_T, u_V = V MW_V/(1000 ρ_V A_T); mass fluxes L' = L MW_L/(1000 A_T), G' = V MW_V/(1000 A_T) (kg/m²/s).
+
+Which flows (M8 readiness), for segment k of a bed with cross-section A_T = π D_bed²/4:
+- Liquid: L = L_k, the segment's outflow from (6.4), with MW_L(x_k). Because L_k follows the holdup, ΔP and φ_p lag a change in the liquid arriving from above by the bed's drainage time. This is how "ΔP keeps rising" near flood arises below.
+- Vapour: V = V_{k+1}, the vapour entering from below, with MW_V(y_{k+1}), as for trays (§5.2).
+- Properties at segment k: ρ_L(T_k, x_k), ρ_V(T_k, P_k, y_k), σ(T_k, x_k), and the preset's μ_L, in cP inside (6.1). Tier 1 uses the preset constants (§2.3).
+- Pressure: ΔP_k = (ΔP/H)_k · H_k, and P_{k+1} = P_k + ΔP_k exactly as (5.5) does for trays. The bed ΔP is the sum over its segments. PDT-(101 + b) reads it (§10.5).
+- φ_p, G'_fl and the holdup factor are evaluated per segment. The bed's flood fraction is the maximum over its segments.
 
 **Pressure drop** — Robbins, Chem. Eng. Prog. 87(5) (1991) 87, in its US-unit form (in. H₂O per ft of packing), with F_pd taken equal to F_p:
 
@@ -800,6 +829,10 @@ t   = 7.4×10⁻⁸ G_f² · 10^(2.7×10⁻⁵ L_f)
 
 The flood vapour flux G'_fl at the current L'/G' ratio solves ΔP(G'_fl · L'/G', G'_fl) = ΔP_flood (bisection on [0.01, 30] kg/m²/s, 40 iterations; refresh every 10 steps). Approach to flood φ_p = G'/G'_fl.
 
+F23 (§11) replaces F_p by F_p,eff = F_p (1 + 1.5 s) in **both** (6.1) and (6.2): the flood ΔP rises as F_p^0.7, more slowly than the operating ΔP, so a crushed bed reaches flood at a lower load.
+
+Robbins (1991) and Kister and Gill (1991) were both fitted mainly to random packings. Using them for the structured entries is a simplification, stated in the math overlay (OPEN_ITEMS.md). At the B-T load (VC-13), (6.1) gives 148.7 Pa/m for struct250 against the 765.2 Pa/m flood ΔP. That is the right order for a 250Y-class packing at half of flood.
+
 **Liquid holdup** (volume fraction of the bed). Pre-loading: laminar falling-film (Nusselt) holdup as used by Billet and Schultes; above the loading point the Billet–Schultes (Trans IChemE 77A (1999) 498) increase with h_L,Fl ≈ 2.2 h_L,S:
 
 ```
@@ -819,10 +852,10 @@ with φ_p at state n. Near flood the same holdup drains more slowly, so liquid a
 ### 6.4 HETP and segment efficiency
 
 ```
-HETP = HETP_ref · (a_w,ref / a_w) · g(φ_p)                                                     (6.5)
+HETP = HETP_ref · max(1, a_w,ref / a_w) · g(φ_p)                                              (6.5)
 a_w/a = 1 − exp[ −1.45 (σ_c/σ)^0.75 Re_L^0.1 Fr_L^−0.05 We_L^0.2 ]       (Onda, Takeuchi and Okumoto, J. Chem. Eng. Japan 1 (1968) 56)
-Re_L = L'/(a μ_L)    Fr_L = L'² a / (ρ_L² g)    We_L = L'² / (ρ_L σ a)
-a_w,ref = a_w at the preset's design liquid load
+Re_L = L'/(a μ_L)    Fr_L = L'² a / (ρ_L² g)    We_L = L'² / (ρ_L σ a)        (μ_L in Pa·s, σ and σ_c in N/m)
+a_w,ref = a_w at L' = L'_des (the bed's designLiquidFlux), with segment k's current ρ_L, μ_L, σ
 g(φ) = 1                       φ ≤ 0.80
      = 1 + 8 (φ − 0.80)²         0.80 < φ ≤ 1.0
      = 1.32 + 3 (φ − 1.0)       φ > 1.0
@@ -830,15 +863,37 @@ g(φ) = 1                       φ ≤ 0.80
 
 The wetting term makes HETP rise at low liquid loads (poor wetting); g makes it rise above about 80 % of flood (entrainment, back-mixing). The g shape is empirical; packing HETP has no first-principles model at this fidelity.
 
-Segment efficiency: the overall efficiency of segment k is E_O,k = min(1, H_k / HETP) × E_mal (§6.6), converted to Murphree with (4.3) using λ_k = K̃_LK,k V_k / L_k (K̃ of the light key, or of the more volatile component of a binary).
+M8 rules for (6.5):
+- **max(1, ·)**: HETP_ref is the catalogue value at the design load. Better wetting at higher loads does not take HETP below it. v1.0's plain ratio let segments above L'_des pass E_O = 1 and those below fall under it, a jitter with no physical meaning.
+- **Same properties in a_w and a_w,ref.** The factor then measures the load effect. It is driven by L'/L'_des, and the properties and the packing material (σ_c) only set how steeply wetting falls off.
+- **L'_des** is `PackedSection.designLiquidFlux` (kg/m²/s). A preset stores the bed's smallest segment L' at its defaults, rounded **down** to 0.1, so that the design point has HETP = HETP_ref in every tier. `bt_packed`: 1.9 (upper bed) and 4.0 (lower bed) (§2.3). When it is null the wetting factor is 1.
+- Check values (struct250, B-T Tier-1 properties, L'_des = 2.088): a_w/a = 0.8858; L' = 1.0 → factor 1.105; L' = 0.5 → 1.254; L' = 0.25 → 1.465 (VALIDATION.md VC-13).
+
+Segment efficiency: the overall efficiency of segment k is E_O,k = min(1, H_k / HETP_k) × E_mal (§6.6), converted to Murphree with (4.3).
+
+**λ_k for (4.3) and (6.6)** (M8 readiness; v1.0 wrote K̃_LK V_k/L_k here and m V/L in §4.2, which differ by a factor of 2–4 near the column ends). λ is the stripping factor of the equilibrium **slope**, as in (4.3):
+
+```
+λ_k = m_k V_k / L_k        m_k = α′_k / [1 + (α′_k − 1) x′_k]²
+α′_k = K_LK,k / K_HK,k      x′_k = x_LK,k / (x_LK,k + x_HK,k)      (x′ = 0.5 if the key sum is below 1×10⁻⁹)
+```
+
+For a binary the keys are components 0 and 1. In Tier 1 α′ is the ratio of the stored α. m is the slope of the constant-α curve with the local α′, the standard linearisation. λ_k is clamped to [10⁻³, 10³]. `bt_packed` at its Tier-2 defaults: λ runs from 0.59 at the top of the upper bed to 1.64 at the bottom of the lower bed (VALIDATION.md VC-13).
 
 ### 6.5 Packed-section indicators
 
 φ_p per segment, ΔP per segment and per bed, h_L, HETP, a_w/a, E_O,k, and `flooding` when φ_p ≥ 1.
 
+Per bed (M8): ΔP_bed, max φ_p, n_th = Σ_k min(1, H_k/HETP_k) (theoretical stages before maldistribution), S (§6.6) and E_mal. E_mal and the F21 split f are fault parameters: they are NaN in drills and in plant views (§10.9). The KPI "max flood %" takes 100 φ_p for packed segments, next to the tray terms of §5.10.
+
 ### 6.6 Maldistribution — parallel-column model
 
-A plugged distributor sends more liquid to one side of the bed. LowSYS uses the parallel-column model (Hoek, Wesselingh and Zuiderweg, Chem. Eng. Res. Des. 64 (1986) 431): the bed behaves as two half-columns, A and B, with liquid fractions (1 + f)/2 and (1 − f)/2 and equal vapour. Each half is a Kremser cascade of n = n_seg stages with stripping factor S_A = S/(1 + f), S_B = S/(1 − f), where S = K̃_LK V / L is the bed average.
+A plugged distributor sends more liquid to one side of the bed. LowSYS uses the parallel-column model (Hoek, Wesselingh and Zuiderweg, Chem. Eng. Res. Des. 64 (1986) 431): the bed behaves as two half-columns, A and B, with liquid fractions (1 + f)/2 and (1 − f)/2 and equal vapour. Each half is a Kremser cascade of n stages with stripping factor S_A = S/(1 + f), S_B = S/(1 − f).
+
+M8 definitions (v1.0 said n = n_seg and S = "K̃_LK V/L, the bed average"):
+- **n = n_th = Σ_k min(1, H_k/HETP_k)** over the bed's segments: the theoretical stages the bed would have with a perfect distributor. n may be fractional, and the Kremser formulas below accept that. With n_seg, a bed already weakened by loading (g > 1) or by F23 would be charged for stages it no longer has.
+- **S = exp(mean_k ln λ_k)**, the geometric mean of the λ_k of §6.4 over the bed's segments. λ varies along a bed, and a geometric mean is the usual effective factor for a Kremser cascade.
+- **S = 1** when |ln S| < 10⁻⁹, using the limit forms given below. S_B → ∞ (f → 1) gives Φ_K = 1.
 
 ```
 Kremser fraction stripped:  Φ_K(S, n) = (S^(n+1) − S) / (S^(n+1) − 1)        (S = 1: n/(n+1))
@@ -848,6 +903,8 @@ E_mal = n_eff / n                                                               
 ```
 
 Recomputed every 10 steps per bed. The effect is physical rather than a fixed multiplier: it is largest when S ≈ 1 (near a pinch) and when the bed has many stages, which is the known behaviour. With f = 0.2 and S = 1, a 10-stage bed keeps 70 % of its stages and a 20-stage bed only 43 % (VALIDATION.md VC-13).
+
+F21 (§11) sets f = 0.6 s on one bed. ΔP and φ_p use the bed-mean flows, so they do not change; the evidence is the separation and the bed's temperature profile. Example, the H7 column (§2.3): f = 0.3 on the upper bed gives E_mal = 0.57, x_D 0.9936 → 0.9788, and the bed's TI span falls from 11.5 K to 8.1 K, while its ΔP moves by 0.3 % (VALIDATION.md §H, H7).
 
 ---
 
@@ -1454,11 +1511,12 @@ Every transmitter runs the same pipeline on its true value v (SI) at each update
 | LT, sump (ΔP cell, boiling liquid) | LT-102 0–100 % | 2 s | 1.00 | 3 s | 0.02 | 0.775 % | boiling and vapour disengagement |
 | PT | PT-101 0–2 max(P_design, SP_PC-101) (§10.7; B-T at design 0–202.65 kPa abs), PT-201 steam header 0–1000 kPa g | 1 s | 0.05 | 2 s | 0.02 | 0.046 % (PT-101: 0.09 kPa) | |
 | PDT | PDT-101 column ΔP 0–40 kPa (top vapour space to sump) | 2 s | 1.00 | 5 s | 0.02 | 0.845 % (0.34 kPa) | froth fluctuations |
+| PDT, packed bed (M8) | PDT-(101 + b) for packed bed b = 1, 2, … from the top: 0–10 kPa | 2 s | 1.00 | 5 s | 0.02 | 0.845 % (0.085 kPa) | two-phase flow fluctuations |
 | TI, tray and sump (RTD in a thermowell) | TI-1jj, TI-1(N+1): 0–200 °C | 10 s | 0.075 (0.15 K) | 20 s | 0.01 (0.02 K) | 0.062 % (0.124 K) | froth temperature fluctuations |
 | TI, liquid line | TI-100 reflux (drum outlet), TI-201/202 CW in/out: 0–200 °C | 10 s | 0.025 | 20 s | 0.01 | 0.022 % | |
 | AT, process GC | AT-100 feed light component 0–1; AT-101 heavy impurity in D 0–0.10; AT-102 light impurity in B 0–0.10 (mol frac) | see below | – | – | 0.5 per result | 5×10⁻⁴ (AT-101/102) | repeatability |
 
-Tag rule for tray TIs: TI-(100 + j) for tray j, TI-100 for the drum, TI-(100 + N + 1) for the sump (B-T: TI-121).
+Tag rule for tray TIs: TI-(100 + j) for tray j, TI-100 for the drum, TI-(100 + N + 1) for the sump (B-T: TI-121). Packed segments follow the same rule (a bed thermocouple at the height of segment j; `bt_packed`: TI-101 … TI-118, sump TI-119). PDT-(101 + b) measures the ΔP of packed bed b, the sum of its segments' ΔP_k (0 in ideal hydraulics).
 
 Instrumented trays come from the control config list `temperatureTrays`; B-T uses [1, 4, 7, 10, 12, 14, 17, 20]. On a tray-count rebuild (§13.4) each entry keeps its fractional height, the result is de-duplicated, and the TC-101 tray is always included. The `tc101Tray` lever only offers instrumented trays.
 
@@ -1608,7 +1666,7 @@ Lever `view`: 0 = model view (default), 1 = plant view, 2 = plant view with engi
 - **Plant view**: the engine masks the snapshot *before* it leaves the simulator, so no UI code can leak the truth:
   - `stages.x`, `y`, `yStar`, `liquidDown`, `vaporUp`, `entrain`, `weep`, `dp`, `jetFlood`, `dcFlood`, `frothFill`, `stability`, `weepFrac`, `efficiency`, `hetp`, `packFlood` become NaN.
   - `stages.t` is NaN except on instrumented trays, which carry the TI reading.
-  - `stages.holdup`, `hcl`, `froth` and `flags` keep their model values for the column animation, except stage 0 and stage N+1. Their holdups are rewritten from the LT-101 and LT-102 readings (holdup = level/100 · V/v_L,design), so the painter draws the *measured* levels.
+  - `stages.holdup`, `hcl`, `froth` and `flags` (and, M8, `packHoldup` and `wetFrac`) keep their model values for the column animation, except stage 0 and stage N+1. Their holdups are rewritten from the LT-101 and LT-102 readings (holdup = level/100 · V/v_L,design), so the painter draws the *measured* levels.
   - `streams` flows are the FT readings; compositions are NaN, except where an analyser reads them (D, B, feed: last published result).
   - `kpis`: d, b, boilup, qr and refluxRatio (from FT-102/FT-104), drumLevelPct, sumpLevelPct, pTop, columnDp and qc (from CW) are computed from readings. xD and xB are the analyser results (x_D = 1 − AT-101 for B-T). maxFloodPct, balanceResidual and energyResidual are NaN; their measured counterparts are the cross-checks (§14.6).
   - Valve positions p are removed; loops show OP only.
@@ -1618,6 +1676,7 @@ Lever `view`: 0 = model view (default), 1 = plant view, 2 = plant view with engi
   - The reboiler snapshot keeps only duty-side readings (FT-103, steam valve OP, header pressure); the thermosyphon fields of ENGINE_API.md §7.1 become NaN.
 - **Plant view with engineering calculations** (`view` = 2, "plantCalc", M6; drills H1, H3 and H5). This is plant view with one exception: a plant's online rating model would also compute the tray and reboiler hydraulics, so the following stay at their model values, labelled "calc" in the UI:
   - per-stage `dp`, `jetFlood`, `dcFlood`, `frothFill`, `stability`, `weepFrac`, `flags`;
+  - M8, packed beds: per-stage `packFlood` and `hetp` (the HETP of (6.5), without E_mal), and per bed ΔP and max flood. E_mal, the F21 split and `efficiency` stay masked: a rating model does not know the distributor is plugged;
   - `kpis.maxFloodPct`, `kpis.maxWeepFraction`;
   - the thermosyphon fields `circulation`, `exitQuality`, `riserQuality`, `instabilityIndex`, `oscAmplitude`, `oscPeriod`, `inletLineDp`, `outletLineDp` (not `drivingHead`);
   - the alarms `model.flood`, `model.weep`, `model.dcLimited`, `model.tsUnstable`.
@@ -1656,13 +1715,13 @@ Faults act only by changing physical parameters or adding physical flows. No fau
 | F19 Instrument calibration fault | instrument tag | `bias`: b = σ s · 10 % of span; `drift`: σ s · 10 % of span per hour; `stuck`: outputs frozen at t₀ (§10.6) | 0 |
 | F28 Transmitter hard failure | instrument tag | `signalLossLow` / `signalLossHigh` (3.6 / 21.0 mA, BAD), `plugged` (extra lag 10^(4s) − 1 s on the sensed signal), `spiking` (Poisson spikes, rate s/20 s⁻¹, 10–50 % s of span), `coated` (TI lag × (1 + 9 s)) (§10.6) | 0; `plugged` 300 s |
 | F20 Valve fault | valve id | `stuck` (position frozen at t₀) / `failOpen` (command 100 %) / `failClosed` (command 0 %); the actuator lag still applies (§10.3, §10.6) | 0 |
-| F21 Packing maldistribution | packed bed | f = 0.6 s in (6.6) | 0 or 1800 s |
-| F23 Packing crushed | packed bed | F_p × (1 + 1.5 s); H_bed × (1 − 0.15 s) (fewer metres of packing, same segment count) | 0 |
+| F21 Packing maldistribution | packed bed b (1 = top bed) | f = 0.6 s in (6.6), on bed b only (the redistributor below it mixes the liquid again, §6.1). ΔP and φ_p use the bed-mean flows and do not change. H7 column (§2.3 M8 rules, D_bed 1.0 m), upper bed, s = 0.5 (f = 0.3): E_mal 0.57, x_D 0.9936 → 0.9788, x_B 0.0111 → 0.0280, bed ΔP +0.3 %, TI-101 − TI-109 11.5 K → 8.1 K; lower bed, s = 0.5: x_D 0.9742, x_B 0.0365, TI-110 − TI-118 17.0 K → 13.0 K. Drill range [0.5, 0.8] | 0 or 1800 s (drill H7: 900 s) |
+| F23 Packing crushed | packed bed b | F_p,eff = F_p (1 + 1.5 s) in (6.1) **and** (6.2); H_bed × (1 − 0.15 s) (fewer metres of packing, same segment count, so H_k and E_O = H_k/HETP fall); a unchanged. H7 column, s = 0.3: upper-bed ΔP +46 % (1.26 → 1.85 kPa), max φ_p 0.67 → 0.75; lower bed +57 % (1.61 → 2.53 kPa), φ_p 0.79 → 0.88; separation changes by less than 0.003. Drill range [0.3, 0.5] | 0 |
 | F24 Stripping steam loss | steam injection point | steam × (1 − s) | 60 s |
 | F25 Pumparound trip | pumparound | P_PA × (1 − s) (and Q_PA with it) | 0 |
 | F26 COT upset | furnace | COT += s ΔT (default −15 K) | 300 s |
 
-F01, F02, F03, F16, F22 and F27 are operating conditions that emerge from the models in §5, §6, §8 and §9. Scenarios provoke them by changing loads. Drill symptom expectations for every injectable fault are tabulated in VALIDATION.md §H.
+F01, F02, F03, F16, F22 and F27 are operating conditions that emerge from the models in §5, §6, §8 and §9. Scenarios provoke them by changing loads. F22 (packing flooding): a bed floods when its φ_p reaches 1 (§6.3). Drill H7 provokes it with a +25 % planning event, which takes the H7 column's lower bed from φ_p 0.79 to 0.97 (ENGINE_API.md §11.11). Drill symptom expectations for every injectable fault are tabulated in VALIDATION.md §H.
 
 Faults are stored on the snapshot only in sandbox mode. In a drill the snapshot carries no fault information; the UI cannot reveal it.
 
@@ -1976,6 +2035,7 @@ These thresholds are **[impl-tunable]**: VC-20.6 fixes the required behaviour, a
 - Number of trays N → N': rebuild the stage arrays. For each new tray at fractional height s' = (j' − ½)/N', interpolate liquid composition and h_cl linearly from the old profile at s = s'; drum, sump, controllers, pressure inventory unchanged; the feed tray keeps its fractional position, rounded **down**: feedStage' = clamp(⌊φ N' + 10⁻⁹⌋, 1, N'), where φ = feedStage/N is stored whenever the feed tray is set explicitly (config or lever) and is not changed by a rebuild, so a sequence of rebuilds does not drift. B-T feed 10 of 20 (φ = 0.5) gives N' = 27 → tray 13 (G6 reference x_D 0.97761), 28 → 14. Then continue. Allowed while running; the UI pauses for the rebuild frame.
 - On a rebuild, tray TIs are remapped as in §10.5. A TI that keeps its tag keeps its state. A new TI starts at the true value, and a TI that disappears loses its faults and alarms. The sump TI is renamed TI-(100 + N' + 1) and keeps its state.
 - Tray type or section geometry changes: allowed only while paused; holdups re-initialised from Bennett at current flows.
+- **Internals template** (lever `internals`, M8; only on configs that carry templates, `bt` and `bt_packed`): allowed only while paused. Rebuild the stage arrays from the template's sections. Each new stage interpolates the liquid composition from the old profile at its fractional height, as for N → N'. Holdups are re-initialised at the current flows: trays from Bennett, packed segments from (6.3). The feed stage, `temperatureTrays` and the PDTs come from the template, not from φ. TIs that keep their tag keep their state, as above. Drum, sump, controllers and the pressure inventory are unchanged. Overriding `sections` (scenario `overrides`) removes the templates, and the lever is then not offered.
 
 ### 13.5 Switching thermodynamic tier at runtime
 
@@ -2208,6 +2268,7 @@ The math overlay (ENGINE_API.md §8) shows, for the selected item, equations fro
 | Entrainment fit to Fair's chart; ψ ≤ 0.6 | §5.6 | Chart is ± factor 2; beyond 0.6 the full-tray overflow governs | Very high entrainment regime details |
 | Thermosyphon instability via index + oscillator | §8.3.3 | First-principles density waves need fine meshes and ms steps | Exact oscillation waveform |
 | Thermosyphon: steam side as a perfect buffer (FT-103 sees the mean duty); loop liquid inventory not coupled to the sump | §8.3.4 | Steam chest and condensate absorb a 5–20 s swing; energy mismatch ≤ 0.5 % | Steam-flow ripple during surging; sump-level swing from void changes |
+| Packing: Robbins ΔP and Kister–Gill flood (random-packing correlations) also for structured packing; HETP from a catalogue value × wetting × loading; Onda wetting; maldistribution as two parallel columns; ideal distributors and redistributors with no ΔP | §6 | Right order and right trends (ΔP ∝ G² rising steeply near flood, HETP up at low load and near flood, maldistribution worst near S = 1 and in tall beds) for a teaching simulator | Vendor-specific capacity and HETP, liquid-load effects on structured packing ΔP, radial profiles, wall flow |
 | DePriester K for hydrocarbons instead of an EOS | §3.4.2 | Textbook standard, fast | Composition dependence of K |
 | FUG with one geometric-mean α per component, the Fenske non-key split and Molokanov's Gilliland fit | §14.3 | The textbook shortcut; it is shown next to the rigorous column, not used by it | α variation along the column (`debut` Tier 3: α_LK 2.22 at the top, 1.89 at the bottom) |
 | Watson λ = 0 above a component's T_c | §3.3 | Only propane in the `deprop` bottoms (x ≈ 0.004) | Supercritical-component enthalpy (< 0.3 % of the reboiler balance) |
