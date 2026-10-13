@@ -1,3 +1,5 @@
+import '../l10n/strings.dart';
+
 import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -27,89 +29,97 @@ class KpiStrip extends StatelessWidget {
     String frac(double v) => Fmt.value(Quantity.fraction, v);
     String flow(UnitSystem u, double v) =>
         u.fromSI(Quantity.molarFlow, v).toStringAsFixed(1);
-    final items = sim.config.crude != null ? _crudeItems(p) : <_Item>[
-      _Item(
-        'xD',
-        (k, u) => frac(k.xD),
-        (u) => '',
-        target: const ExplainStream(StreamId.distillate),
-      ),
-      _Item(
-        'xB',
-        (k, u) => frac(k.xB),
-        (u) => '',
-        target: const ExplainStream(StreamId.bottoms),
-      ),
-      _Item(
-        'D',
-        (k, u) => flow(u, k.d),
-        (u) => u.symbol(Quantity.molarFlow),
-        target: const ExplainStream(StreamId.distillate),
-      ),
-      _Item(
-        'B',
-        (k, u) => flow(u, k.b),
-        (u) => u.symbol(Quantity.molarFlow),
-        target: const ExplainStream(StreamId.bottoms),
-      ),
-      _Item(
-        'R',
-        (k, u) => k.refluxRatio.isNaN ? '—' : k.refluxRatio.toStringAsFixed(2),
-        (u) => '',
-        target: const ExplainCondenser(),
-      ),
-      _Item(
-        'Drum',
-        (k, u) => k.drumLevelPct.toStringAsFixed(1),
-        (u) => '%',
-        target: const ExplainCondenser(),
-      ),
-      _Item(
-        'Sump',
-        (k, u) => k.sumpLevelPct.toStringAsFixed(1),
-        (u) => '%',
-        target: const ExplainReboiler(),
-      ),
-      _Item(
-        'P',
-        (k, u) => k.pTop.isNaN ? '—' : Fmt.value(Quantity.pressure, k.pTop, u),
-        (u) => u.symbol(Quantity.pressure),
-        target: const ExplainCondenser(),
-      ),
-      _Item(
-        'Q_C',
-        (k, u) => k.qc.isNaN ? '—' : u.fromSI(Quantity.energyRate, k.qc).toStringAsFixed(0),
-        (u) => u.symbol(Quantity.energyRate),
-        target: const ExplainCondenser(),
-      ),
-      _Item(
-        'Q_R',
-        (k, u) => k.qr.isNaN ? '—' : u.fromSI(Quantity.energyRate, k.qr).toStringAsFixed(0),
-        (u) => u.symbol(Quantity.energyRate),
-        target: const ExplainReboiler(),
-      ),
-      _Item(
-        'dP',
-        (k, u) => k.columnDp.isNaN || k.columnDp <= 0
-            ? '—'
-            : u
-                  .fromSI(Quantity.pressureDelta, k.columnDp)
-                  .toStringAsFixed(u == UnitSystem.si ? 2 : 2),
-        (u) => u.symbol(Quantity.pressureDelta),
-      ),
-      _Item(
-        'Flood',
-        (k, u) => k.maxFloodPct.isNaN || k.maxFloodPct <= 0
-            ? '—'
-            : k.maxFloodPct.toStringAsFixed(0),
-        (u) => '%',
-        tone: (k, pal) => k.maxFloodPct.isNaN
-            ? null
-            : (k.maxFloodPct >= 100
-                  ? pal.alarm
-                  : (k.maxFloodPct >= 90 ? pal.warn : null)),
-      ),
-    ];
+    final items = sim.config.crude != null
+        ? _crudeItems(p)
+        : <_Item>[
+            _Item(
+              'xD',
+              (k, u) => frac(k.xD),
+              (u) => '',
+              target: const ExplainStream(StreamId.distillate),
+            ),
+            _Item(
+              'xB',
+              (k, u) => frac(k.xB),
+              (u) => '',
+              target: const ExplainStream(StreamId.bottoms),
+            ),
+            _Item(
+              'D',
+              (k, u) => flow(u, k.d),
+              (u) => u.symbol(Quantity.molarFlow),
+              target: const ExplainStream(StreamId.distillate),
+            ),
+            _Item(
+              'B',
+              (k, u) => flow(u, k.b),
+              (u) => u.symbol(Quantity.molarFlow),
+              target: const ExplainStream(StreamId.bottoms),
+            ),
+            _Item(
+              'R',
+              (k, u) =>
+                  k.refluxRatio.isNaN ? '—' : k.refluxRatio.toStringAsFixed(2),
+              (u) => '',
+              target: const ExplainCondenser(),
+            ),
+            _Item(
+              'Drum',
+              (k, u) => k.drumLevelPct.toStringAsFixed(1),
+              (u) => '%',
+              target: const ExplainCondenser(),
+            ),
+            _Item(
+              'Sump',
+              (k, u) => k.sumpLevelPct.toStringAsFixed(1),
+              (u) => '%',
+              target: const ExplainReboiler(),
+            ),
+            _Item(
+              'P',
+              (k, u) =>
+                  k.pTop.isNaN ? '—' : Fmt.value(Quantity.pressure, k.pTop, u),
+              (u) => u.symbol(Quantity.pressure),
+              target: const ExplainCondenser(),
+            ),
+            _Item(
+              'Q_C',
+              (k, u) => k.qc.isNaN
+                  ? '—'
+                  : u.fromSI(Quantity.energyRate, k.qc).toStringAsFixed(0),
+              (u) => u.symbol(Quantity.energyRate),
+              target: const ExplainCondenser(),
+            ),
+            _Item(
+              'Q_R',
+              (k, u) => k.qr.isNaN
+                  ? '—'
+                  : u.fromSI(Quantity.energyRate, k.qr).toStringAsFixed(0),
+              (u) => u.symbol(Quantity.energyRate),
+              target: const ExplainReboiler(),
+            ),
+            _Item(
+              'dP',
+              (k, u) => k.columnDp.isNaN || k.columnDp <= 0
+                  ? '—'
+                  : u
+                        .fromSI(Quantity.pressureDelta, k.columnDp)
+                        .toStringAsFixed(u == UnitSystem.si ? 2 : 2),
+              (u) => u.symbol(Quantity.pressureDelta),
+            ),
+            _Item(
+              'Flood',
+              (k, u) => k.maxFloodPct.isNaN || k.maxFloodPct <= 0
+                  ? '—'
+                  : k.maxFloodPct.toStringAsFixed(0),
+              (u) => '%',
+              tone: (k, pal) => k.maxFloodPct.isNaN
+                  ? null
+                  : (k.maxFloodPct >= 100
+                        ? pal.alarm
+                        : (k.maxFloodPct >= 90 ? pal.warn : null)),
+            ),
+          ];
     final decoration = BoxDecoration(
       color: p.bgAlt.withValues(alpha: 0.7),
       border: Border.symmetric(horizontal: BorderSide(color: p.gridMajor)),
@@ -125,7 +135,9 @@ class KpiStrip extends StatelessWidget {
               if ((!(it.label == 'dP' || it.label == 'Flood') ||
                       (s != null && s.hydraulics == HydraulicsMode.full)) &&
                   (sim.config.crude != null ||
-                      !(it.label == 'P' || it.label == 'Q_C' || it.label == 'Q_R') ||
+                      !(it.label == 'P' ||
+                          it.label == 'Q_C' ||
+                          it.label == 'Q_R') ||
                       (s != null && s.tier != ThermoTier.t1)))
                 InkWell(
                   onTap: it.target == null
@@ -152,7 +164,7 @@ class KpiStrip extends StatelessWidget {
     );
     if (scroll)
       return Container(
-        height: MediaQuery.sizeOf(context).height < 500 ? 46 : 54,
+        height: (MediaQuery.sizeOf(context).height < 500 ? 46 : 54) * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.4),
         decoration: decoration,
         child: chips,
       );
@@ -166,30 +178,105 @@ class KpiStrip extends StatelessWidget {
 
 /// The crude unit's KPI strip: yields, overflash, the two G16 specs and the overhead (SCOPE.md 3.2).
 List<_Item> _crudeItems(ThemePalette pal) {
-  String temp(double k, UnitSystem u) => k.isNaN ? '—' : u.fromSI(Quantity.temperature, k).toStringAsFixed(0);
-  _Item mk(String label, String Function(CrudeProductKpis, Kpis, UnitSystem) f, String Function(UnitSystem) unit,
-          {ExplainTarget? target, Color? Function(CrudeProductKpis, ThemePalette)? tone}) =>
-      _Item(label, (k, u) => k.crude == null ? '—' : f(k.crude!, k, u), unit,
-          target: target, tone: tone == null ? null : (k, p) => k.crude == null ? null : tone(k.crude!, p));
+  String temp(double k, UnitSystem u) =>
+      k.isNaN ? '—' : u.fromSI(Quantity.temperature, k).toStringAsFixed(0);
+  _Item mk(
+    String label,
+    String Function(CrudeProductKpis, Kpis, UnitSystem) f,
+    String Function(UnitSystem) unit, {
+    ExplainTarget? target,
+    Color? Function(CrudeProductKpis, ThemePalette)? tone,
+  }) => _Item(
+    label,
+    (k, u) => k.crude == null ? '—' : f(k.crude!, k, u),
+    unit,
+    target: target,
+    tone: tone == null
+        ? null
+        : (k, p) => k.crude == null ? null : tone(k.crude!, p),
+  );
   String y(double v) => v.isNaN ? '—' : v.toStringAsFixed(1);
   return [
-    mk('Naphtha', (c, k, u) => y(c.yieldVolPct[0]), (u) => '%', target: const ExplainProduct(0)),
-    mk('Kero', (c, k, u) => y(c.yieldVolPct[1]), (u) => '%', target: const ExplainProduct(1)),
-    mk('Diesel', (c, k, u) => y(c.yieldVolPct[2]), (u) => '%', target: const ExplainProduct(2)),
-    mk('AGO', (c, k, u) => y(c.yieldVolPct[3]), (u) => '%', target: const ExplainProduct(3)),
-    mk('Residue', (c, k, u) => y(c.yieldVolPct[4]), (u) => '%', target: const ExplainProduct(4)),
-    mk('Overflash', (c, k, u) => y(c.overflashVolPct), (u) => '%', target: const ExplainOverflash()),
-    mk('Kero D86 95', (c, k, u) => temp(c.d86p95[1], u), (u) => u.symbol(Quantity.temperature),
-        target: const ExplainProduct(1), tone: (c, p) => c.d86p95[1] > 508.15 ? p.warn : p.ok),
-    mk('D–K gap', (c, k, u) => c.gapDieselKero.isNaN ? '—' : u.fromSI(Quantity.temperatureDelta, c.gapDieselKero).toStringAsFixed(1),
-        (u) => u.symbol(Quantity.temperatureDelta), target: const ExplainProduct(2), tone: (c, p) => c.gapDieselKero >= 0 ? p.ok : p.warn),
-    mk('Res TBP 5', (c, k, u) => temp(c.residueTbp5, u), (u) => u.symbol(Quantity.temperature), target: const ExplainProduct(4),
-        tone: (c, p) => c.residueTbp5 < 628.15 ? p.warn : null),
-    mk('Q_C', (c, k, u) => c.qc.isNaN ? '—' : (c.qc / 1e6).toStringAsFixed(2), (u) => 'MW',
-        target: const ExplainCondenser(), tone: (c, p) => c.condenserLimited ? p.alarm : null),
-    mk('Drum', (c, k, u) => k.drumLevelPct.toStringAsFixed(0), (u) => '%', target: const ExplainCondenser()),
-    mk('Flood', (c, k, u) => k.maxFloodPct.isNaN ? '—' : k.maxFloodPct.toStringAsFixed(0), (u) => '%',
-        tone: (c, p) => c.condenserLimited ? null : null),
+    mk(
+      'Naphtha',
+      (c, k, u) => y(c.yieldVolPct[0]),
+      (u) => '%',
+      target: const ExplainProduct(0),
+    ),
+    mk(
+      'Kero',
+      (c, k, u) => y(c.yieldVolPct[1]),
+      (u) => '%',
+      target: const ExplainProduct(1),
+    ),
+    mk(
+      'Diesel',
+      (c, k, u) => y(c.yieldVolPct[2]),
+      (u) => '%',
+      target: const ExplainProduct(2),
+    ),
+    mk(
+      'AGO',
+      (c, k, u) => y(c.yieldVolPct[3]),
+      (u) => '%',
+      target: const ExplainProduct(3),
+    ),
+    mk(
+      'Residue',
+      (c, k, u) => y(c.yieldVolPct[4]),
+      (u) => '%',
+      target: const ExplainProduct(4),
+    ),
+    mk(
+      'Overflash',
+      (c, k, u) => y(c.overflashVolPct),
+      (u) => '%',
+      target: const ExplainOverflash(),
+    ),
+    mk(
+      'Kero D86 95',
+      (c, k, u) => temp(c.d86p95[1], u),
+      (u) => u.symbol(Quantity.temperature),
+      target: const ExplainProduct(1),
+      tone: (c, p) => c.d86p95[1] > 508.15 ? p.warn : p.ok,
+    ),
+    mk(
+      'D–K gap',
+      (c, k, u) => c.gapDieselKero.isNaN
+          ? '—'
+          : u
+                .fromSI(Quantity.temperatureDelta, c.gapDieselKero)
+                .toStringAsFixed(1),
+      (u) => u.symbol(Quantity.temperatureDelta),
+      target: const ExplainProduct(2),
+      tone: (c, p) => c.gapDieselKero >= 0 ? p.ok : p.warn,
+    ),
+    mk(
+      'Res TBP 5',
+      (c, k, u) => temp(c.residueTbp5, u),
+      (u) => u.symbol(Quantity.temperature),
+      target: const ExplainProduct(4),
+      tone: (c, p) => c.residueTbp5 < 628.15 ? p.warn : null,
+    ),
+    mk(
+      'Q_C',
+      (c, k, u) => c.qc.isNaN ? '—' : (c.qc / 1e6).toStringAsFixed(2),
+      (u) => 'MW',
+      target: const ExplainCondenser(),
+      tone: (c, p) => c.condenserLimited ? p.alarm : null,
+    ),
+    mk(
+      'Drum',
+      (c, k, u) => k.drumLevelPct.toStringAsFixed(0),
+      (u) => '%',
+      target: const ExplainCondenser(),
+    ),
+    mk(
+      'Flood',
+      (c, k, u) => k.maxFloodPct.isNaN ? '—' : k.maxFloodPct.toStringAsFixed(0),
+      (u) => '%',
+      tone: (c, p) => c.condenserLimited ? null : null,
+    ),
   ];
 }
 
@@ -208,31 +295,39 @@ class _Kpi extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = t.palette;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: t.type.label.style(12, p.inkMuted)),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: t.type.number.style(
-                  16,
-                  color ?? (t.column.gaugeStyle == GaugeStyle.bargraph ? p.ink : p.accent),
-                  weight: FontWeight.w700,
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: S.kpiSemantics(label, value, unit),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: t.type.label.style(12, p.inkMuted)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  value,
+                  style: t.type.number.style(
+                    16,
+                    color ??
+                        (t.column.gaugeStyle == GaugeStyle.bargraph
+                            ? p.ink
+                            : p.accent),
+                    weight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              if (unit.isNotEmpty)
-                Text(' $unit', style: t.type.label.style(12, p.inkFaint)),
-            ],
-          ),
-        ],
+                if (unit.isNotEmpty)
+                  Text(' $unit', style: t.type.label.style(12, p.inkFaint)),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
