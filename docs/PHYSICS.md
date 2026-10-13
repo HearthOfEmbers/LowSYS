@@ -895,13 +895,15 @@ Q_C    = UA_eff (T_0,sat − T_cw,in) / (1 + UA_eff / (2 m_cw c_p,w))      clipp
 
 T_0,sat is the condensing temperature (drum bubble point before subcooling). Inerts act twice, as in a real condenser: they lower the condensable partial pressure (lower condensing temperature, smaller ΔT) and they blanket the tubes.
 
-Condensation rate from the drum energy balance (vapour enters at H_1, condensate leaves at h_0):
+Condensation rate from the energy balance of condenser and drum (vapour enters at H_1, liquid entrained from tray 1 enters at h_1, all liquid leaves at h_0, uncondensed vapour stays at H_V):
 
 ```
-N_cond = [ V_1 (H_V(y_1, T_0,sat) − H_1) + Q_C ] / ( H_V(y_1, T_0,sat) − h_L(x_0, T_0) )          (7.4)
+N_cond = [ V_1 (H_V − H_1) + Q_C − e_1 (h_1 − h_0) ] / ( H_V − h_0 )          (7.4)
+H_V = H_V(y_V, T_0,sat)    y_V = y_1 (total condenser), y_0 = K̃_0 x_0 (partial condenser)
+h_0 = h_L(x_0, T_0)        h_1 = h_L(x_1, T_1)        e_1 = tray-1 entrainment (§5.6; 0 in ideal hydraulics)
 ```
 
-The first term is the (usually small) desuperheating of the incoming vapour.
+The first term is the (usually small) desuperheating of the incoming vapour. The entrainment term was added at the M4 close-out (2026-10-13): (7.6) counts e_1 in the drum's mass, so its enthalpy belongs here too. Tray 1 is hotter than the drum, so the sensible heat e_1 (h_1 − h_0) uses part of Q_C and that much less vapour condenses. Without it, full hydraulics closed VC-5.4 only to 6.8×10⁻⁶ (B-T design) and 1.9×10⁻⁵ (+20 % load); with it, to 1.8×10⁻¹¹. Ideal hydraulics is unchanged. H_V(y_0) for the partial condenser is what engine 1155f40 already uses.
 
 Design values (stored in the preset): UA_clean is chosen so that at the design point the condenser uses **50 %** of the CW valve. For B-T: Q_C ≈ 1.281 MW, T_0 ≈ 80.2 °C, T_cw,in = 30 °C, m_cw,max = 150 m³/h (41.5 kg/s; 50 % → 20.8 kg/s, outlet 44.7 °C) → UA_clean = 29.9 kW/K. For a new preset, the value is found once, offline: run the Tier-2 preset to steady state with the pressure held at P_top (a "perfect condenser" debug option), read Q_C and T_0,sat, solve (7.3) for UA at OP_cw = 50 %, and store the result in the preset JSON (mw: 29.76 kW/K, VALIDATION.md VC-27.1).
 
@@ -913,7 +915,7 @@ Total condenser: D_V = 0. Partial condenser: vapour product through the pressure
 D_V = (OP_DV/100) D_V,max √( max(P_top − P_down, 0) / (P_design − P_down) )                 (7.5)
 ```
 
-P_down = P_design − 30 kPa (vapour-product header; B-T 0.713 bar(a)). v1.0 had 1.01325 bar, which gives no flow at all at the B-T design pressure. D_V,max = the design distillate rate (B-T 50 kmol/h). PC-101 then manipulates PV-102 (§10.7); the CW flow comes from its own lever (`cwOP`, 0–100 %, default 70 %).
+P_down = P_design − 30 kPa (vapour-product header; B-T 0.713 bar(a)). v1.0 had 1.01325 bar, which gives no flow at all at the B-T design pressure. D_V,max = the design distillate rate (B-T 50 kmol/h). PC-101 then manipulates PV-102 (§10.7); the CW flow comes from its own lever (`cwOP`, 0–100 %). When a partial condenser is built (preset load or the `condenserType` switch) the lever starts at the preset value `condenser.cwOpPartial` (default and B-T: 30 %). v1.0's 70 % predates the 50 % design. Rule for a preset: the OP at which the partial-condenser steady state at P_design sends about a quarter of the design distillate as vapour (B-T at 30 %: D_V 12.6, D_L 37.2 kmol/h, PV-102 25 %; engine 1155f40). At or above the total-condensation OP (B-T ≈ 48.5 %) the condenser takes all of V_1 at P_design: PC-101 shuts PV-102, D_V = 0 and P falls below the SP (B-T at 70 %: 94.5 kPa). That is correct behaviour, not an error state: the CW, not PV-102, then sets the pressure.
 
 ### 7.3 Reflux drum
 
@@ -1538,12 +1540,12 @@ The DCS shows no valve fault (there is no position feedback). The only signs are
 | FC-103 | FT-103 (T1 0–300 kmol/h; T2/3 0–3000 kW) | FV-103 | reverse | AUTO (CAS when TC-101 is enabled) | 0.6 | 2.0 | 0 | yes | 0–100 | δ_c | all |
 | LC-101 | LT-101 (0–100 %) | LV-101 | direct | AUTO | 2.0 | 1800 | 0 | no | 0–100 | dt | all |
 | LC-102 | LT-102 (0–100 %) | LV-102 | direct | AUTO | 2.0 | 1800 | 0 | no | 0–100 | dt | all |
-| PC-101 | PT-101 (0–2 max(P_design, SP), below) | PV-101 (total condenser) / PV-102 (partial) | direct | AUTO | 10, scheduled below 35 % OP (below) / 1.0 | 120 / 30 | 0 | no | 0–100 | dt | T2/3 |
+| PC-101 | PT-101 (0–2 max(P_design, SP), below) | PV-101 (total condenser) / PV-102 (partial) | direct | AUTO | 10, scheduled below 35 % OP (below) / 2.0 | 120 / 30 | 0 | no | 0–100 | dt | T2/3 |
 | TC-101 | TI on the chosen tray (0–200 °C) | FC-103 SP (cascade) | reverse | disabled (MAN) | 4.0 | 900 | 0 | no | 20–65 | dt | T2/3 |
 
 TC-101's Kc = 4.0 on the 200 K TI span equals v1.0's 1.0 on the old 50 K span (T_top − 10 K … T_bottom + 10 K): 30 kW per 0.5 K.
 
-**PC-101, total condenser: Kc 10, Ti 120 s** (M4 prototype; v1.0: 2 / 60 s). Even at the 50 % design point (§7.2) the CW valve is a weak handle: about 580 Pa per % OP (0.29 % of span per % OP), with an open-loop time constant of about 190 s set by the column's heat storage. With v1.0's tuning a +10 kPa SP step took 695 s to settle within ±1 kPa (VC-16.6 asks for 10 min). With 10 / 120 it settles in 297 s (+10 kPa) and 438 s (−10 kPa) without overshoot. PV-102 for the partial condenser acts directly on the vapour flow, and v1.0's 1.0 / 30 s stays **[impl-tunable]** (VC-16.6b).
+**PC-101, total condenser: Kc 10, Ti 120 s** (M4 prototype; v1.0: 2 / 60 s). Even at the 50 % design point (§7.2) the CW valve is a weak handle: about 580 Pa per % OP (0.29 % of span per % OP), with an open-loop time constant of about 190 s set by the column's heat storage. With v1.0's tuning a +10 kPa SP step took 695 s to settle within ±1 kPa (VC-16.6 asks for 10 min). With 10 / 120 it settles in 297 s (+10 kPa) and 438 s (−10 kPa) without overshoot. PV-102 for the partial condenser acts directly on the vapour flow: **Kc 2.0, Ti 30 s** (ratified 2026-10-13 from the M4 engine, 1155f40; v1.0: 1.0 / 30 s, which took 710 s to settle a +10 kPa step within ±1 kPa). With 2.0 the ±10 kPa steps settle in 505 / 515 s with 15 % / 12.5 % overshoot (B-T, CW 30 %, VC-16.6b).
 
 **PC-101 gain schedule, total condenser** (ratified 2026-10-12 from DEVIATIONS.md E47). The CW valve gets far stronger as it closes. From (7.3), dQ_C/dm_cw ∝ a/(m_cw + a)² with a = UA_eff/(2 c_p,w) (B-T 3.3 kg/s; linear valve, m_cw,max 41.5 kg/s). Relative to the 50 % design point that is ≈ 1.8× at 35 % open, ≈ 12× at 9 % and ≈ 17× at 6 %. The tuned controller limit-cycles down there: G8 at 2–3 bar with 15 °C water works at 5–7 % OP (V₁ swung between 50 and 210 kmol/h at dt = 2 s), and G9 turned down at 1 atm sits near 9 % (VALIDATION.md VC-28.8). PC-101 therefore uses
 
@@ -1974,9 +1976,9 @@ The state X is the same in every tier. On a switch:
 
 | From → To | Actions |
 |---|---|
-| T1 → T2/T3 | Compute bubble points and enthalpies from the current x and P_top (= preset P); T^(n−1) := T. Set FC-103 SP (duty) so that the **top vapour V_1 (and hence D) is continuous**: Q_R = V_1 (H_V(y_1, T_1) − h_L(x_0, T_0)) + D h_D + B h_B − F h_F, the steady energy balance evaluated with Tier-2 enthalpies on the current state. Initialise n_V and n_V,i = n_V y_1 from P_top. PC-101 SP = P_top, OP as initialised (70 %). |
+| T1 → T2/T3 | Compute bubble points and enthalpies from the current x and P_top (= preset P); T^(n−1) := T. Set FC-103 SP (duty) so that the **top vapour V_1 (and hence D) is continuous**: Q_R = V_1 (H_V(y_1, T_1) − h_L(x_0, T_0)) + D h_D + B h_B − F h_F, the steady energy balance evaluated with Tier-2 enthalpies on the current state. Initialise n_V and n_V,i = n_V y_1 from P_top. PC-101 SP = P_top, OP at the 50 % design value (§7.2; v1.0 70 %). |
 | T2/T3 → T1 | Set the boilup lever V_B = current V_1 − (1 − q)F (top vapour continuous). Vapour flows become CMO at the next step, so the learner sees the profile flatten (the teaching point), while D and the product split stay put. |
-| T2 ↔ T3 | Only the K model changes; temperatures re-converge in the next bubble-point solve. The duty SP is kept, so D drifts to the new tier's value: `c4` T2 → T3 at 1542.6 kW goes from D 40.0 to 38.1 kmol/h, x_D 0.9299 → 0.9327, x_B 0.0467 → 0.0719 (VALIDATION.md VC-28.3). The learner sees the bottoms, not the distillate, pay for the less volatile DePriester K. |
+| T2 ↔ T3 | Only the K model changes; temperatures re-converge in the next bubble-point solve. The duty SP is kept, so D drifts to the new tier's value: `c4` T2 → T3 at 1542.6 kW goes from D 40.0 to 38.1 kmol/h, x_D 0.9299 → 0.9327, x_B 0.0467 → 0.0719 (VALIDATION.md VC-28.3). The learner sees the bottoms, not the distillate, pay for the less volatile DePriester K. **Pressure** (2026-10-13, from the M5 engine): at the same P the new K model gives a different condensing temperature (`c4` T2 → T3: T_D −1.4 K, so Q_C = UA (T_sat − T_cw) falls ≈ 6 %), and PC-101 alone took ≈ 15 min with a 5.7-kPa peak. A model switch must not look like a process upset, so with a total condenser the switch also sets the CW valve for a continuous Q_C: ΔT_new = T_0,sat(P_top) − T_cw,in with the new K, Q_C,old from the last step of the old tier, m_cw = UA_eff / (2 c_p,w (UA_eff ΔT_new / Q_C,old − 1)) from (7.3), OP = 100 m_cw / m_cw,max clamped to 0–100 % (100 % when UA_eff ΔT_new ≤ Q_C,old). PC-101's OP and the valve position are set to it bumplessly (`c4`: 50 → ≈ 59 %). As in T1 → T2, T^(n−1) := T after the first bubble-point solve of the new tier, so the column's heat storage does not turn the temperature step into vapour. With a partial condenser the CW lever belongs to the learner and is not moved; PC-101 absorbs the step through PV-102. |
 
 The T1 ↔ T3 switches (M5) follow the T1 ↔ T2 rows with the Tier-3 model. On azeotropic systems the top-vapour rule is approximate, because the two tiers' compositions differ a lot: `ew` T3 → T1 → T3 returns at D 9.67 instead of 10 kmol/h (VALIDATION.md VC-28.6).
 
@@ -2121,6 +2123,7 @@ The engine computes these checks from **readings only** (instrument values and q
 - **Level to moles.** N_0,1% and N_S,1% are the mol per 1 % of drum and sump level, from the preset's design steady state (constant; B-T Tier 1: 307 mol and 236 mol). ΔN_0 = (LT-101_end − LT-101_start) N_0,1%, and likewise ΔN_S.
 - **Status and band.** Each check has a residual r and a band. Status is `ok` for |r| ≤ band, `check` for band < |r| ≤ 2 band and `fail` for |r| > 2 band, shown green, amber and red with the number r/band.
 - **Bad inputs.** If any input is BAD or OOS, the status is `n/a` with the tag named. UNCERTAIN inputs are used but flagged.
+- **Partial condenser (M4, 2026-10-13).** The vapour product D_V has no flow transmitter. C1, C2 and C3b need every product stream, so they show `n/a` ("vapour product not metered"). C3a and C5 (drum) stay: V_cw is the condensed vapour, which balances L_0 + D + ΔN_0/W with either condenser. C4 PV-101/FT-201 runs on the CW valve (held at `cwOP`); PV-102 has no meter and no C4 row. A vapour-product meter is not planned before M9.
 - **Steady-only check.** C2 shows `transient` while the steady indicator (§13.3) is false; the column inventory absorbs composition changes for about an hour.
 - **Band sizes.** Bands are 3–10× the noise of the windowed residual at the default window. A fault larger than about twice the band is unambiguous on a phone, and drill severities are chosen to meet that (ENGINE_API.md §11.5).
 
