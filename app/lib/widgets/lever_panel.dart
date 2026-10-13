@@ -101,6 +101,27 @@ class LeverPanel extends StatelessWidget {
               units: u,
               locked: locked.contains(id),
             );
+            if (sim.config.crude != null) {
+              group('CRUDE FEED', [tile('crudeRate'), tile('cot')]);
+              group('TOP', [tile('pTop'), tile('topTSp'), tile('drumTSp')]);
+              group('DRAWS (PRODUCT RATES)', [tile('drawRate.kero'), tile('drawRate.diesel'), tile('drawRate.ago')]);
+              group('PUMPAROUND', [tile('paDuty')]);
+              group('STEAM', [tile('steam.bottom'), tile('steam.ss1'), tile('steam.ss2'), tile('steam.ss3')]);
+              group('INTERNALS', [
+                _Labeled(
+                  label: 'Hydraulics',
+                  t: t,
+                  child: _Segments(
+                    options: const ['Ideal', 'Full'],
+                    selected: full ? 1 : 0,
+                    onSelect: locked.contains('hydraulics') ? null : (i) => sim.setLever('hydraulics', i.toDouble()),
+                    t: t,
+                  ),
+                ),
+              ]);
+              group('INSTRUMENTS', _instrumentTiles(values, locked, sim, t));
+              return ListView(controller: controller, padding: padding, children: children);
+            }
             final feedZ = levers.firstWhere((l) => l.id.startsWith('feedZ.'));
             group('FEED', [
               tile('feedFlow'),
@@ -290,6 +311,40 @@ class LeverPanel extends StatelessWidget {
     );
   }
 }
+
+/// Noise, view and bad-signal segments (the INSTRUMENTS group of the crude unit).
+List<Widget> _instrumentTiles(Map<String, double> values, Set<String> locked, SimController sim, LowsysTheme t) => [
+      _Labeled(
+        label: 'Measurement noise',
+        t: t,
+        child: _Segments(
+          options: const ['Off', 'On'],
+          selected: (values['noise'] ?? 0) >= 0.5 ? 1 : 0,
+          onSelect: locked.contains('noise') ? null : (i) => sim.setLever('noise', i.toDouble()),
+          t: t,
+        ),
+      ),
+      _Labeled(
+        label: 'View',
+        t: t,
+        child: _Segments(
+          options: const ['Model (true values)', 'Plant (readings only)', 'Plant + calculations'],
+          selected: (values['view'] ?? 0).round().clamp(0, 2),
+          onSelect: locked.contains('view') ? null : (i) => sim.setLever('view', i.toDouble()),
+          t: t,
+        ),
+      ),
+      _Labeled(
+        label: 'Loop on a bad signal',
+        t: t,
+        child: _Segments(
+          options: const ['Keeps running', 'Drops to MAN'],
+          selected: (values['badPvShed'] ?? 1) >= 0.5 ? 1 : 0,
+          onSelect: locked.contains('badPvShed') ? null : (i) => sim.setLever('badPvShed', i.toDouble()),
+          t: t,
+        ),
+      ),
+    ];
 
 /// Feed condition read-out in Tiers 2/3: q and the vapour fraction from the feed enthalpy (PHYSICS.md 3.15).
 class _FeedCondition extends StatelessWidget {

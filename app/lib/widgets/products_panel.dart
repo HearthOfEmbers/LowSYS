@@ -3,6 +3,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
 import '../theme/lowsys_theme.dart';
+import 'crude_products_panel.dart';
 
 /// Products tab (SCOPE.md 3.2, M7): the FUG shortcut panel and the GC analyser composition lists.
 class ProductsPanel extends StatelessWidget {
@@ -12,6 +13,7 @@ class ProductsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sim = AppScope.of(context).sim;
+    if (sim.config.crude != null) return CrudeProductsPanel(compact: compact);
     return ListenableBuilder(
       listenable: Listenable.merge([sim.fug, sim.fugTargets, sim.snapshot]),
       builder: (context, _) => ListView(

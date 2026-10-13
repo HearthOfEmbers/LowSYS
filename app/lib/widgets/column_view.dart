@@ -7,6 +7,7 @@ import '../painters/column_painter.dart';
 import '../painters/packed_painter.dart';
 import '../painters/mccabe_painter.dart';
 import '../theme/lowsys_theme.dart';
+import 'crude_flowsheet.dart';
 
 /// Animated column: a static vessel layer (cached in a RepaintBoundary) under a live layer that repaints
 /// from the snapshot notifier and the UI clock. Tap a tray to inspect it.
@@ -15,6 +16,14 @@ class ColumnView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sim = AppScope.of(context).sim;
+    return ListenableBuilder(
+      listenable: sim,
+      builder: (ctx, _) => sim.config.crude != null ? const CrudeFlowsheet() : _classic(ctx),
+    );
+  }
+
+  Widget _classic(BuildContext context) {
     final scope = AppScope.of(context);
     final sim = scope.sim;
     final t = LowsysThemeScope.of(context);

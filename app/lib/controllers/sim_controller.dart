@@ -37,7 +37,9 @@ class SimController extends ChangeNotifier {
 
   /// Diagram tab ids in display order: 0 McCabe-Thiele, 2 T-x-y (binaries only), 1 Profiles. Figure numbers of the Paper
   /// theme follow the position (SCOPE.md 7.2).
-  List<int> get diagramTabOrder => [0, if (config.components.length == 2) 2, 1, if (config.components.length > 2) 3];
+  List<int> get diagramTabOrder => config.crude != null
+      ? const [3, 1]
+      : [0, if (config.components.length == 2) 2, 1, if (config.components.length > 2) 3];
 
   /// M7 Products tab: FUG result (null for binaries, plant views and invalid keys), recomputed every 10 s of sim time
   /// (PHYSICS.md 14.3). [fugTargets] null is live mode; otherwise target mode with the recoveries and optional R/R_min.
@@ -181,6 +183,7 @@ class SimController extends ChangeNotifier {
     );
     if (!keepScenario)
       await runner.setLever('noise', 1); // sandbox default (SCOPE.md 3, M3)
+    if (config?.crude != null || runner.config.crude != null) diagramTab.value = 3; // crude opens on the Products tab
     _loaded = true;
     await _refresh();
     notifyListeners();
@@ -491,9 +494,12 @@ class SimController extends ChangeNotifier {
     final t1 = sw.elapsedMicroseconds;
     snapshot.value = s;
     final t2 = sw.elapsedMicroseconds;
-    mccabe.value = _builder.build(s, runner.thermo, showRmin: showRmin, keys: s.stages.nc > 2 ? config.effectiveKeys : null);
-    _refreshFug(s);
-    if (diagramTab.value == 2 && s.stages.nc == 2 && s.view == SimView.model) {
+    final crude = config.crude != null;
+    if (!crude) {
+      mccabe.value = _builder.build(s, runner.thermo, showRmin: showRmin, keys: s.stages.nc > 2 ? config.effectiveKeys : null);
+      _refreshFug(s);
+    }
+    if (!crude && diagramTab.value == 2 && s.stages.nc == 2 && s.view == SimView.model) {
       final th = runner.thermo;
       txy.value = _txyBuilder.build(s, (s.tier != ThermoTier.t1 && th is Tier2Raoult) ? th : runner.idealThermo);
     } else if (txy.value != null && diagramTab.value != 2) {

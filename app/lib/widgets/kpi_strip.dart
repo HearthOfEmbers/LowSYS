@@ -27,7 +27,7 @@ class KpiStrip extends StatelessWidget {
     String frac(double v) => Fmt.value(Quantity.fraction, v);
     String flow(UnitSystem u, double v) =>
         u.fromSI(Quantity.molarFlow, v).toStringAsFixed(1);
-    final items = <_Item>[
+    final items = sim.config.crude != null ? _crudeItems(p) : <_Item>[
       _Item(
         'xD',
         (k, u) => frac(k.xD),
@@ -124,7 +124,8 @@ class KpiStrip extends StatelessWidget {
             for (final it in items)
               if ((!(it.label == 'dP' || it.label == 'Flood') ||
                       (s != null && s.hydraulics == HydraulicsMode.full)) &&
-                  (!(it.label == 'P' || it.label == 'Q_C' || it.label == 'Q_R') ||
+                  (sim.config.crude != null ||
+                      !(it.label == 'P' || it.label == 'Q_C' || it.label == 'Q_R') ||
                       (s != null && s.tier != ThermoTier.t1)))
                 InkWell(
                   onTap: it.target == null
@@ -161,6 +162,35 @@ class KpiStrip extends StatelessWidget {
       child: chips,
     );
   }
+}
+
+/// The crude unit's KPI strip: yields, overflash, the two G16 specs and the overhead (SCOPE.md 3.2).
+List<_Item> _crudeItems(ThemePalette pal) {
+  String temp(double k, UnitSystem u) => k.isNaN ? '—' : u.fromSI(Quantity.temperature, k).toStringAsFixed(0);
+  _Item mk(String label, String Function(CrudeProductKpis, Kpis, UnitSystem) f, String Function(UnitSystem) unit,
+          {ExplainTarget? target, Color? Function(CrudeProductKpis, ThemePalette)? tone}) =>
+      _Item(label, (k, u) => k.crude == null ? '—' : f(k.crude!, k, u), unit,
+          target: target, tone: tone == null ? null : (k, p) => k.crude == null ? null : tone(k.crude!, p));
+  String y(double v) => v.isNaN ? '—' : v.toStringAsFixed(1);
+  return [
+    mk('Naphtha', (c, k, u) => y(c.yieldVolPct[0]), (u) => '%', target: const ExplainProduct(0)),
+    mk('Kero', (c, k, u) => y(c.yieldVolPct[1]), (u) => '%', target: const ExplainProduct(1)),
+    mk('Diesel', (c, k, u) => y(c.yieldVolPct[2]), (u) => '%', target: const ExplainProduct(2)),
+    mk('AGO', (c, k, u) => y(c.yieldVolPct[3]), (u) => '%', target: const ExplainProduct(3)),
+    mk('Residue', (c, k, u) => y(c.yieldVolPct[4]), (u) => '%', target: const ExplainProduct(4)),
+    mk('Overflash', (c, k, u) => y(c.overflashVolPct), (u) => '%', target: const ExplainOverflash()),
+    mk('Kero D86 95', (c, k, u) => temp(c.d86p95[1], u), (u) => u.symbol(Quantity.temperature),
+        target: const ExplainProduct(1), tone: (c, p) => c.d86p95[1] > 508.15 ? p.warn : p.ok),
+    mk('D–K gap', (c, k, u) => c.gapDieselKero.isNaN ? '—' : u.fromSI(Quantity.temperatureDelta, c.gapDieselKero).toStringAsFixed(1),
+        (u) => u.symbol(Quantity.temperatureDelta), target: const ExplainProduct(2), tone: (c, p) => c.gapDieselKero >= 0 ? p.ok : p.warn),
+    mk('Res TBP 5', (c, k, u) => temp(c.residueTbp5, u), (u) => u.symbol(Quantity.temperature), target: const ExplainProduct(4),
+        tone: (c, p) => c.residueTbp5 < 628.15 ? p.warn : null),
+    mk('Q_C', (c, k, u) => c.qc.isNaN ? '—' : (c.qc / 1e6).toStringAsFixed(2), (u) => 'MW',
+        target: const ExplainCondenser(), tone: (c, p) => c.condenserLimited ? p.alarm : null),
+    mk('Drum', (c, k, u) => k.drumLevelPct.toStringAsFixed(0), (u) => '%', target: const ExplainCondenser()),
+    mk('Flood', (c, k, u) => k.maxFloodPct.isNaN ? '—' : k.maxFloodPct.toStringAsFixed(0), (u) => '%',
+        tone: (c, p) => c.condenserLimited ? null : null),
+  ];
 }
 
 class _Kpi extends StatelessWidget {
