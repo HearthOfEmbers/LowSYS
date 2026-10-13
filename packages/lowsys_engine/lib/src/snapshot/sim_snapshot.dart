@@ -190,8 +190,12 @@ class ReboilerSnapshot {
 @immutable
 class EnergySnapshot {
   final double feed, reboiler, condenser, distillate, bottoms, residual;
+
+  /// Enthalpy flow of the vapour product D_V H_V,0 of a partial condenser (0 for a total one), included in [residual].
+  final double vaporProduct;
   const EnergySnapshot(this.feed, this.reboiler, this.condenser,
-      this.distillate, this.bottoms, this.residual);
+      this.distillate, this.bottoms, this.residual,
+      {this.vaporProduct = 0});
 }
 
 @immutable

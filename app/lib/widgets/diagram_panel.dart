@@ -4,79 +4,16 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../painters/profile_painter.dart';
 import '../theme/lowsys_theme.dart';
-import 'column_view.dart';
+import 'diagram_head.dart';
 
-/// DiagramPanel tabs (SCOPE.md 3.2): McCabe-Thiele and Profiles in M2.
+/// DiagramPanel body: the tab shell (diagram_head.dart) around the Profiles chart.
 class DiagramBody extends StatelessWidget {
   final bool compact;
   const DiagramBody({super.key, this.compact = false});
 
   @override
-  Widget build(BuildContext context) {
-    final sim = AppScope.of(context).sim;
-    final t = LowsysThemeScope.of(context);
-    final p = t.palette;
-    return ValueListenableBuilder<int>(
-      valueListenable: sim.diagramTab,
-      builder: (context, tab, _) {
-        Widget tabBtn(String label, int i) => Expanded(
-          child: InkWell(
-            onTap: () => sim.diagramTab.value = i,
-            child: Container(
-              height: MediaQuery.sizeOf(context).height < 500 ? 30 : 36,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: tab == i ? p.accent : p.gridMajor,
-                    width: tab == i ? 2.5 : 1,
-                  ),
-                ),
-              ),
-              child: Text(
-                label,
-                style: t.type.display.style(
-                  13.5,
-                  tab == i ? p.accent : p.inkMuted,
-                  weight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                tabBtn(compact ? 'McCabe' : 'McCabe–Thiele', 0),
-                tabBtn('Profiles', 1),
-              ],
-            ),
-            Expanded(
-              child: ValueListenableBuilder<SimSnapshot?>(
-                valueListenable: sim.snapshot,
-                builder: (context, s, _) => s?.view == SimView.plant
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            'Not available on a real plant. The analysers show xD and xB, and the Balance tab checks the meters against each other.',
-                            textAlign: TextAlign.center,
-                            style: t.type.label.style(14, p.inkMuted),
-                          ),
-                        ),
-                      )
-                    : (tab == 0
-                          ? McCabeChart(compact: compact)
-                          : const ProfilesChart()),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) =>
+      DiagramShell(compact: compact, profiles: const ProfilesChart());
 }
 
 class ProfilesChart extends StatelessWidget {

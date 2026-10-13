@@ -2447,7 +2447,9 @@ class Simulator {
                       _stepper.qDelivered -
                       s.qC -
                       dFlow * s.hLiq[0] -
-                      bFlow * s.hLiq[N + 1])),
+                      bFlow * s.hLiq[N + 1] -
+                      s.dV * s.hVap[0],
+                  vaporProduct: s.dV * s.hVap[0])),
     );
   }
 

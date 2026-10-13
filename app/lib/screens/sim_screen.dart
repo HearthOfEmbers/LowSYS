@@ -77,10 +77,12 @@ class _SimScreenState extends State<SimScreen> with SingleTickerProviderStateMix
         final sel = sim.selectedStage.value;
         sim.openMath(sel == null ? const ExplainStream(StreamId.distillate) : ExplainStage(sel));
       }
-    } else if (k == LogicalKeyboardKey.digit1) {
-      sim.diagramTab.value = 0;
-    } else if (k == LogicalKeyboardKey.digit2) {
-      sim.diagramTab.value = 1;
+    } else if (k == LogicalKeyboardKey.keyT) {
+      sim.cycleTier();
+    } else if (k == LogicalKeyboardKey.digit1 || k == LogicalKeyboardKey.digit2 || k == LogicalKeyboardKey.digit3) {
+      final order = sim.diagramTabOrder;
+      final i = k == LogicalKeyboardKey.digit1 ? 0 : (k == LogicalKeyboardKey.digit2 ? 1 : 2);
+      if (i < order.length) sim.diagramTab.value = order[i];
     } else {
       return KeyEventResult.ignored;
     }

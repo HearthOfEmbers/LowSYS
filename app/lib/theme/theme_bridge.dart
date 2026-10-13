@@ -5,7 +5,8 @@ import 'lowsys_theme.dart';
 /// Maps theme tokens onto a Material [ThemeData] so standard widgets match.
 ThemeData materialThemeFor(LowsysTheme t) {
   final p = t.palette;
-  final scheme = ColorScheme.dark(
+  final light = p.bg.computeLuminance() > 0.5;
+  final scheme = (light ? ColorScheme.light : ColorScheme.dark)(
     primary: p.accent,
     onPrimary: p.bgAlt,
     secondary: p.accent2,
@@ -32,7 +33,7 @@ ThemeData materialThemeFor(LowsysTheme t) {
   );
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
+    brightness: light ? Brightness.light : Brightness.dark,
     colorScheme: scheme,
     scaffoldBackgroundColor: p.bg,
     canvasColor: p.bgAlt,
