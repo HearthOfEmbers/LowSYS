@@ -8,6 +8,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../theme/lowsys_theme.dart';
 import '../theme/themes/brass.dart';
+import '../theme/painter_text.dart';
 
 const List<String> kCrudeProductNames = ['Naphtha', 'Kerosene', 'Diesel', 'AGO', 'Residue'];
 
@@ -155,7 +156,7 @@ class _CurvePainter extends CustomPainter {
     final grid = Paint()..color = (brass ? brassSepia : p.grid).withValues(alpha: brass ? 0.25 : 1)..strokeWidth = 1;
     final lab = TextStyle(fontFamily: t.type.number.family, fontFamilyFallback: t.type.number.fallback, fontSize: 10.5, color: muted);
     void txt(String s, Offset o, {Alignment a = Alignment.topLeft, TextStyle? st}) {
-      final tp = TextPainter(text: TextSpan(text: s, style: st ?? lab), textDirection: TextDirection.ltr)..layout();
+      final tp = TextPainter(text: TextSpan(text: s, style: st ?? lab), textDirection: TextDirection.ltr, textScaler: PainterText.scaler)..layout();
       tp.paint(canvas, Offset(o.dx - tp.width * (a.x + 1) / 2, o.dy - tp.height * (a.y + 1) / 2));
     }
 
@@ -201,7 +202,7 @@ class _CurvePainter extends CustomPainter {
     for (var i = 0; i < curves.length; i++) {
       final col = brass ? _brassSeries[curves[i].$2 % _brassSeries.length] : p.series[curves[i].$2 % p.series.length];
       canvas.drawLine(Offset(lx, plot.top + 8), Offset(lx + 12, plot.top + 8), Paint()..color = col..strokeWidth = 2.5);
-      final tp = TextPainter(text: TextSpan(text: names[i], style: lab.copyWith(color: ink)), textDirection: TextDirection.ltr)..layout();
+      final tp = TextPainter(text: TextSpan(text: names[i], style: lab.copyWith(color: ink)), textDirection: TextDirection.ltr, textScaler: PainterText.scaler)..layout();
       tp.paint(canvas, Offset(lx + 15, plot.top + 2));
       lx += 15 + tp.width + 8;
     }

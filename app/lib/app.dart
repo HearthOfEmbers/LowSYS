@@ -1,3 +1,4 @@
+import 'theme/painter_text.dart';
 import 'package:flutter/material.dart';
 import 'l10n/strings.dart';
 
@@ -45,10 +46,17 @@ class _LowsysAppState extends State<LowsysApp> {
           title: S.appTitle,
           debugShowCheckedModeBanner: false,
           theme: materialThemeFor(theme),
-          builder: (context, child) => LowsysThemeScope(
-            theme: theme,
-            child: AppScope(sim: _sim, anim: _anim, child: child!),
-          ),
+          builder: (context, child) {
+            // painter-drawn text follows the text scale; the key repaints every painter when it changes
+            final scale = PainterText.update(MediaQuery.textScalerOf(context));
+            return KeyedSubtree(
+              key: ValueKey(scale),
+              child: LowsysThemeScope(
+                theme: theme,
+                child: AppScope(sim: _sim, anim: _anim, child: child!),
+              ),
+            );
+          },
           home: const SimScreen(),
         );
       },

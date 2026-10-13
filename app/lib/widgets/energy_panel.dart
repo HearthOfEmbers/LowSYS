@@ -5,6 +5,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../theme/lowsys_theme.dart';
 import 'loops_panel.dart' show checkColor;
+import '../theme/painter_text.dart';
 
 /// Energy panel (Equipment tab, SCOPE.md 8): condenser, reboiler and column energy balance cards. In plant view
 /// the cards show readings only (FT-201, TI-201/202, PT-201, FT-103) and the C3a/C3b checks.
@@ -436,7 +437,7 @@ class _LoopPainter extends CustomPainter {
   _LoopPainter({required this.palette, required this.valve, required this.xe, required this.surging, required this.style});
 
   void _label(Canvas c, String text, Offset at) {
-    final tp = TextPainter(text: TextSpan(text: text, style: style), textDirection: TextDirection.ltr)..layout();
+    final tp = TextPainter(text: TextSpan(text: text, style: style), textDirection: TextDirection.ltr, textScaler: PainterText.scaler)..layout();
     tp.paint(c, at);
   }
 
