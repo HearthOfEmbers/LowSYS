@@ -45,6 +45,7 @@ class EnergyPanel extends StatelessWidget {
             if (header != null) header!,
             _CondenserCard(s: s, u: u, plant: plant, t: t),
             _ReboilerCard(s: s, u: u, plant: plant, t: t),
+            if (s.reboiler.type == ReboilerType.thermosyphon) _ThermosyphonCard(s: s, u: u, t: t),
             _BalanceCard(s: s, u: u, plant: plant, t: t, sim: sim),
           ],
         );
@@ -329,6 +330,67 @@ class _BalanceCard extends StatelessWidget {
             'On a real plant only the readings are known: FT-201, TI-201, TI-202, PT-201 and FT-103.',
             style: t.type.label.style(12, p.inkMuted),
           ),
+      ],
+    );
+  }
+}
+
+/// Thermosyphon loop card (M6, PHYSICS.md 8.3): circulation, exit and riser quality, the instability index against its
+/// 1.0 limit, the oscillation and the line pressure drops. In plant view the loop is not observable; with the engineering
+/// calculations (plantCalc) the calculated values carry a "calc" label.
+class _ThermosyphonCard extends StatelessWidget {
+  final SimSnapshot s;
+  final UnitSystem u;
+  final LowsysTheme t;
+  const _ThermosyphonCard({required this.s, required this.u, required this.t});
+
+  @override
+  Widget build(BuildContext context) {
+    final r = s.reboiler;
+    final p = t.palette;
+    final calc = s.view == SimView.plantCalc;
+    final plant = s.view.isPlant;
+    final tag = calc ? ' calc' : '';
+    String num2(double v, String unit, [int d = 2]) => v.isNaN ? '—' : '${v.toStringAsFixed(d)} $unit';
+    final surging = !r.instabilityIndex.isNaN && r.instabilityIndex > 1.0;
+    if (plant && !calc) {
+      return _Card(
+        cardKey: const ValueKey('energy-thermosyphon'),
+        title: 'THERMOSYPHON',
+        t: t,
+        rows: [
+          _Row('Inlet valve', '${r.inletValve.toStringAsFixed(0)} % open', t),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'The circulation, exit quality and surge index are not observable on a real plant. Watch the boilup and the bottom temperatures for a ripple of 5 to 20 s.',
+              style: t.type.label.style(13, p.inkMuted),
+            ),
+          ),
+        ],
+      );
+    }
+    return _Card(
+      cardKey: const ValueKey('energy-thermosyphon'),
+      title: calc ? 'THERMOSYPHON (calc)' : 'THERMOSYPHON',
+      t: t,
+      flag: surging ? 'SURGING' : null,
+      flagColor: p.alarm,
+      rows: [
+        _Row('Circulation W$tag', num2(r.circulation, 'kg/s'), t),
+        _Row('Exit quality x_e$tag', num2(r.exitQuality, '', 3), t,
+            sub: r.exitQuality > 0.30 ? 'above 0.30: mist flow' : null,
+            valueColor: r.exitQuality > 0.30 ? p.warn : null),
+        _Row('Riser quality x_r$tag', num2(r.riserQuality, '', 3), t),
+        _Row('Surge index I_s$tag', num2(r.instabilityIndex, '', 2), t, sub: 'limit 1.00', valueColor: surging ? p.alarm : null),
+        _Bar(r.instabilityIndex.isNaN ? 0 : r.instabilityIndex, 1.0, t, color: surging ? p.alarm : p.ok),
+        _Row('Oscillation$tag', r.oscAmplitude.isNaN ? '—' : '${(100 * r.oscAmplitude).toStringAsFixed(1)} %', t,
+            sub: r.oscAmplitude > 0.005 ? 'period ${r.oscPeriod.toStringAsFixed(1)} s' : null,
+            valueColor: r.oscAmplitude > 0.02 ? p.alarm : null),
+        _Row('Inlet line dP$tag', _bar(u, r.inletLineDp), t),
+        _Row('Outlet line dP$tag', _bar(u, r.outletLineDp), t),
+        _Row('Inlet valve', '${r.inletValve.toStringAsFixed(0)} % open', t),
+        _Row('Steam-side duty (FT-103)', _kw(u, r.steamSideDuty), t, sub: 'mean of the loop duty'),
       ],
     );
   }
