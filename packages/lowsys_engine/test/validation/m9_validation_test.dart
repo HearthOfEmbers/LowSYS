@@ -4,6 +4,8 @@
 // [P] rows are engine steady states against the prototype values (docs/milestones/M9.md E.3), plus physical-sense and
 // direction checks the coder's test/m9_*_test.dart do not cover (COT 360, PA 0 / 6 MW, bottom steam 0 / 3000,
 // H - h over the stages, profile shape, dt independence, F25 s = 0.5 timeline, F24 SP raise, G16 timing).
+// M10 follow-up (validator, on 79be4e6): the "Spec rulings M9" rows (F25 s = 0.5 / 0.85, F24 SP raise with the onset cap,
+// vapour-free stages at F24 s = 1 and bottom steam 0, energyResidual on Q_C + Q_PA, G16 o1 timing, C1 clamp count).
 library;
 
 import 'dart:math' as math;
@@ -36,6 +38,8 @@ double _ti(Simulator s, String tag) => s.snapshot().instruments.firstWhere((i) =
 void main() {
   final pcs = pseudoRef();
   final th = CrudeThermo();
+  // steady states with vapour-free stages 27-30 (spec rulings M9 item 5), filled by the tests that run them
+  final vapourFree = <String, SimSnapshot>{};
 
   group('VC-15.1-15.3 [I]: engine = independent reference = printed', () {
     test('E.3 #1: PC1 / PC5 / PC9 T_b, MW, omega, dH_vap(T_b); whole 9.1 table within the VC-15.1 tolerances', () {
@@ -260,15 +264,15 @@ void main() {
       expect(mx, closeTo(286.8, 6));
     });
 
-    test('closure: energy residual in W against Q_C + Q_PA (feed enthalpy from the reference flash); water', () {
+    test('closure: energy residual against Q_C + Q_PA (the crude denominator since spec rulings M9 C3); mass', () {
       final k = s0.kpis.crude!;
-      final (_, _, hF) = feedFlashRef(pcs, k.cot, s0.stages.p[26]);
-      final fF = 132.5 / 3600 * bulkRef(pcs).$4; // mol/s
-      final absW = s0.kpis.energyResidual * fF * hF;
+      // spec rulings M9 C3: energyResidual is (in - out) / (Q_C + Q_PA) for crude, no longer / (F h_F)
+      final absW = s0.kpis.energyResidual * (k.qc + k.qPa);
       // ignore: avoid_print
-      print('feed enthalpy ${(fF * hF / 1e6).toStringAsFixed(2)} MW (T_b basis), residual ${absW.toStringAsFixed(0)} W, '
-          'Q_C + Q_PA ${((k.qc + k.qPa) / 1e6).toStringAsFixed(2)} MW');
-      expect(absW.abs() / (k.qc + k.qPa), lessThan(1e-3));
+      print('default: energy residual ${s0.kpis.energyResidual.toStringAsExponential(2)} of Q_C + Q_PA '
+          '${((k.qc + k.qPa) / 1e6).toStringAsFixed(2)} MW = ${absW.toStringAsFixed(0)} W; mass '
+          '${s0.kpis.balanceResidual.toStringAsExponential(2)}');
+      expect(s0.kpis.energyResidual.abs(), lessThan(1e-3));
       expect(s0.kpis.balanceResidual.abs(), lessThan(1e-4));
     });
 
@@ -309,13 +313,30 @@ void main() {
           '${(k0.qc / 1e6).toStringAsFixed(3)} / ${(k6.qc / 1e6).toStringAsFixed(3)}, kero95 ${_c(k6.d86p95[1]).toStringAsFixed(2)}');
     });
 
-    test('9.8: bottom steam 0 / 3000 kg/h: residue 49.92 / 46.05 vol %', () {
-      final k0 = _k(_steady(_sim(levers: {'steam.bottom': 0})));
+    test('9.8: bottom steam 0 / 3000 kg/h: residue 49.92 / 46.05 vol %; steam 0 (vapour-free stages 27-30, '
+        'PHYSICS.md 9.3): no vapour, no heating below the flash zone, energy closure recorded (VC-15.7)', () {
+      final s0s = _steady(_sim(levers: {'steam.bottom': 0}));
+      final k0 = _k(s0s);
       final k3 = _k(_steady(_sim(levers: {'steam.bottom': 3000 / 3600})));
       expect(k0.yieldVolPct[4], closeTo(49.92, 0.5));
       expect(k3.yieldVolPct[4], closeTo(46.05, 0.3));
+      final q = s0s.snapshot();
+      final e0 = q.kpis.energyResidual;
       // ignore: avoid_print
-      print('bottom steam 0 / 3000: residue ${k0.yieldVolPct[4].toStringAsFixed(2)} / ${k3.yieldVolPct[4].toStringAsFixed(2)}');
+      print('bottom steam 0 / 3000: residue ${k0.yieldVolPct[4].toStringAsFixed(2)} / ${k3.yieldVolPct[4].toStringAsFixed(2)}; '
+          'steam 0: energy residual ${e0.toStringAsExponential(2)} of Q_C + Q_PA, mass '
+          '${q.kpis.balanceResidual.toStringAsExponential(2)}, T 26..30 '
+          '${[for (var j = 26; j <= 30; j++) _c(q.stages.t[j]).toStringAsFixed(2)].join(' / ')}, V 27..30 '
+          '${[for (var j = 27; j <= 30; j++) (q.stages.vaporUp[j] * 3.6).toStringAsFixed(2)].join(' / ')} kmol/h, '
+          'negativeClamps ${q.solverHealth.negativeClamps}, bubbleFallbacks ${q.solverHealth.bubbleFallbacks}, '
+          'negativeLatent ${q.solverHealth.negativeLatent}');
+      vapourFree['bottom steam 0'] = q;
+      expect(q.kpis.balanceResidual.abs(), lessThan(1e-4));
+      expect(q.solverHealth.bubbleFallbacks, 0);
+      expect(q.solverHealth.negativeLatent, 0);
+      // VC-15.7 asks <= 1e-3; the engine gives about 2e-3 (film-floor mass, DEVIATIONS "Spec rulings M9 (coder)" (b),
+      // spec-pending). The interim bound is the coder's 3e-3; the strict check is the skipped test below.
+      expect(e0.abs(), lessThan(3e-3));
     });
 
     test('VC-15.6: PA 3 MW with SS2 steam 1000 kg/h: D-K +12.9 K, meets both specs, residue TBP 5 % >= 355 C', () {
@@ -330,8 +351,8 @@ void main() {
   });
 
   group('faults and timing [P]', () {
-    test('F25 s = 0.5: duty held; top / flash zone / bottom TIs within 1 K after 10 min; PA-zone TIs move ~4 K '
-        '(the prototype gives the same steady shifts, so VC-15.5 "every TI" is a wording item)', () {
+    test('VC-15.5 F25 s = 0.5 (ruling 1): duty 5.00 MW, FC-314 not saturated, return 140.0 C; TI-341/349/350 within 1 K '
+        'at 10 min; steady TI-344 -4.3, TI-345 +4.0, TI-346 +1.2 K (+-1.0)', () {
       final s = _sim();
       final tags = [for (var n = 341; n <= 353; n++) 'TI-$n'];
       final t0 = {for (final g in tags) g: _ti(s, g)};
@@ -341,18 +362,54 @@ void main() {
           severity: 0.5,
           onset: s.time));
       s.advance(600);
-      for (final g in ['TI-341', 'TI-349', 'TI-350']) {
-        expect(_ti(s, g), closeTo(t0[g]!, 1.0), reason: g);
+      final at10 = {for (final g in ['TI-341', 'TI-349', 'TI-350']) g: _ti(s, g) - t0[g]!};
+      for (final g in at10.keys) {
+        expect(at10[g], closeTo(0, 1.0), reason: g);
       }
       expect(_k(s).qPa / 1e6, closeTo(5.0, 0.05));
       _steady(s);
-      // prototype (tools/prototypes/m9, paFlowFrac 0.5, steady): stage 11 -4.27 K, stage 15 +3.96 K, stage 18 +1.22 K
-      expect(_ti(s, 'TI-344') - t0['TI-344']!, closeTo(-4.27, 0.5));
-      expect(_ti(s, 'TI-345') - t0['TI-345']!, closeTo(3.96, 0.5));
-      expect(_ti(s, 'TI-346') - t0['TI-346']!, closeTo(1.22, 0.5));
+      final k = _k(s);
+      final d = {for (final g in ['TI-344', 'TI-345', 'TI-346']) g: _ti(s, g) - t0[g]!};
+      // ignore: avoid_print
+      print('F25 s 0.5: at 10 min ${at10.map((g, v) => MapEntry(g, v.toStringAsFixed(2)))}; steady '
+          '${d.map((g, v) => MapEntry(g, v.toStringAsFixed(2)))}, duty ${(k.qPa / 1e6).toStringAsFixed(3)} MW, return '
+          '${_c(k.paReturnT).toStringAsFixed(1)} C, FC-314 OP ${s.control.loop('FC-314').op.toStringAsFixed(1)} %');
+      expect(d['TI-344'], closeTo(-4.3, 1.0));
+      expect(d['TI-345'], closeTo(4.0, 1.0));
+      expect(d['TI-346'], closeTo(1.2, 1.0));
+      expect(k.qPa / 1e6, closeTo(5.0, 0.05));
+      expect(_c(k.paReturnT), closeTo(140.0, 3));
+      expect(s.control.loop('FC-314').op, lessThan(99.5));
+      expect(k.paDutyLimited, isFalse);
     });
 
-    test('closure at dry-draw states (5 % film floor): F27 kero 16 % and F24 bottom s = 1', () {
+    test('VC-15.5 F25 s = 0.85: cooler limit 1.77 MW, return 120.0 C, FC-314 saturated, paDutyLimited; Q_C +34 %', () {
+      final base = _k(_sim());
+      final s = _sim();
+      s.faults.inject(FaultSpec(
+          type: FaultType.pumparoundTrip,
+          location: const FaultLocation.equipment('pumparound'),
+          severity: 0.85,
+          onset: s.time));
+      _steady(s);
+      final k = _k(s);
+      final dQc = 100 * (k.qc / base.qc - 1);
+      // ignore: avoid_print
+      print('F25 s 0.85: duty ${(k.qPa / 1e6).toStringAsFixed(3)} MW, return ${_c(k.paReturnT).toStringAsFixed(1)} C, FC-314 OP '
+          '${s.control.loop('FC-314').op.toStringAsFixed(1)} %, paDutyLimited ${k.paDutyLimited}, Q_C ${dQc.toStringAsFixed(1)} %');
+      expect(k.qPa / 1e6, closeTo(1.77, 0.15));
+      expect(_c(k.paReturnT), closeTo(120.0, 3));
+      expect(s.control.loop('FC-314').op, greaterThanOrEqualTo(99.5));
+      expect(k.paDutyLimited, isTrue);
+      expect(dQc, closeTo(34, 4));
+    });
+
+    // spec rulings M9: film floor (C2) mass closure at F27 kero 16 %; F24 s = 1 vapour-free stages (ruling 5): stage-30
+    // rise +12.9 ... +16.9 K (prototype +14.9, engine ~ +14.0), energy closure (VC-15.7 1e-3, spec-pending, see below)
+    final e24 = <double>[];
+    test('closure at dry-draw states (5 % film floor): F27 kero 16 % and F24 bottom s = 1; F24 s = 1 stage 30 +12.9..+16.9 K',
+        () {
+      final base = _k(_sim());
       final a = _steady(_sim(levers: {'drawRate.kero': 0.16 * 0.0368056}));
       final b = _sim();
       b.faults.inject(FaultSpec(
@@ -362,26 +419,65 @@ void main() {
           onset: b.time,
           ramp: 60));
       _steady(b);
-      final fF = 132.5 / 3600 * bulkRef(pcs).$4;
-      final absW = <double>[];
+      final rel = <double>[];
       for (final s in [a, b]) {
         final q = s.snapshot();
         final k = q.kpis.crude!;
-        final w = q.kpis.energyResidual * fF * feedFlashRef(pcs, k.cot, q.stages.p[26]).$3;
-        absW.add(w / (k.qc + k.qPa));
+        rel.add(q.kpis.energyResidual); // relative to Q_C + Q_PA (spec rulings M9 C3)
         // ignore: avoid_print
         print('dry draw ${k.drawDry}: mass residual ${q.kpis.balanceResidual.toStringAsExponential(2)}, energy '
-            '${(w / 1e3).toStringAsFixed(1)} kW = ${(100 * absW.last).toStringAsFixed(3)} % of Q_C + Q_PA; T 26..30 '
-            '${[for (var j = 26; j <= 30; j++) _c(q.stages.t[j]).toStringAsFixed(2)].join(' / ')}, V 27..30 '
-            '${[for (var j = 27; j <= 30; j++) (q.stages.vaporUp[j] * 3.6).toStringAsFixed(1)].join(' / ')} kmol/h');
+            '${(rel.last * (k.qc + k.qPa) / 1e3).toStringAsFixed(1)} kW = ${rel.last.toStringAsExponential(2)} of Q_C + Q_PA; '
+            'T 26..30 ${[for (var j = 26; j <= 30; j++) _c(q.stages.t[j]).toStringAsFixed(2)].join(' / ')}, V 27..30 '
+            '${[for (var j = 27; j <= 30; j++) (q.stages.vaporUp[j] * 3.6).toStringAsFixed(1)].join(' / ')} kmol/h; '
+            'negativeClamps ${q.solverHealth.negativeClamps}; FZ ${(k.flashZoneT - base.flashZoneT).toStringAsFixed(2)} K, '
+            'stage 30 ${(k.bottomT - base.bottomT).toStringAsFixed(2)} K, residue ${k.yieldVolPct[4].toStringAsFixed(2)}, '
+            'AGO ${k.yieldVolPct[3].toStringAsFixed(2)}, Q_C ${(100 * (k.qc / base.qc - 1)).toStringAsFixed(1)} %');
         expect(k.drawDry[2], isTrue);
         expect(q.kpis.balanceResidual.abs(), lessThan(1e-4));
       }
-      expect(absW[0].abs(), lessThan(1e-3), reason: 'F27 kero 16 %: energy closes');
-      // F24 s = 1 (no bottom steam): recorded, not asserted (coder / spec item in DEVIATIONS "M9 validation")
+      expect(rel[0].abs(), lessThan(1e-3), reason: 'F27 kero 16 %: energy closes');
+      final kb = _k(b);
+      expect(kb.bottomT - base.bottomT, inInclusiveRange(12.9, 16.9), reason: 'VC-15.5 F24 s = 1 stage 30 (ruling 5)');
+      expect(kb.yieldVolPct[4], closeTo(49.92, 0.5));
+      expect(kb.yieldVolPct[3], closeTo(3.20, 0.5));
+      expect(100 * (kb.qc / base.qc - 1), closeTo(-28, 4));
+      expect(rel[1].abs(), lessThan(3e-3), reason: 'interim bound (coder 2.3e-3); VC-15.7 strict 1e-3 is the skipped test');
+      e24.add(rel[1]);
+      vapourFree['F24 s = 1'] = b.snapshot();
+    });
+    test('ruling 5 physical sense: a vapour-free stage has no heat source, so stages 27-30 stay within 0.1 K of the flash '
+        'zone (F24 s = 1 and bottom steam 0)', () {
+      expect(vapourFree.keys, containsAll(['F24 s = 1', 'bottom steam 0']));
+      vapourFree.forEach((name, q) {
+        final rise = [for (var j = 27; j <= 30; j++) q.stages.t[j] - q.stages.t[26]];
+        // the heat this rise carries out with the stage-30 liquid, against the energy residual
+        final nc = q.stages.nc;
+        final heat = q.stages.liquidDown[30] *
+            (th.hLmix(q.stages.x, 30 * nc, q.stages.t[30]) - th.hLmix(q.stages.x, 30 * nc, q.stages.t[26]));
+        var dx = 0.0;
+        for (var i = 0; i < 9; i++) {
+          dx = math.max(dx, (q.stages.x[30 * nc + i] - q.stages.x[26 * nc + i]).abs());
+        }
+        final k = q.kpis.crude!;
+        // ignore: avoid_print
+        print('$name: T_j - T_26 for j = 27..30: ${rise.map((r) => r.toStringAsFixed(3)).join(' / ')} K; L_30 x (h_L(T_30) - '
+            'h_L(T_26)) = ${(heat / 1e3).toStringAsFixed(1)} kW against the energy residual '
+            '${(q.kpis.energyResidual * (k.qc + k.qPa) / 1e3).toStringAsFixed(1)} kW; max |x_30 - x_26| ${dx.toStringAsExponential(1)}');
+        for (var j = 27; j <= 30; j++) {
+          expect(q.stages.vaporUp[j], lessThan(1e-9), reason: '$name stage $j vapour-free');
+          expect(rise[j - 27], lessThanOrEqualTo(0.1), reason: '$name stage $j heats with no source');
+        }
+      });
+    });
+    test('VC-15.7 strict: energy closure <= 1e-3 at F24 s = 1 and at bottom steam 0',
+        skip: 'spec-pending (STATUS next step 3, DEVIATIONS "Spec rulings M9 (coder)" (b)): the engine closes to ~2.3e-3; the '
+            'film-floor mass on the dry stages 26-29 is not balanced. Recorded by the two tests above', () {
+      expect(e24.single.abs(), lessThanOrEqualTo(1e-3));
     });
 
-    test('F24 bottom s = 0.5: steam delivered = half the SP; raising the SP (recorded, spec item)', () {
+    test('VC-15.5 F24 bottom s = 0.5, then FC-321 SP 2000 -> 4000 kg/h at 30 min (ruling 2): steam stays 1000 +- 1 kg/h, '
+        'FC-321 at 100 %; residue +0.52, stage 30 +5.8 K, Q_C -12.6 % as the s = 0.5 row', () {
+      final base = _k(_sim());
       final s = _sim();
       final ft0 = _ti(s, 'FT-321');
       s.faults.inject(FaultSpec(
@@ -390,43 +486,73 @@ void main() {
           severity: 0.5,
           onset: s.time,
           ramp: 60));
-      s.advance(300);
+      s.advance(1800);
       final ft1 = _ti(s, 'FT-321');
-      expect(ft1 / ft0, closeTo(0.5, 0.01));
+      expect(ft0 * 3600, closeTo(2000, 1));
+      expect(ft1 * 3600, closeTo(1000, 1));
       expect(s.control.loop('FC-321').op, closeTo(100, 0.5));
       s.setLever('steam.bottom', 4000 / 3600);
-      s.advance(300);
+      s.advance(1800);
       final ft2 = _ti(s, 'FT-321');
+      _steady(s);
+      final ft3 = _ti(s, 'FT-321');
+      final k = _k(s);
+      final dRes = k.yieldVolPct[4] - base.yieldVolPct[4], dT30 = k.bottomT - base.bottomT, dQc = 100 * (k.qc / base.qc - 1);
       // ignore: avoid_print
-      print('F24 s 0.5: FT-321 ${(ft0 * 3600).toStringAsFixed(0)} -> ${(ft1 * 3600).toStringAsFixed(0)} kg/h; '
-          'SP 4000 kg/h -> ${(ft2 * 3600).toStringAsFixed(0)} kg/h');
+      print('F24 s 0.5: FT-321 ${(ft0 * 3600).toStringAsFixed(1)} -> ${(ft1 * 3600).toStringAsFixed(1)} kg/h; SP 4000 kg/h -> '
+          '${(ft2 * 3600).toStringAsFixed(1)} (30 min) / ${(ft3 * 3600).toStringAsFixed(1)} kg/h (steady), FC-321 OP '
+          '${s.control.loop('FC-321').op.toStringAsFixed(1)} %; residue ${dRes.toStringAsFixed(2)} vol %, stage 30 '
+          '${dT30.toStringAsFixed(2)} K, Q_C ${dQc.toStringAsFixed(1)} %, AGO dry ${k.drawDry[2]}');
+      expect(ft2 * 3600, closeTo(1000, 1));
+      expect(ft3 * 3600, closeTo(1000, 1));
+      expect(s.control.loop('FC-321').op, closeTo(100, 0.5));
+      expect(dRes, closeTo(0.52, 0.2));
+      expect(dT30, closeTo(5.8, 1.5));
+      expect(dQc, closeTo(-12.6, 3));
+      expect(k.drawDry.any((d) => d), isFalse, reason: 'no draw dry at s = 0.5');
     });
 
-    test('G16 timing: PA 3 MW from the default; when the specs are met, and the state at 2 h vs steady', () {
-      final s = _sim();
+    test('VC-15.6 G16 o1 timing (ruling 4): PA 3 MW alone at t = 0 completes o1 in 20-40 min of process time; at 2 h '
+        'kero 95 % 231.1, D-K +6.5 K (steady values, +-3 K)', () {
+      final s = Simulator(Presets.byId('crude'), options: const SimOptions(seed: 1));
+      s.startScenario(Scenarios.byId('G16_crude_gaps'));
       s.setLever('paDuty', 3e6);
-      double? tMet;
-      for (var t = 60; t <= 7200; t += 60) {
-        s.advance(60);
-        final k = _k(s);
-        final met = _c(k.d86p95[1]) <= 235 && k.gapDieselKero >= 0 && _c(k.residueTbp5) >= 355;
-        if (met && tMet == null) tMet = t.toDouble();
-        if (!met) tMet = null;
+      double? tO1, tSpecs;
+      for (var t = 30; t <= 7200; t += 30) {
+        s.advance(30);
+        final q = s.snapshot();
+        final k = q.kpis.crude!;
+        final met = _c(k.d86p95[1]) <= 235 && k.gapDieselKero >= 0;
+        if (met && tSpecs == null) tSpecs = t.toDouble();
+        if (!met) tSpecs = null;
+        if (tO1 == null && q.scenario!.objectives.first.met) tO1 = t.toDouble();
       }
-      final k2 = _k(s);
-      final at2h = (_c(k2.d86p95[1]), k2.gapDieselKero, k2.qc);
-      final r = s.runToSteadyState(maxSimSeconds: 172800);
-      final kS = _k(s);
+      final k = _k(s);
       // ignore: avoid_print
-      print('G16 PA 3 MW: specs met (and kept) from ${tMet! / 60} min; at 2 h kero95 ${at2h.$1.toStringAsFixed(2)} '
-          'D-K ${at2h.$2.toStringAsFixed(2)} QC ${(at2h.$3 / 1e6).toStringAsFixed(3)}; steady after a further '
-          '${(r.simSeconds / 3600).toStringAsFixed(2)} h: ${_c(kS.d86p95[1]).toStringAsFixed(2)} / '
-          '${kS.gapDieselKero.toStringAsFixed(2)} / ${(kS.qc / 1e6).toStringAsFixed(3)}');
-      expect(tMet, lessThan(1800));
-      expect(at2h.$1, closeTo(_c(kS.d86p95[1]), 0.5));
-      expect(at2h.$2, closeTo(kS.gapDieselKero, 0.5));
-      expect(_c(kS.d86p95[1]), closeTo(231.1, 3));
-      expect(kS.gapDieselKero, closeTo(6.5, 3));
+      print('G16 PA 3 MW alone: specs met (and kept) from ${tSpecs == null ? '-' : (tSpecs / 60).toStringAsFixed(1)} min, '
+          'o1 met at ${tO1 == null ? 'never' : (tO1 / 60).toStringAsFixed(1)} min; at 2 h kero95 '
+          '${_c(k.d86p95[1]).toStringAsFixed(2)}, D-K ${k.gapDieselKero.toStringAsFixed(2)}, Q_C ${(k.qc / 1e6).toStringAsFixed(3)} MW');
+      expect(tO1, isNotNull);
+      expect(tO1! / 60, inInclusiveRange(20, 40));
+      expect(_c(k.d86p95[1]), closeTo(231.1, 3));
+      expect(k.gapDieselKero, closeTo(6.5, 3));
     });
+  });
+
+  test('spec rulings M9 C1: a forced (4.6) V >= 0 clamp counts in negativeClamps (B-T Tier 2, reboiler duty -> 0)', () {
+    final cfg = Presets.byId(Presets.bt).copyWith(tier: ThermoTier.t2, hydraulics: HydraulicsMode.ideal);
+    final s = Simulator(cfg, options: const SimOptions(seed: 1));
+    s.advance(600);
+    final c0 = s.snapshot().solverHealth.negativeClamps;
+    s.setLever('reboilerDuty', 0);
+    s.advance(600);
+    final q = s.snapshot();
+    final c1 = q.solverHealth.negativeClamps;
+    // ignore: avoid_print
+    print('C1 forced clamp: negativeClamps $c0 -> $c1 after Q_R -> 0 for 600 s (Q_R ${(q.kpis.qr / 1e3).toStringAsFixed(1)} kW, '
+        'V_sump ${(q.stages.vaporUp[q.layout.nTrays + 1] * 3.6).toStringAsFixed(3)} kmol/h)');
+    expect(c0, 0, reason: 'no clamp at the healthy Tier-2 state');
+    expect(c1, greaterThan(0));
+    expect(q.stages.vaporUp[q.layout.nTrays + 1], greaterThanOrEqualTo(0));
   });
 }
