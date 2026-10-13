@@ -81,7 +81,7 @@ Navigation uses plain `Navigator` routes (no routing package): S0 → S1 → S2;
 |---|---|
 | **TimeBar** | Sim clock (hh:mm:ss), speed selector (Pause, 1×, 2×, 5×, 10×, 30×, 100×, 300×, 1000×), actual speed achieved (shown amber when the frame budget limits it), "Steady?" indicator (green when the steady-state residual is below tolerance), "Run to steady state" button, tier badge (T1/T2/T3, tap to switch), units toggle. |
 | **ColumnView** | Animated column painter (trays or packing, downcomers, liquid, froth, vapour, drum, sump, reboiler/thermosyphon, condenser, flows on pipes, side strippers for crude). Tap a tray or stream to open the math overlay; long-press for a quick-look tooltip. Pinch-zoom and pan on phone. |
-| **DiagramPanel** | Tabs: McCabe–Thiele · Profiles · Trends · Products (FUG panel or crude TBP/D86) · Equipment (condenser, reboiler / thermosyphon detail). |
+| **DiagramPanel** | Tabs: McCabe–Thiele · T-x-y (binaries only, M5; PHYSICS.md §14.4b) · Profiles · Trends · Products (FUG panel or crude TBP/D86) · Equipment (condenser, reboiler / thermosyphon detail). Tabs that do not apply to the preset are hidden. |
 | **ControlPanel** | Tabs: Levers (grouped: Feed, Top, Bottom, Column, Advanced) · Faceplates (one per control loop: PV/SP/OP, mode, quality badge, signal look, valve-curve mini plot, field check; M3) · Balance (cross-checks C1–C7 with window selector and the C6 temperature chart; M3) · Faults (sandbox only, M2+). |
 | **KpiStrip** | xD, xB (or key-component specs, or crude product specs), D, B, R, Q_C, Q_R, column ΔP, max flood %, active alarms. Each value is tappable (math overlay). |
 | **AlarmBanner** | Newest unacknowledged alarm; tap to open the alarm list; "Ack" button (M3). |
@@ -97,7 +97,7 @@ Breakpoints use the logical width `w` and height `h` of the window (dp):
 | Medium | `600 ≤ w < 1000` | Top: TimeBar. Row: ColumnView (30 %) · DiagramPanel (70 %). Bottom: ControlPanel, collapsible (40 % height). |
 | Expanded (desktop) | `w ≥ 1000` | Three columns: ColumnView (25 %) · two stacked diagram panels (50 %) · ControlPanel (25 %). Bottom strip (20 % height): trends and alarm list. The math overlay is a floating, draggable panel. |
 
-Touch targets are at least 48 dp. Every slider has −/+ fine buttons and a numeric entry field (tap the value). Desktop keyboard shortcuts: Space pause/resume; `+`/`-` speed; `1`–`5` diagram tabs; `M` math overlay for the selected item; `T` cycle tier; `U` toggle units; `S` run to steady state.
+Touch targets are at least 48 dp. Every slider has −/+ fine buttons and a numeric entry field (tap the value). Desktop keyboard shortcuts: Space pause/resume; `+`/`-` speed; `1`–`6` diagram tabs (in the order shown, counting only visible tabs); `M` math overlay for the selected item; `T` cycle tier; `U` toggle units; `S` run to steady state.
 
 ---
 
@@ -163,7 +163,7 @@ Ranges are hard limits; defaults are for the benzene–toluene (B-T) preset unle
 
 ### 4.3b Methanol–water preset `mw` (M4)
 
-Used by G7, and from M5 by G9 (Tier 3 NRTL).
+Used by G7. From M5 it also runs in Tier 3 (NRTL; VALIDATION.md VC-8.13, VC-28.7).
 
 | Setting | Value |
 |---|---|
@@ -248,8 +248,8 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G6 | Real trays (Murphree) | B-T, T1 | Lower E_MV from 1 to 0.5; add trays to recover | Restore xD ≥ 0.98 with E = 0.5 by adding trays; compare with the Lewis relation | M3 |
 | G7 | What CMO hides | B-T then methanol–water, switch T1 ↔ T2 | Compare V and L profiles and operating curves in T1 vs T2 | Explain why V_B < V_top in T2 (answer chosen from options); see the curved operating locus | M4 |
 | G8 | Pressure and volatility | B-T, T2, steam header 10 bar(g), CW 15 °C (VALIDATION.md VC-27.3) | Take P_top from 1 atm down to 0.7 bar, then up to 3 bar | Observe α fall (2.60 → 2.20 at x = 0.5) and, for the same purity, reflux and duty rise; hold the 1-atm specs at 2 bar | M4 |
-| G9 | The azeotrope wall | Ethanol–water, T3 then T1 | Try to exceed x = 0.90 in the distillate | Discover the azeotrope at about 0.896 / 78.1 °C; see Tier 1 "beat" it falsely; lower pressure moves the azeotrope | M5 |
-| G10 | The other azeotrope | Acetone–chloroform, T3 | Find where the azeotrope ends up | Identify that the maximum-boiling azeotrope (x ≈ 0.33) leaves in the bottoms | M5 |
+| G9 | The azeotrope wall | Ethanol–water, T3, then T1, then T3 at 0.5 bar(a) | Raise R at fixed duty (cut D) and watch x_D stall; switch to Tier 1; go to 0.5 bar(a), turning the feed down to 60 % so the condenser keeps up | Discover the azeotrope at about 0.896 / 78.1 °C; see Tier 1 "beat" it falsely; at 0.5 bar(a) pass 0.8956 (x_D ≥ 0.897), because lower pressure moves the azeotrope (to 0.911) | M5 |
+| G10 | The other azeotrope | Acetone–chloroform, T3 | Draw more distillate at fixed duty and see where the azeotrope ends up; read it off the T-x-y tab | Identify that the maximum-boiling azeotrope leaves in the bottoms (x_B 0.378 approaches it from above), and read x_az = 0.333 ± 0.02 off the T-x-y diagram | M5 |
 | G11 | Flooding | B-T, T2, full hydraulics | Push throughput up 10 % per step | The default column runs at 63 % of flood and floods at about 160 % throughput. Find the onset (ΔP slope change, xD collapse); back off to 80–92 % flood (≈ 130–140 %) with xD ≥ 0.95 | M2 (T1), upgraded in M4 |
 | G12 | Turndown and weeping | B-T, sieve then valve trays | Cut throughput to 35 % | See weeping cost separation on sieve trays and not (yet) on valve trays | M2 |
 | G13 | Debutanizer keys and FUG | Debutanizer, T3 | Compare the FUG panel to the rigorous column | Meet 98 % LK/HK recoveries; compare N and R_min with Fenske/Underwood/Gilliland | M7 |
@@ -354,7 +354,23 @@ Style switches (enums): `vesselStyle` {outline, flat, bevel, vector}, `liquidSty
 - Typography: "Source Serif 4" (text), "Source Sans 3" (UI), "STIX Two Math" (math and axis labels).
 - Column: clean schematic like a textbook figure — thin black outline, light blue liquid, grey vapour.
 - Charts: classic McCabe–Thiele as printed in textbooks: black equilibrium curve, blue operating lines, red staircase, stage numbers in small italics beside each step.
-- Signature effects: figure captions under each diagram ("Figure 1 — Live McCabe–Thiele, benzene–toluene, Tier 2, t = 01:32:10"); margin notes for the selected tray; "Export figure" (PNG) button.
+- Remaining tokens (M5 readiness): surfaceAlt `#F1ECE1`, info `#1F6F8B`, selection `#F6D365` (highlighter; used **only as a fill** at 60 % alpha behind ink, never as a line or text colour), marker `#1F2328`; series `#2B6CB0` `#1F2328` `#00796B` `#6A3D9A` `#B35C00` `#C2185B`. Red (alarm, stepLine) and the ok/warn colours are not series colours. Contrast (VALIDATION.md U2) on bg / surface: series lowest 4.45 / 4.72 (`#B35C00`), info 5.34 / 5.67.
+- Style switches: vesselStyle outline, liquidStyle gradient (flat fill lerped liquidLight → liquidHeavy with composition, no texture), vaporStyle dots (vapor, small, no glow), gaugeStyle numeric, lineStyle ink (1.25 px solid strokes, no glow). Effects: paperGrain on (the cached grain tile at 4 % alpha), figureCaptions on, alarmBlink on; blueprintGrid, scanlines, bloom, vignette, rivets and needlePhysics off.
+- Signature effects:
+  - Figure captions under each diagram, in Source Serif 4 italic, inkMuted: "Figure n — <diagram>, <system>, Tier <k>[ (<model>)], P = <P_top in display units>, t = hh:mm:ss". n is the tab's position (McCabe–Thiele 1, T-x-y 2, Profiles 3, Trends 4, Products 5, Equipment 6). Example: "Figure 2 — T-x-y, ethanol–water, Tier 3 (NRTL), P = 1.013 bar, t = 01:32:10". A "transient" caption (PHYSICS.md §14.1) is appended in accent2.
+  - Margin note for the selected tray: a 160-dp box in the diagram's right margin (below the caption on compact layouts), Source Serif 4 italic 12 sp, ink on surface with a hairline inkFaint border, joined to the stage marker by a thin inkMuted leader. Content: "Tray j: T, x, y, y*, L, V" in display units, 4 significant figures.
+  - "Export figure": a button in the diagram panel header (Paper only; other themes hide it). It renders that panel's chart and caption, without the app chrome, through `RepaintBoundary.toImage(pixelRatio: 3)` (longest side capped at 4096 px), on an opaque surface background, and writes a PNG named `lowsys_<preset>_<tab>_<hhmmss>.png`. Windows: the Downloads folder (`getDownloadsDirectory()`, falling back to the Documents folder). Android: the app's external files folder `…/Android/data/<package>/files/figures/` (`getExternalStorageDirectory()`; no storage permission needed). A snackbar shows the full path. This adds `path_provider` (flutter.dev) to the app dependencies (§9). A share sheet is not in M5.
+
+### 7.2b T-x-y drawing (all themes, M5)
+
+The T-x-y tab (PHYSICS.md §14.4b) uses only existing tokens:
+- Bubble curve (saturated liquid, T vs x): `cold`, solid, labelled "liquid" (Paper: "bubble-point curve"). Dew curve (saturated vapour, T vs y): `hot`, solid, labelled "vapour" (Paper: "dew-point curve"). Phosphor varies intensity (100 % / 60 %) as for hot/cold.
+- Curves at P_{N+1} (shown when the column ΔP > 1 kPa): the same tokens at 50 % alpha, dashed.
+- Azeotrope: a filled diamond in `marker` with a leader label "azeotrope x = 0.8956, 78.14 °C" (display units; maximum-boiling ones say "maximum-boiling azeotrope").
+- Column overlay: each stage as a hollow circle in `stepLine` at (x_j, T_j); the drum and sump points as filled circles in `accent` labelled D and B; the selected stage's circle is filled with `selection`, and a horizontal tie-line in `accent` joins (x_j, T_j) to (y_j, T_j).
+- Tier 1 (curves from the Tier-2 model, PHYSICS.md §14.4b): the caption or a banner says "ideal (Raoult) — constant α has no temperatures". Stage points use the display T* (PHYSICS.md §1.3).
+- The x-y sub-view (toggle in the tab header) uses the McCabe–Thiele tokens: eqCurve, diagonal, azeotrope marker.
+- Axes: x or y of the light component, 0–1; T in display units with 5 K (or 10 °F) major ticks.
 
 ### 7.3 Performance rules for all themes
 
@@ -452,23 +468,31 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
   In plant view the cards show readings only (FT-201, TI-201/202, PT-201, FT-103) and the C3a/C3b checks.
 - Acceptance: VC-10 (thermo spot values), VC-11 (Tier-2 MESH reference, duty 1301.477 kW), VC-8 Tier-2 directions (8.7 with 10 bar(g) steam), VC-5.2 (1×10⁻¹⁰) and VC-5.4 pass; energy closure ≤ 1×10⁻⁶ relative at steady state (prototype 5×10⁻⁹); VC-16.6 (pressure loop, flash stability), VC-18.3 and VC-27 (mw preset, pressure sweep, utility limits) pass; switching T1 ↔ T2 at steady state meets VC-8.9: no NaN, top vapour and D continuous, the stripping-section vapour steps by the physical −4 … −6 %. v1.0's "no step > 5 % in any flow" is not physical. Identical steady states at dt = 0.5, 2 and 30 s.
 
-### M5 — Tier 3 (NRTL) and azeotropic binaries
+### M5 — Tier 3 (NRTL, DePriester) and azeotropic binaries
 
-> **Readiness status (2026-10-12, pass stopped early).**
-> - **Done:**
->   - NRTL checked against experiment, with its limits stated (PHYSICS.md §3.4.1).
->   - Preset defaults and utilities for `mw`, `ew`, `ac` and `c4`, and the lever-range rule (PHYSICS.md §2.3).
->   - McCabe–Thiele rules for azeotropes and the T-x-y spec (PHYSICS.md §14.1, §14.4b).
->   - VALIDATION.md: VC-10.5 and VC-10.8 updated, VC-18.4 corrected, new VC-28.
-> - **Not done:**
->   - G9 and G10 objective rows (ENGINE_API.md §11.8); planned changes: G9 gets a vacuum-rated condenser (UA ≈ 60 kW/K) and a 0.5 atm(a) step; G10 asks for the azeotrope read off the T-x-y diagram (0.333 ± 0.02).
->   - The G8 debrief line about the 0.5 bar condenser limit.
->   - Completing the Paper theme (missing tokens surfaceAlt, info, selection, marker, series1–6; export spec; T-x-y styling).
->   - The M5 acceptance list below, and `c4` Tier-3 (DePriester) reference numbers.
+Readiness pass completed 2026-10-12 (excerpt: docs/milestones/M5.md).
 
-- Engine: NRTL activity model, presets methanol–water, ethanol–water, acetone–chloroform, isobutane–n-butane (DePriester K, PHYSICS.md §3.4), azeotrope finder, T-x-y data.
-- App: Paper theme; T-x-y / x-y tab; scenarios G9, G10.
-- Acceptance: VC-10 azeotrope and VLE checks pass; Tier 3 ethanol–water column cannot exceed the azeotrope composition in the distillate (VC-8).
+- Engine:
+  - NRTL activity model (`Tier3Nrtl`, PHYSICS.md §3.4.1) and DePriester K (`Tier3DePriester`, §3.4.2; used by `c4` in M5, by `debut`/`deprop` from M7).
+  - Presets `ew`, `ac`, `c4`, and Tier 3 for `mw` (PHYSICS.md §2.3, including the M5 preset rules).
+  - Azeotrope finder and T-x-y data (PHYSICS.md §14.4b; ENGINE_API.md §7.3).
+  - McCabe–Thiele azeotrope rules: q-line root search, R_min "beyond the azeotrope" banners (§14.1).
+  - Tier switching among T1/T2/T3 (§13.5); explain lines `eq.nrtl` and `eq.depriester` (§15).
+  - Tier-2 instruments, cross-checks C6/C7 and faults F08–F15 work unchanged in Tier 3; C7 uses the active tier's bubble point.
+- App:
+  - Paper theme (§7.2, completed in the readiness pass).
+  - T-x-y tab with x-y sub-view (§3.2, §7.2b).
+  - Tier badge T1/T2/T3. T3 is hidden for presets whose Tier 3 equals Tier 2 (`bt`, `crude`).
+  - Tier 1 on `ac` shows the banner "Tier 1 cannot represent this system" (PHYSICS.md §2.3).
+  - Scenarios G9 and G10 (ENGINE_API.md §11.8); G8 gets its condenser-limit debrief line.
+- Acceptance:
+  - VC-10.4–10.6, VC-10.8 (every preset system, including `c4` with DePriester) and VC-10.9 (DePriester K).
+  - VC-8.10, 8.11 and 8.13; VC-18.4; VC-28.1–28.8. The Tier 3 ethanol–water column never exceeds the azeotrope in the distillate (VC-8.10, VC-28.6).
+  - VC-5.2 (1×10⁻¹⁰) and VC-5.4 (1×10⁻⁶) on `ew` and `ac` in Tier 3.
+  - VC-21 for the NRTL and DePriester lines.
+  - U1 with the T-x-y tab; U2 and U4 for Paper.
+  - G9 and G10 are completed by their hints (VC-28.8).
+  - Identical steady states at dt 0.5, 2 and 30 s (VC-28.1).
 
 ### M6 — Thermosyphon reboiler and hidden-fault drills
 
@@ -478,7 +502,7 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 
 ### M7 — Multicomponent light hydrocarbons
 
-- Engine: hydrocarbon components C3–nC7 (PHYSICS.md §3.1), Tier 1 multicomponent constant α, Tier 2 Raoult with Lee–Kesler, Tier 3 DePriester (McWilliams); debutanizer and depropanizer presets; key components; FUG shortcut module (Fenske, Underwood, Gilliland/Molokanov, Kirkbride) computed live; Hengstebeck pseudo-binary McCabe–Thiele.
+- Engine: hydrocarbon components C3–nC7 (PHYSICS.md §3.1), Tier 1 multicomponent constant α, Tier 2 Raoult with Lee–Kesler, Tier 3 DePriester (McWilliams; the K model ships in M5 with `c4`); debutanizer and depropanizer presets; key components; FUG shortcut module (Fenske, Underwood, Gilliland/Molokanov, Kirkbride) computed live; Hengstebeck pseudo-binary McCabe–Thiele.
 - App: Phosphor theme; Products tab with the FUG panel; component profile chart; scenario G13; drill H6.
 - Acceptance: VC-9 (FUG numbers and rigorous-vs-shortcut check) passes; 40 trays × 8 components Tier 3 runs at ≥ 100× on the reference phone (VC-19).
 
@@ -526,6 +550,10 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 | Noise in the sandbox | On by default; off in guided scenarios | The user asked for noise on; textbook scenarios read cleaner without it, and their objectives use true values anyway |
 | What a drill shows | Plant view (only measured values) in H9 and H10 | Otherwise the model's true profiles would expose a lying instrument at a glance |
 | Bad-PV behaviour | Loops shed to MAN on a BAD PV (sandbox, H10); H9 turns shedding off | Modern DCS default; H9 needs the old behaviour so that a signal loss threatens the process |
+| G9 vacuum step (M5) | The learner turns the feed down to 60 % at 0.5 bar(a); the default condenser is kept | At 0.5 bar(a) the condensing ΔT falls from 48 to 32 K, and the default condenser carries only about 68 % of the design load. A condenser big enough for full rate (UA ≈ 60 kW/K, the earlier plan) would run at about 12 % CW at 1 atm, where PC-101 has about 15 times the B-T loop gain (VALIDATION.md VC-28.8). Turning the feed down is also what an operator would do |
+| Azeotropic presets' efficiency (M5) | `ew` and `ac` ship with E = 0.7 like every sandbox preset; VC-28 and G9/G10 set E = 1 | Keeps the "0.70 in sandbox" rule; the reference steady states are textbook (E = 1) cases |
+| Tier 1 T-x-y (M5) | Drawn from the Tier-2 (Raoult) model and labelled "ideal" | Constant α has no temperatures; matches M4's display-only bubble point |
+| Figure export (M5) | PNG to Downloads (Windows) or the app's external files folder (Android) via `path_provider`; no share sheet | One small first-party dependency; sharing waits for M10 |
 
 ## 10. Open items for the user (not blocking)
 

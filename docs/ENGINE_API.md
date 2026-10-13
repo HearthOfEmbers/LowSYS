@@ -71,6 +71,7 @@ typedef LeverId = String;       // see §6.3
 typedef FaultId = String;       // instance id returned by FaultManager.inject
 
 enum ThermoTier { t1, t2, t3 }
+enum Tier3Model { nrtl, dePriester, sameAsTier2 }   // M5
 enum HydraulicsMode { ideal, full }
 enum TrayType { sieve, valve }
 enum CondenserType { total, partial }
@@ -204,6 +205,9 @@ class ColumnConfig {
   final KeyComponents? keys;                // multicomponent LK/HK
   final Map<LeverId, double> initialLevers;
   final double murphree;                    // global E_MV
+  final Tier3Model tier3Model;              // M5: nrtl (mw, ew, ac), dePriester (c4; debut, deprop from M7), sameAsTier2 (bt, crude)
+  final bool tier1CannotRepresent;          // M5: true for `ac`; the UI shows "Tier 1 cannot represent this system" in Tier 1 (PHYSICS.md §2.3)
+  Set<ThermoTier> get availableTiers;       // PHYSICS.md §13.5: sameAsTier2 → {t1, t2}; crude → {t2}; otherwise all three
   List<String> validate();
   factory ColumnConfig.fromJson(Map<String, Object?> json);
   Map<String, Object?> toJson();
@@ -637,10 +641,24 @@ class McCabeThieleData {
   final List<StageCorner> corners;           // (x_j, y_j, stage number, isFeed)
   final List<Point2> pseudoEquilibrium;
   final double xF, xD, xB;
-  final RminConstruction? rmin;              // line + value when requested
+  final RminConstruction? rmin;              // when requested; see below
   final List<RangeX> pinchZones;
   final bool transient;                      // steady-state monitor false
 }
+```
+
+```dart
+@immutable
+class RminConstruction {        // PHYSICS.md §14.1, minimum-reflux row (M5 adds the azeotrope cases)
+  final double? sMin, rMin;     // null when blocked
+  final Point2? pinch;          // touching point (x, y*): the feed pinch (x_q) or a tangent pinch
+  final bool tangentPinch;      // true when the pinch is not at x_q
+  final Segment2? line;         // from (x_D, x_D) with slope sMin; null when blocked
+  final RminBlock? blocked;     // non-null: draw no line, show the banner
+}
+enum AzeotropeSide { distillate, bottoms }
+@immutable
+class RminBlock { final AzeotropeSide side; final double xAzeotrope; }   // banner "x_D (or x_B) is beyond the azeotrope (x = …)"
 ```
 
 Builder rules are exactly PHYSICS.md §14.1–14.2. Cost target: ≤ 0.3 ms per build with a warm cache (Tier 2 curves are recomputed only when the pressures change by > 100 Pa or the tier changes).
@@ -663,8 +681,42 @@ class ProfileData { static ProfileData from(SimSnapshot s); /* series per PHYSIC
 class FugResult { final double nMin, theta, rMin, nGilliland, nrOverNs; final Float64List alpha, dToB; /* §14.3 */ }
 class FugCalculator { FugResult compute(SimSnapshot s, KeyComponents keys, {FugTargets? targets}); }
 class CrudeProductData { /* TBP & D86 curves per product, gaps, yields; PHYSICS.md §9.6 */ }
-class TxyData { static TxyData build(ThermoModel m, double p); /* T-x-y and x-y, azeotrope markers */ }
 ```
+
+**T-x-y (M5, PHYSICS.md §14.4b).** Binaries only (`nc == 2`); multicomponent presets hide the tab.
+
+```dart
+@immutable
+class Azeotrope {
+  final double x;                 // light-component mole fraction (= y)
+  final double t;                 // K
+  final bool maximumBoiling;      // true when T_az is above both pure-component boiling points
+}
+
+@immutable
+class TxyData {
+  /// One bubble-point sweep at pressure p (PHYSICS.md §14.4b grid). [m] must have temperatures:
+  /// in Tier 1 pass the Tier-2 model behind displayBubbleT() and the result is flagged ideal.
+  static TxyData build(ThermoModel m, double p, {bool ideal = false});
+  /// VC-10.5 method: sign changes of y* − x on a 1×10⁻⁴ grid, bisection to 1×10⁻⁸. Allocates; not on the hot path.
+  static List<Azeotrope> findAzeotropes(ThermoModel m, double p);
+
+  final double p;                          // Pa
+  final Float64List x, tBubble, yStar;     // grid sorted by x; T in K
+  final Float64List yDew, tDew;            // the same points as (y*, T), sorted by y
+  final List<Azeotrope> azeotropes;
+  final bool ideal;                        // Tier-1 view drawn with Raoult
+}
+
+class TxyBuilder {
+  /// Caches per (system, tier, p rounded to 100 Pa). Returns the curves at P_top and, when the
+  /// column ΔP > 1 kPa, at P_{N+1}; plus the stage overlay (x_j, T_j), D and B points from the snapshot.
+  /// In Tier 1 [thermo] is the Tier-2 model behind displayBubbleT(), the data is flagged ideal and T_j is the display T*.
+  ({TxyData top, TxyData? bottom, List<Point2> stages, Point2 d, Point2 b}) build(SimSnapshot s, ThermoModel thermo);
+}
+```
+
+Cost target: one `TxyData.build` < 2 ms on desktop (VALIDATION.md VC-28.5); a warm-cache `TxyBuilder.build` ≤ 0.1 ms. The azeotrope x in the McCabe–Thiele banners (PHYSICS.md §14.1) is `findAzeotropes(thermo, P_top)`, cached the same way.
 
 ---
 
@@ -1348,12 +1400,17 @@ All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`,
 | G6 Real trays (Murphree) | `steady`; murphree 0.5 (locked), feedStage locked (it follows the fractional rule of PHYSICS.md §13.4) | o1 xD ≥ 0.98 ∧ steady, hold 300; o2 number "fewest trays that reached 0.98" = 28 ± 1; o3 choice "What stays about constant?" → "N × E (the equilibrium stages)" | "Add trays a few at a time" | [P] E = 0.5: N 20 → 0.95331, 24 → 0.96968, 26 → 0.97568, 27 → 0.97761, **28 (feed 14) → 0.98056**. 20 × 0.7 = 28 × 0.5 = 14 |
 | G7 What CMO hides (M4) | B-T T1 at its default steady state; then preset `mw` (VC-27.1) | o1 tier == 2 ∧ steady, hold 300; o2 choice "Why is V at the bottom smaller than at the top?" → "toluene's latent heat is larger, so the same heat boils fewer moles"; o3 (after o2) preset == "mw" ∧ tier == 2 ∧ steady, hold 300 (loaded by an event or by the learner via the Learn screen's "Next"); o4 choice "How much smaller is the boilup than the top vapour here?" → "about 12 %" (options 2 %, 6 %, 12 %, 25 %) | "Switch tiers with the T1/T2 badge; the switch keeps D, so compare the V profile (Profiles tab)" | B-T: V₁ 150 → V_B 141.9 kmol/h after the switch (VC-8.9); mw: V₁ 90.0, V_B 79.0 kmol/h (VC-27.1) |
 | G8 Pressure and volatility (M4) | B-T T2 at 1 atm, **overrides `reboiler.steamHeaderPressure` 1 101 325 Pa (10 bar(g)) and `condenser.cwInletT` 288.15 K (15 °C)**. Without them the column cannot run at 0.5–0.7 bar (condenser) or at 2–3 bar (reboiler); VC-27.3 | o1 lever.pTop ≤ 70 500 ∧ steady, hold 300 (visit 0.7 bar); o2 (after o1) lever.pTop ≥ 299 000 ∧ steady, hold 300 (visit 3 bar); o3 (after o2) lever.pTop between 199 000 and 201 000 ∧ xD ≥ xD(start) − 0.002 ∧ xB ≤ xB(start) + 0.002 (`from: start`) ∧ steady, hold 300; o4 choice "What happened to α as the pressure rose?" → "it fell"; o5 choice "To hold the specs at 2 bar you had to…" → "raise reflux and duty" | v1.0 said "0.5 → 3 bar" (infeasible at 0.5 bar, VC-27.3) and "hold specs" without defining them | VC-10.3 α at x = 0.5: 2.60 (0.7 bar) → 2.49 (1 atm) → 2.30 (2 bar) → 2.20 (3 bar); VC-27.2: at fixed L₀ and D, x_D falls 0.97808 → 0.96299 at 2 bar |
-| G9 The azeotrope wall (M5) | ew T3, N 40, E 1 | o1 number "highest x_D you could reach" = 0.8956 ± 0.01; o2 choice "Tier 1 went past it. Why?" → "constant α cannot represent an azeotrope"; o3 choice "Lower pressure moves the azeotrope to…" → "higher ethanol" | | VC-10.5 |
-| G10 The other azeotrope (M5) | ac T3 | o1 choice "Where does the azeotrope leave?" → "in the bottoms"; o2 number x_B,acetone = 0.33 ± 0.03 | | VC-10.5, VC-8.11 |
+| G9 The azeotrope wall (M5) | `ew`, overrides tier t3, murphree 1.0 (locked); `steady` at the preset defaults (L₀ 100 kmol/h, duty 1206.8 kW, D 10, x_D 0.88693). Time limit 172 800 s, par 57 600 | o1 tier == 3 ∧ kpi.refluxRatio ≥ 15 ∧ steady, hold 300; o2 (after o1) number "What x_D does the column seem to approach?" = 0.8956 ± 0.01; o3 (after o2) tier == 1 ∧ xD ≥ 0.95 ∧ steady, hold 300; o4 (after o3) choice "Tier 1 went past 0.8956. Why?" → "constant α cannot represent an azeotrope" (others: "Tier 1 has more stages", "Tier 1 ignores the reflux", "the feed changed"); o5 (after o4) tier == 3 ∧ lever.pTop ≤ 50 500 ∧ xD ≥ 0.897 ∧ steady, hold 300; o6 (after o5) choice "Lower pressure moved the azeotrope to…" → "more ethanol" (others: "less ethanol", "nowhere: it is fixed", "it disappeared"). All latch | (1) at 0: "The condenser is near its limit, so keep the duty and raise R by cutting D: set reflux to 105 kmol/h (D falls to about 6, R to about 17.6)." (2) with o1's predicate: "Switch to Tier 1 with the badge and run to steady state." (3) with o3's predicate: "Switch back to Tier 3. Then, together: feed 60 kmol/h, reflux 60 kmol/h, duty 748 kW, P_top 0.5 bar(a). At 0.5 bar(a) the condenser carries only about 840 kW, so the feed has to come down." | [I] L₀ 105 at 1206.8 kW: D 5.97, R 17.6, x_D 0.89017, x_B 0.0498 (L₀ 106: D 5.10, x_D 0.89073). Tier 1 after the switch (D 5.97): x_D > 0.999. 0.5 bar(a), F 60, L₀ 60, 748 kW: D 5.97, x_D 0.90050, x_B 0.0116, T_D 61.33 °C, CW about 35 %; azeotrope there 0.9108 / 61.33 °C. VC-28.8 |
+| G10 The other azeotrope (M5) | `ac`, overrides tier t3, murphree 1.0 (locked); `steady` at the preset defaults (L₀ 150 kmol/h, duty 1515.9 kW, D 38). Time limit 86 400 s, par 28 800 | o1 tier == 3 ∧ kpi.d ≥ 13.06 mol/s (47 kmol/h) ∧ steady, hold 300; o2 (after o1) choice "D rose by 10 kmol/h. Where does the azeotrope leave the column?" → "in the bottoms" (others: "in the distillate", "split between both", "it never forms in a column"); o3 (after o2) number "Read the azeotrope's acetone mole fraction off the T-x-y tab" = 0.333 ± 0.02. All latch | (1) at 0: "Keep the duty and lower the reflux to 140 kmol/h: D rises to about 48 kmol/h." (2) with o1's predicate: "x_B moved only from 0.378 to 0.363 while x_D fell from 0.96 to 0.86: the bottoms are pinned near a limit." (3) after o2: "Open the T-x-y tab: the azeotrope is where the bubble and dew curves touch at a temperature maximum (the diamond)." | [I] defaults x_D 0.96153, x_B 0.37842. L₀ 140 at 1515.9 kW: D 48.01, x_D 0.85666, x_B 0.36298; L₀ 130: D 58.21, x_D 0.77811, x_B 0.35190. Azeotrope 0.3335 / 64.61 °C (VC-10.5). VC-28.8 |
 | G11 Flooding (shipped in M2, `scenarios.dart`) | as shipped: `steady`, Tier 1, full hydraulics, E 0.7; **briefing text must change** from "about 83 % of flood" to "about 63 %" (TS 0.9 m) | As shipped: o1 kpi.maxFloodPct ≥ 100, hold 30, latch; o2 (after o1) maxFloodPct between 80 and 92 ∧ xD ≥ 0.95, hold 600. M3 adds o3: number "throughput at flood onset (% of design)" = 160 ± 10 | As shipped; the first hint should add "about six steps of 10 %" | [P] at TS 0.9 m, uniform scaling ×k of F, L₀, V_B, steady state: ×1.0 62.9 % / xD 0.9783; ×1.1 69.2 / 0.9766; ×1.2 75.6 / 0.9737; ×1.3 81.9 / 0.9687; ×1.4 88.5 / 0.9601; ×1.5 95.2 / 0.9460; ×1.6 102.1 / 0.9236; ×1.7 109.7 / 0.8885. Flood onset ≈ ×1.57; o2 is reachable at ×1.3–1.4 |
 | G12 Turndown and weeping (shipped in M2) | as shipped | As shipped: o1 lever.feedFlow ≤ 11.12 mol/s ∧ lever.trayType.0 == 0 ∧ kpi.maxWeepFraction ≥ 0.3, hold 60, latch; o2 (after o1) the same throughput, lever.trayType.0 == 1, maxWeepFraction < 0.05, xB ≤ 0.03, hold 300. M3 adds o3: choice "Why don't valve trays weep yet?" → "closed valves keep the hole velocity up" | As shipped | VC-12.4 (w 0.51 on sieve trays at 35 %), VC-12.5 (w 0 on valve trays at 35 %) |
 
 Every guided scenario's JSON carries these objectives verbatim. Its hints must, followed literally, complete it (SCOPE.md M3 acceptance; VC-26.4 plays G1–G6 automatically by applying the hint values).
+
+**Debrief lines (M5).** Each debrief template must contain these passages (wording may be adapted, numbers not):
+- G8 adds: "Why did the sweep start at 0.7 bar and not 0.5? At 0.5 bar(a) the distillate condenses near 60 °C. Even with 15 °C water the condenser can remove only about 1.2 MW, less than the reboiler puts in, so PC-101 cannot hold the pressure there (VC-27.3). An operator would turn the feed down, which G9 does."
+- G9: "At 1 atm Tier 3 stalled below 0.8956 however high R went (about 0.890 at R 17.6). Tier 1's constant α has no azeotrope, so it 'beat' it. At 0.5 bar(a) you reached x_D {kpi.xD:0.0000}, past the 1-atm azeotrope, because there it sits at 0.911: this is how vacuum and pressure-swing distillation get past it."
+- G10: "A maximum-boiling azeotrope is the heaviest thing in the column, so it collects in the bottoms: x_B can approach 0.333 from above but never cross it, and drawing more distillate only dilutes the top."
 
 ---
 
@@ -1515,7 +1572,7 @@ Widget tests for each layout class (no overflow at 360×800, 800×360, 1440×900
 | core, math, units (SI only in M1) | ● | units US | | | | | | | | |
 | thermo: Tier 1 | ● | | | | | | | | | |
 | thermo: Tier 2, enthalpy, flash | | | | ● | | | ● (LK HC) | | ● (crude) | |
-| thermo: Tier 3 | | | | | ● NRTL | | ● DePriester | | | |
+| thermo: Tier 3 | | | | | ● NRTL, DePriester (binary `c4`) | | DePriester multicomponent | | | |
 | config, presets | bt | | | mw (T2) | mw, ew, ac, c4 | | debut, deprop | bt_packed | crude | |
 | tray hydraulics | weir only | full | | | | | | | | |
 | packed hydraulics | | | | | | | | ● | | |
@@ -1524,8 +1581,8 @@ Widget tests for each layout class (no overflow at 360×800, 800×360, 1440×900
 | side ops, strippers, steam | | | | | | | | | ● | |
 | control system | internal LC | | ● loops, valves, fast layer, instruments + noise, analysers, field gauges, alarms, cross-checks C1–C5, plant view, PRNG | PC, TC, T2 instruments, C3a/b, C6, C7 | | | | | crude loops | |
 | faults | | F01–F07 | F19, F20, F28 | F08–F15 | | F16–F18 | | F21–F23 | F24–F27 | |
-| explain | | ● | | T2 equations | NRTL | thermosyphon | FUG | packing | crude | |
-| snapshot: McCabe–Thiele | ● | | | non-CMO | T-x-y | | Hengstebeck, FUG | | crude charts | |
+| explain | | ● | | T2 equations | NRTL, DePriester | thermosyphon | FUG | packing | crude | |
+| snapshot: McCabe–Thiele | ● | | | non-CMO | T-x-y, azeotrope finder, azeotrope banners | | Hengstebeck, FUG | | crude charts | |
 | scenarios, drills | | | runner, scoring, schema test + G1–G6, G11–G12 | G7–G8 | G9–G10 | drills H1–H5, H9, H10, G14 | G13, H6 | G15, H7 | G16, H8 | review |
 | runner | Local | | | | | | | | | Isolate |
 | app themes | Blueprint | | | Control Room | Paper | | Phosphor | | Brass | |
