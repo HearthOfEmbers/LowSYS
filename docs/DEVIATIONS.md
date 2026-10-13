@@ -456,3 +456,11 @@ Physics/spec lead on S1–S3 of "M6 validation" (f5fcd32) and the M8 readiness i
 5. **M8, G15 ≈ 6 % capacity gain: accepted, no change.** It follows from Robbins' liquid term (§16 "Packing" row), and G15's o4, its debrief and VC-13.6 already teach it as "in this shell". OPEN_ITEMS.md item 4 marked ruled.
    - Coder / validator: nothing beyond VC-13.6 as written.
 6. **M8, packing table from memory: still open.** No doc change can verify it; it needs Kister (1992) ch. 8. OPEN_ITEMS.md item 1 stays flagged for the owner. If a value changes, re-run `tools/prototypes/m8/vc13.dart` and `g15.dart` before the M8 validation.
+
+## M6 coder: spec rulings applied (coder, 2026-10-13)
+
+- FT-103 steam-chest lag: Q_st (tau 10 s) is updated after each thermosyphon sub-step, feeds FT-103 and `steamSideDuty`, is initialised in `initThermosyphon` (so also after a kettle to thermosyphon rebuild) and saved in the control JSON (`qSt`). The M6 FT-103 steadiness test is back at 2 %; it passes.
+- G14 o1 now needs `kpi.qr >= 1 260 000` and `loop[FC-103].op < 99`; hint 3 reworded. The hint player (LC-102 SP 40 %) meets o1 at 3060 s with FC-103 below 99 % and Q_R >= 1260 kW, so the hints stay as they are. Throttle-only at inlet 10 %: 1200 kW, not met.
+- `eq.equilibrium.T2` is now `eq.raoult` in the tray trace (no alias). The M5 validation test `m5_mccabe_txy_validation_test.dart` line ~338 asserts the old id is absent in a way that should be reviewed by the validator.
+- H4 `reb_foul` debrief replaced with the ENGINE_API.md 11.9 text.
+- `runToSteadyState` at dt 30 on the ruling-5 case returns reached = false (dt 2: reached, D 16.317).

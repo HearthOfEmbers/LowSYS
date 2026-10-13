@@ -81,7 +81,7 @@ class ExplainT2 {
       );
     } else {
       eqLine = EquationLine(
-        id: 'eq.equilibrium.T2',
+        id: 'eq.raoult',
         physicsRef: 'PHYSICS.md (3.2, 4.2)',
         texSymbolic:
             r'K_i = \frac{P_i^{sat}(T_j)}{P_j},\quad y^*_i = \frac{K_i x_i}{\sum_k K_k x_k}',
