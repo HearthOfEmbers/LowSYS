@@ -173,7 +173,7 @@ Each check: start at a steady state, make the change, run to the new steady stat
 | 8.10 | Ethanol–water preset `ew` (N 40, feed 30, z 0.10, D 10 kmol/h), Tier 3, E = 1, R = 10, 20, 40 | x_D never exceeds the azeotrope 0.8956 (+0.002) [P: 0.88693, 0.89074, 0.89229]; Tier 1 with α = 2.4 on the same column at R = 10 exceeds 0.95 [P: 0.98306]; at 0.5 atm(a), R = 10, Tier 3 passes the 1-atm azeotrope [P: 0.90021; the 0.5-atm azeotrope is 0.9105] | T3, T1 |
 | 8.11 | Acetone–chloroform preset `ac` (N 30, feed 15, z 0.6, D 38 kmol/h), Tier 3, E = 1 | bottoms approach the azeotrope from above and never go below it; distillate approaches pure acetone [P: L₀ 150 → x_D 0.96153, x_B 0.37842; L₀ 300 → x_D 0.99993, x_B 0.35488] | T3 |
 | 8.12 | Debutanizer: raise R at fixed D | LK recovery up, HK in distillate down | T1, T3 |
-| 8.13 | Methanol–water: switch T1 (α = 3.5) → T3 | top-section staircase changes (equilibrium curve no longer symmetric); actual operating locus curves | T1→T3 |
+| 8.13 | Methanol–water: switch T1 (α = 3.5) → T3 | top-section staircase changes (equilibrium curve no longer symmetric); actual operating locus curves. Numbers and asserts: VC-28.7 | T1→T3 |
 | 8.14 | Cut CW flow capacity to 50 % (F09) with PC in AUTO | PC output → 100 %; P_top rises until Q_C balances; all temperatures rise | T2 |
 | 8.15 | **Full hydraulics**, default (TS 0.9 m), LV control: L₀ and V_B +10 kmol/h | x_D up 0.97826 → 0.98001 (± 0.0005), x_B down 0.01459 → 0.00997, max flood 62.9 → 67.1 % (no flooding alarm). [P] Further steps of +10: x_D 0.9796 (+20, 71 %), 0.9767 (+30, 75 %), 0.9709 (+40, 80 %). Beyond about +20 kmol/h the carryover into the drum outweighs the better L/V. Assert only the +10 row | T1 full |
 | 8.16 | **Full hydraulics**, default, **D held at 50 kmol/h** (adjust L₀ until D = 50 ± 0.01): L₀ and V_B +0, +10, +20, +30, +40 kmol/h | x_D rises monotonically: 0.9810, 0.9843, 0.9866, 0.9883, 0.9896 (± 0.0005) [P]. This is the textbook lesson. The entrainment efficiency loss alone is small; it is D drifting up that turns 8.15 over | T1 full |
@@ -269,6 +269,16 @@ Tolerances: against the model values T ± 0.01 K, y ± 1×10⁻⁴; against expe
 - Lee–Kesler P_sat (bar): propane 10.0209 (300 K), 29.5500 (350 K); isobutane 3.7185, 12.6437; n-butane 2.5831, 9.5116; isopentane 0.9714, 4.2608; n-pentane 0.7205, 3.4105; n-hexane 0.2114, 1.2924; n-heptane 0.0641, 0.5074. Tolerance 1×10⁻⁴ relative.
 
 **VC-10.8 Bubble-point solver robustness.** For every preset system, 1000 random compositions (seeded) and pressures within the preset's lever range: the solver converges (no fallback) from the cold guess Σ x_i T_sat,i(P) in ≤ 6 Newton iterations in ≥ 99 % of cases — ≤ 7 for acetone–chloroform, where neglecting dγ/dT makes convergence linear (prototype: 25 % of a 2001-point grid needed 7; PHYSICS.md §3.4.1) — and always converges with the bisection fallback; result satisfies |Σ K x − 1| < 1×10⁻⁹.
+
+**VC-10.9 DePriester K-values (M5) [I]** (PHYSICS.md (3.9), evaluated directly):
+
+| T | P | K isobutane | K n-butane | α |
+|---|---|---|---|---|
+| 50 °C (323.15 K) | 7 bar(a) | 1.01756 | 0.74715 | 1.36192 |
+| 62 °C (335.15 K) | 7 bar(a) | 1.29686 | 0.97500 | 1.33011 |
+| 150 °F (338.71 K) | 100 psia | 1.40630 | 1.06489 | 1.32060 |
+
+Tolerance 1×10⁻⁵ relative. The 150 °F row catches the n-butane a_p1 transcription error noted in PHYSICS.md §3.4.2 (it would give K ≈ 1.24). Lee–Kesler Raoult α at the `c4` top and bottom temperatures is 1.379 and 1.354, so DePriester makes the pair slightly harder to split.
 
 ## VC-11 Tier-2 steady state (B-T MESH with energy balances) [I]
 
@@ -797,7 +807,10 @@ The bottoms approach the maximum-boiling azeotrope (0.3334) from above and never
 **28.3 C4 splitter `c4`**:
 - **Tier 2 (Lee–Kesler)**, 60 trays, feed 30, z 0.40, P 7 bar(a), L₀ 280, D 40, E 0.7: x_D 0.92993, x_B 0.04670, Q_R 1542.6 kW, T_D 51.43 °C, T_B 62.81 °C, V₁ 320.0 / V_B 305.0 kmol/h.
 - **Tier 1** (α 1.35, V_B 320): x_D 0.92631, x_B 0.04913.
-- **Tier 3 (DePriester)** was not prototyped. The implementer records it in the preset JSON on first run, and it must lie within 0.02 of the Tier-2 x_D. VC-9.4 shows DePriester and Lee–Kesler K within a few percent for C4s.
+- **Tier 3 (DePriester) [I]** (independent Newton MESH solve, numerical Jacobian, same enthalpies as Tier 2):
+  - at L₀ 280 and D 40: x_D 0.91129, x_B 0.05914, Q_R 1554.0 kW, T_D 50.30 °C, T_B 62.29 °C, V_B 306.9 kmol/h;
+  - at L₀ 280 and the Tier-2 duty 1542.6 kW (what a T2 → T3 switch converges to, PHYSICS.md §13.5): D 38.12 kmol/h, x_D 0.93266, x_B 0.07192, T_D 50.03 °C, T_B 62.09 °C, V_B 304.8 kmol/h.
+  - Tolerances x ± 5×10⁻⁴, D ± 0.1 kmol/h, Q_R ± 2 kW, T ± 0.05 K. The switch case also asserts no NaN and P within ± 0.5 kPa of SP throughout.
 
 **28.4 McCabe–Thiele with azeotropes [I]** (PHYSICS.md §14.1 rules):
 - `ew`, Tier 3, z 0.10, q 1, 1 atm:
@@ -815,8 +828,29 @@ The bottoms approach the maximum-boiling azeotrope (0.3334) from above and never
 - `ew` at 0.5 atm shows the azeotrope at 0.9105 / 61.62 °C.
 - Recomputation is skipped when P changes by less than 100 Pa.
 - One build takes < 2 ms (desktop).
+- Tier 1 on `ew`: `ideal == true`, the curves equal the Tier-2 (Raoult) bubble points (VC-10.1 end points 78.298 / 100.018 °C), no azeotrope marker, and every stage point lies on the bubble curve to 1×10⁻⁶ K (it is the display T*).
+- `c4` (Tier 3, 7 bar): no azeotrope; the curve end points are the temperatures where each K_i of (3.9) equals 1 (bisection, ± 0.01 K).
 
 **28.6 Tier switch on an azeotropic column [P].** `ew` at its Tier-3 steady state (x_D 0.886926), switched to Tier 1 by the top-vapour rule (V_B = V₁ = 109.997): the new Tier-1 steady state has x_D 0.98335 > 0.8956, the G9 "false win" made visible. Switched back to Tier 3 by the same rule, the duty becomes 1202.1 kW, D 9.67 kmol/h and x_D 0.88720: below the azeotrope again, within 0.002 of the start. The rule is approximate when the compositions of the two tiers differ this much (D −3 %). Assert no NaN, x_D(T3) ≤ 0.8956 + 0.002, and |ΔD| ≤ 5 %.
+
+**28.7 Methanol–water in Tier 3 [I]** (`mw`: 20 trays, feed 12, z 0.30, L₀ 60 kmol/h, E 0.7, 1 atm; independent Newton MESH solve):
+
+| Case | D (kmol/h) | x_D | x_B | Q_R (kW) | V_B (kmol/h) | T_D / T_B (°C) |
+|---|---|---|---|---|---|---|
+| Tier 3 at the preset duty 890.4 kW | 29.05 | 0.99511 | 0.0154 | 890.4 | 78.48 | 64.58 / 97.25 |
+| Tier 3 at D 30 | 30 | 0.99461 | 0.00231 | 902.4 | 79.71 | 64.59 / 99.57 |
+| Tier 2 at D 30 (VC-27.1) | 30 | 0.98877 | 0.00481 | 890.4 | 78.95 | 64.72 / 99.68 |
+| Tier 1, α 3.5, V_B 90 | 30 | 0.99050 | 0.00407 | – | 90 | – |
+
+- Tolerances x ± 5×10⁻⁴ (x_B at 890.4 kW ± 1×10⁻³: it is steep in D there), D ± 0.1 kmol/h, Q_R ± 2 kW, T ± 0.05 K.
+- **VC-8.13** starts from the Tier-1 row and switches to Tier 3 by the top-vapour rule. It asserts no NaN, D 30 ± 0.3 kmol/h, and at the new steady state x_D 0.9946 ± 0.0015 and x_B ≤ 0.004. The McCabe–Thiele data must show the NRTL equilibrium curve (y* at x = 0.10 is 0.4223, VC-10.6, against 0.2800 for α 3.5), and non-CMO flows: V_B / V₁ = 0.886 ± 0.005 (79.71 / 90), the source of the curved operating locus.
+- NRTL gives methanol a higher volatility than Raoult at low x (γ∞ 2.04), so the same column makes purer products.
+
+**28.8 G9 and G10 are completable [P]** (as VC-26.4: an automated player applies each hint's values, in order, as soon as the hint unlocks, runs at fast-forward, and answers the questions with the correct values). Real utilities, PC-101 in AUTO, E = 1, noise off.
+- **G9** checkpoints against ENGINE_API.md §11.8 (reference numbers there were computed with P held, so the tolerances allow for the pressure loop): after hint 1, x_D 0.8902 ± 0.001 and R 17.6 ± 0.5; after hint 2 (Tier 1), x_D ≥ 0.99; after hint 3, P_top 50 000 ± 500 Pa, D 5.97 ± 0.2 kmol/h, x_D 0.9005 ± 0.002 (≥ 0.897), CW flow 25–45 % of m_cw,max (prototype 35 %). Every objective is met within the time limit; record the sim times to steady state in the scenario JSON comment.
+- **G10** checkpoints: after hint 1, D 48.0 ± 0.3 kmol/h, x_D 0.8567 ± 0.002, x_B 0.3630 ± 0.001; x_B never goes below 0.3335 at any step. o3 is answered with `TxyData.findAzeotropes(ac Tier 3, P_top)` rounded to 3 decimals and must equal 0.333 ± 0.002.
+- **No safety events** in either run: no relief lift, no level outside 5–95 %, no `thermoOutOfRange`.
+- **PC-101 at low CW flow.** In G9 a learner who turns the feed down to 60 kmol/h before lowering the pressure parks the column at 1 atm with the CW valve near 9 % open. There the condenser's dQ/dm_cw is about 10 times its value at the B-T design point (50 % CW), so PC-101's loop gain is about 10 times higher. Run this path too (hint 3 with P_top applied 1 h after the other three values). During that hour P must stay within ± 2 kPa of SP with no sustained oscillation (the amplitude of the last 20 min ≤ that of the first 20 min after the feed step). If it fails, report it under OPEN_ITEMS.md before retuning anything. This is also why G9 keeps the default condenser: a condenser sized for full rate at 0.5 bar(a) (UA about 60 kW/K) would sit at about 12 % CW at 1 atm, with about 15 times the B-T loop gain.
 
 ---
 
