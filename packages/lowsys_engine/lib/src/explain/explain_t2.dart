@@ -18,7 +18,10 @@ class ExplainT2 {
 
   /// The thermosyphon loop (null for a kettle): the `eq.ts.*` lines of PHYSICS.md 15 read its last sub-step.
   final ThermosyphonLoop? loop;
-  ExplainT2(this.snap, this.th, {this.loop});
+  ExplainT2(this.snap, this.th, {this.loop, int lk = 0}) : _lk = lk;
+
+  /// Light key index (component 0 for a binary).
+  final int _lk;
 
   StageArrays get st => snap.stages;
   int get nc => st.nc;
@@ -39,7 +42,8 @@ class ExplainT2 {
     for (var i = 0; i < nc; i++) {
       s += k[i] * x[i];
     }
-    final ys = st.yStar[j * nc];
+    final lkI = snap.components.isEmpty ? 0 : _lk;
+    final ys = st.yStar[j * nc + lkI];
     final v = st.vaporUp[j];
     final hj = _hL(j), hVj = _hV(j);
     final lUp = st.liquidDown[j - 1], vBelow = st.vaporUp[j + 1];

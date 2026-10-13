@@ -2,6 +2,7 @@ import 'package:meta/meta.dart';
 
 import '../core/ids.dart';
 import '../core/quantity.dart';
+import '../snapshot/fug.dart' show FugTargets;
 import '../snapshot/sim_snapshot.dart';
 
 /// What the math overlay explains (ENGINE_API.md 8.1).
@@ -58,6 +59,12 @@ class ExplainCheck extends ExplainTarget {
 }
 
 enum McCabeElement { opLine, qLine, rmin, equilibrium }
+
+/// The FUG shortcut panel (PHYSICS.md 14.3, M7): its equation lines with the live values. [targets] null: live mode.
+class ExplainFug extends ExplainTarget {
+  final FugTargets? targets;
+  const ExplainFug([this.targets]);
+}
 
 class ExplainMcCabe extends ExplainTarget {
   final McCabeElement element;

@@ -20,19 +20,19 @@ const String h9Json = r'''
             "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"},
             "TC-101": {"mode": "auto"}},
   "timeLimit": 7200,
-  "briefing": "You are taking over the board of the benzeneâ€“toluene column. Every loop is in AUTO and tray-14 temperature control (TC-101) sets the reboiler duty through FC-103. At some point during your shift either **one instrument starts lying** or **the process really changes**. Decide which, name the tag if it is an instrument, and keep the products on spec while you work it out.\n\nThis plant's old DCS does **not** put a loop in manual when its signal fails. Your tools: the **Balance** tab (every check uses meters only), each faceplate's **signal look** and **valve curve**, the trends, the temperature-profile chart with its reference, and **field checks** of the sight glasses LG-101 and LG-102 and the local gauge PG-101 (3 minutes each). You have two diagnosis attempts.",
+  "briefing": "You are taking over the board of the benzene–toluene column. Every loop is in AUTO and tray-14 temperature control (TC-101) sets the reboiler duty through FC-103. At some point during your shift either **one instrument starts lying** or **the process really changes**. Decide which, name the tag if it is an instrument, and keep the products on spec while you work it out.\n\nThis plant's old DCS does **not** put a loop in manual when its signal fails. Your tools: the **Balance** tab (every check uses meters only), each faceplate's **signal look** and **valve curve**, the trends, the temperature-profile chart with its reference, and **field checks** of the sight glasses LG-101 and LG-102 and the local gauge PG-101 (3 minutes each). You have two diagnosis attempts.",
   "onsetWindow": [600, 1800],
   "candidates": [
     {"id": "ft102_bias", "weight": 2,
      "fault": {"type": "instrument", "location": {"tag": "FT-102"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.7], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-102", "mode": "bias"},
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
-     "debrief": "**FT-102 (reflux flow) read {fault.magnitude} wrong from {fault.onset:time}.** FC-102 kept the *reading* at its set point, so the real reflux moved the other way by the same amount. The tell-tales: C4 for FV-102 went red (the valve's OP no longer matched the flow it should give), and C3 (vapour to the top: reboiler vs reflux + distillate) disagreed by the same amount, while every other check stayed green. The trend itself looked normal â€” a bias has normal noise. Right response: FC-102 to MAN, then set the OP from the valve curve, for example {valve[FV-102].op:0.0} %."},
+     "debrief": "**FT-102 (reflux flow) read {fault.magnitude} wrong from {fault.onset:time}.** FC-102 kept the *reading* at its set point, so the real reflux moved the other way by the same amount. The tell-tales: C4 for FV-102 went red (the valve's OP no longer matched the flow it should give), and C3 (vapour to the top: reboiler vs reflux + distillate) disagreed by the same amount, while every other check stayed green. The trend itself looked normal — a bias has normal noise. Right response: FC-102 to MAN, then set the OP from the valve curve, for example {valve[FV-102].op:0.0} %."},
     {"id": "ft102_plugged", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [1.0, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-102", "mode": "plugged"},
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
-     "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** The reading stopped following the process: its 5-minute Ïƒ dropped from about 1.2 kmol/h to under 0.1 (\"too steady\"). FC-102 then kept integrating the small offset between its set point and the trapped value, and walked the real reflux far away while the reading sat on the set point. C4 (FV-102) and C3 both failed. A stuck *valve* would have looked similar on the OP trend, but its flow reading would still have had normal noise and the balances would have agreed."},
+     "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** The reading stopped following the process: its 5-minute σ dropped from about 1.2 kmol/h to under 0.1 (\"too steady\"). FC-102 then kept integrating the small offset between its set point and the trapped value, and walked the real reflux far away while the reading sat on the set point. C4 (FV-102) and C3 both failed. A stuck *valve* would have looked similar on the OP trend, but its flow reading would still have had normal noise and the balances would have agreed."},
     {"id": "ft101_drift", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-101"}, "params": {"kind": "drift", "sign": "random"}, "severityRange": [0.6, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-101", "mode": "drift"},
@@ -41,7 +41,7 @@ const String h9Json = r'''
     {"id": "ft103_bias", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-103"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.6], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-103", "mode": "bias"},
-     "debrief": "**FT-103 (steam / reboiler duty) read {fault.magnitude} wrong from {fault.onset:time}.** This one hides well: TC-101 sets FC-103's set point from the tray-14 temperature, so it trimmed the duty set point until the real duty was right again â€” the product barely moved. The evidence is the energy balance: C3b (reboiler duty vs condenser duty + products) failed, and FV-103's OP did not match the duty it should give (C4). With temperature control in the loop, the right response is to *keep* the cascade and get the meter fixed."},
+     "debrief": "**FT-103 (steam / reboiler duty) read {fault.magnitude} wrong from {fault.onset:time}.** This one hides well: TC-101 sets FC-103's set point from the tray-14 temperature, so it trimmed the duty set point until the real duty was right again — the product barely moved. The evidence is the energy balance: C3b (reboiler duty vs condenser duty + products) failed, and FV-103's OP did not match the duty it should give (C4). With temperature control in the loop, the right response is to *keep* the cascade and get the meter fixed."},
     {"id": "lt101_bias", "weight": 2,
      "fault": {"type": "instrument", "location": {"tag": "LT-101"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.8, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:LT-101", "mode": "bias"},
@@ -51,17 +51,17 @@ const String h9Json = r'''
      "fault": {"type": "transmitter", "location": {"tag": "LT-102"}, "params": {"kind": "signalLossLow"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:LT-102", "mode": "signalLoss"},
      "protect": [{"tag": "LC-102", "modes": ["man"]}],
-     "debrief": "**LT-102 (sump level) lost its signal at {fault.onset:time}.** The DCS flagged BAD PV (IOPâˆ’) at once. This plant does not shed the loop, so LC-102 saw âˆ’2.5 % and closed the bottoms valve, and the real sump began to fill. Diagnosis was the easy part; the score was in the response. LC-102 to MAN at the old OP within minutes, then LG-102 field checks to steer the level by hand."},
+     "debrief": "**LT-102 (sump level) lost its signal at {fault.onset:time}.** The DCS flagged BAD PV (IOP−) at once. This plant does not shed the loop, so LC-102 saw −2.5 % and closed the bottoms valve, and the real sump began to fill. Diagnosis was the easy part; the score was in the response. LC-102 to MAN at the old OP within minutes, then LG-102 field checks to steer the level by hand."},
     {"id": "lt102_stuck", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "LT-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:LT-102", "mode": "stuck"},
      "protect": [{"tag": "LC-102", "modes": ["man"]}],
-     "debrief": "**LT-102 froze at {fault.onset:time}.** The trend became a perfectly flat line â€” the same digits for minutes, Ïƒ = 0 against a typical 0.8 %. LC-102 stopped correcting, so when the feed went up at 45 min the real sump level started to climb while the reading stayed put. C5 for the sump failed from then on."},
+     "debrief": "**LT-102 froze at {fault.onset:time}.** The trend became a perfectly flat line — the same digits for minutes, σ = 0 against a typical 0.8 %. LC-102 stopped correcting, so when the feed went up at 45 min the real sump level started to climb while the reading stayed put. C5 for the sump failed from then on."},
     {"id": "pt101_bias", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "PT-101"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.3, 0.5], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:PT-101", "mode": "bias"},
      "protect": [{"tag": "PC-101", "modes": ["man"]}],
-     "debrief": "**PT-101 (top pressure) read {fault.magnitude} wrong from {fault.onset:time}.** PC-101 moved the real pressure the other way, so every temperature shifted together, smoothly â€” that looks like a process change. What gave it away was C7: the drum temperature and the bottom temperature no longer matched the bubble points of the analysed products *at the measured pressure*, both off with the same sign (about 0.33 K per kPa). The local gauge PG-101 confirmed it."},
+     "debrief": "**PT-101 (top pressure) read {fault.magnitude} wrong from {fault.onset:time}.** PC-101 moved the real pressure the other way, so every temperature shifted together, smoothly — that looks like a process change. What gave it away was C7: the drum temperature and the bottom temperature no longer matched the bubble points of the analysed products *at the measured pressure*, both off with the same sign (about 0.33 K per kPa). The local gauge PG-101 confirmed it."},
     {"id": "ti114_bias", "weight": 2,
      "fault": {"type": "instrument", "location": {"tag": "TI-114"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.25, 0.4], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:TI-114", "mode": "bias"},
@@ -71,19 +71,19 @@ const String h9Json = r'''
      "fault": {"type": "transmitter", "location": {"tag": "TI-114"}, "params": {"kind": "coated"}, "severityRange": [0.8, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:TI-114", "mode": "coated"},
      "protect": [{"tag": "TC-101", "modes": ["man"]}, {"tag": "FC-103", "modes": ["auto", "man"]}],
-     "debrief": "**TI-114's thermowell coated over from {fault.onset:time}:** its time constant went from 10 s to 10 Ã— (1 + 9 Ã— {fault.severity:0.00}) s. At steady state it reads right, so the evidence only appears in transients. When the feed rose at 45 min, TI-114 lagged its neighbours in C6 and TC-101 started to swing the duty. The fuzz on TI-114 also halved (signal look â‰ˆ 0.5 of typical)."},
+     "debrief": "**TI-114's thermowell coated over from {fault.onset:time}:** its time constant went from 10 s to 10 × (1 + 9 × {fault.severity:0.00}) s. At steady state it reads right, so the evidence only appears in transients. When the feed rose at 45 min, TI-114 lagged its neighbours in C6 and TC-101 started to swing the duty. The fuzz on TI-114 also halved (signal look ≈ 0.5 of typical)."},
     {"id": "ti107_spiking", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "TI-107"}, "params": {"kind": "spiking"}, "severityRange": [0.5, 0.8], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:TI-107", "mode": "spiking"},
-     "debrief": "**TI-107 went erratic at {fault.onset:time}:** spikes of tens of kelvin, several a minute, with BAD flickers. It controls nothing, so the process never noticed. The signal look (Ïƒ many times typical) and C6 flagged it at once."},
+     "debrief": "**TI-107 went erratic at {fault.onset:time}:** spikes of tens of kelvin, several a minute, with BAD flickers. It controls nothing, so the process never noticed. The signal look (σ many times typical) and C6 flagged it at once."},
     {"id": "ft104_stuck", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-104"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-104", "mode": "stuck"},
-     "debrief": "**FT-104 (distillate flow) froze at {fault.onset:time}.** It controls nothing in flow mode, so the column was fine. But the flat line (Ïƒ = 0) and the balances told the story: once LC-101 moved the real distillate after the feed change, C1 and C3 disagreed while C4 for LV-101 showed the valve moving with no change in the reading."},
+     "debrief": "**FT-104 (distillate flow) froze at {fault.onset:time}.** It controls nothing in flow mode, so the column was fine. But the flat line (σ = 0) and the balances told the story: once LC-101 moved the real distillate after the feed change, C1 and C3 disagreed while C4 for LV-101 showed the valve moving with no change in the reading."},
     {"id": "feed_real", "weight": 2,
      "fault": {"type": "feedComposition", "params": {"dz": {"benzene": 0.08}, "sign": "random"}, "severityRange": [1.0, 1.0], "ramp": 900},
      "answer": {"category": "feedUpset", "location": "feed"},
-     "debrief": "**Nothing was lying â€” the feed really changed** by {fault.sign}0.08 benzene from {fault.onset:time}, over 15 minutes. Every balance stayed green, the temperature profile moved as a smooth wave (C6, no lone bar), and the feed analyser AT-100 showed the change about 7â€“10 minutes later. When all the cross-checks agree, believe the instruments."}
+     "debrief": "**Nothing was lying — the feed really changed** by {fault.sign}0.08 benzene from {fault.onset:time}, over 15 minutes. Every balance stayed green, the temperature profile moved as a smooth wave (C6, no lone bar), and the feed analyser AT-100 showed the change about 7–10 minutes later. When all the cross-checks agree, believe the instruments."}
   ],
   "events": [
     {"id": "feed_up", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 1.38889,
@@ -94,9 +94,9 @@ const String h9Json = r'''
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
   "hints": [
-    {"after": 1200, "cost": 0.03, "text": "Open the **Balance** tab. Each row uses only meters. When a row turns red, ask which instruments feed it â€” the liar is one of them, unless a valve is involved."},
+    {"after": 1200, "cost": 0.03, "text": "Open the **Balance** tab. Each row uses only meters. When a row turns red, ask which instruments feed it — the liar is one of them, unless a valve is involved."},
     {"after": 2400, "cost": 0.03, "text": "Check every loop's **valve curve** (C4). A lying flow meter fails its own valve check *and* a balance; a real process change fails neither."},
-    {"after": 3300, "cost": 0.03, "text": "Look at the **signal look** on each faceplate: Ïƒ = 0 means frozen, far below typical means plugged, far above means erratic. For temperatures, compare each TI's change since the reference with its neighbours (C6)."},
+    {"after": 3300, "cost": 0.03, "text": "Look at the **signal look** on each faceplate: σ = 0 means frozen, far below typical means plugged, far above means erratic. For temperatures, compare each TI's change since the reference with its neighbours (C6)."},
     {"after": 4200, "cost": 0.03, "text": "Levels and pressure have field gauges. A field check takes 3 minutes and settles any argument about LT-101, LT-102 or PT-101."}
   ],
   "diagnosis": {
@@ -128,14 +128,14 @@ const String h10Json = r'''
   "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
             "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
   "timeLimit": 7200,
-  "briefing": "The reflux and steam loops on this column have been acting up. The night shift wrote: *\"FC-102 and FC-103 â€” one of them doesn't do what it says.\"* Maybe a control valve is sticking, maybe a flow meter is lying, maybe the feed changed and nobody told you. At 45 minutes planning will raise the reflux and duty set points by 5 %. Find out which it is: valve, meter or process.",
+  "briefing": "The reflux and steam loops on this column have been acting up. The night shift wrote: *\"FC-102 and FC-103 — one of them doesn't do what it says.\"* Maybe a control valve is sticking, maybe a flow meter is lying, maybe the feed changed and nobody told you. At 45 minutes planning will raise the reflux and duty set points by 5 %. Find out which it is: valve, meter or process.",
   "onsetWindow": [600, 1800],
   "candidates": [
     {"id": "fv102_stuck", "weight": 2,
      "fault": {"type": "valve", "location": {"tag": "FV-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "valve", "location": "valve:FV-102"},
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
-     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** FC-102's OP started to wander, and later ran off when planning raised the set point, while the flow reading stayed within its normal noise of its old value. The flow *reading* was honest: it still had normal noise, and C3 (top vapour) and C1 stayed green. Only C4 for FV-102 failed â€” an OP that no longer matches the flow. The fix is the bypass: open `bypass.FV-102` and set the reflux by hand."},
+     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** FC-102's OP started to wander, and later ran off when planning raised the set point, while the flow reading stayed within its normal noise of its old value. The flow *reading* was honest: it still had normal noise, and C3 (top vapour) and C1 stayed green. Only C4 for FV-102 failed — an OP that no longer matches the flow. The fix is the bypass: open `bypass.FV-102` and set the reflux by hand."},
     {"id": "fv103_stuck", "weight": 2,
      "fault": {"type": "valve", "location": {"tag": "FV-103"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "valve", "location": "valve:FV-103"},
@@ -150,12 +150,12 @@ const String h10Json = r'''
      "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [1.0, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-102"},
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
-     "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** On the OP trend this looks exactly like a stuck valve: OP moving, reading flat. The difference was the *noise*: the reading became far too smooth (Ïƒ under a tenth of typical) and the balances disagreed. With a stuck valve the meter keeps its normal noise and the balances agree."},
+     "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** On the OP trend this looks exactly like a stuck valve: OP moving, reading flat. The difference was the *noise*: the reading became far too smooth (σ under a tenth of typical) and the balances disagreed. With a stuck valve the meter keeps its normal noise and the balances agree."},
     {"id": "ft103_drift", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-103"}, "params": {"kind": "drift", "sign": "random"}, "severityRange": [0.6, 1.0], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-103"},
      "protect": [{"tag": "FC-103", "modes": ["man"]}],
-     "debrief": "**FT-103 (duty) drifted by {fault.magnitude} per hour from {fault.onset:time}.** FC-103 held the reading, so the real duty crept away. The energy balance C3b and FV-103's valve curve (C4) both diverged steadily â€” a meter fault, not a valve fault."},
+     "debrief": "**FT-103 (duty) drifted by {fault.magnitude} per hour from {fault.onset:time}.** FC-103 held the reading, so the real duty crept away. The energy balance C3b and FV-103's valve curve (C4) both diverged steadily — a meter fault, not a valve fault."},
     {"id": "ft103_plugged", "weight": 1,
      "fault": {"type": "transmitter", "location": {"tag": "FT-103"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-103"},
@@ -164,7 +164,7 @@ const String h10Json = r'''
     {"id": "feed_real", "weight": 2,
      "fault": {"type": "feedComposition", "params": {"dz": {"benzene": 0.10}, "sign": "random"}, "severityRange": [1.0, 1.0], "ramp": 600},
      "answer": {"category": "feedUpset", "location": "feed"},
-     "debrief": "**Valves and meters were fine â€” the feed changed** by {fault.sign}0.10 benzene from {fault.onset:time}. All the C4 valve curves stayed on their lines, the balances closed, and AT-100 showed the new feed about 7â€“10 minutes later. The products moved because the column was separating a different feed."}
+     "debrief": "**Valves and meters were fine — the feed changed** by {fault.sign}0.10 benzene from {fault.onset:time}. All the C4 valve curves stayed on their lines, the balances closed, and AT-100 showed the new feed about 7–10 minutes later. The products moved because the column was separating a different feed."}
   ],
   "events": [
     {"id": "planning", "at": 2700, "action": "setSp", "tag": "FC-102", "delta": 1.38889,
@@ -194,7 +194,7 @@ const String h10Json = r'''
 /// h1Json: ENGINE_API.md 11.9 (M6), copied verbatim.
 const String h1Json = r'''
 {
-  "id": "H1_creeping_dp", "kind": "drill", "title": "Creeping Î”P", "milestone": 6, "topic": "hydraulics",
+  "id": "H1_creeping_dp", "kind": "drill", "title": "Creeping ΔP", "milestone": 6, "topic": "hydraulics",
   "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
   "view": "plantCalc", "badPvShed": true,
   "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType"]},
@@ -207,22 +207,22 @@ const String h1Json = r'''
     {"id": "foul_strip", "weight": 2,
      "fault": {"type": "trayFouling", "location": {"from": 12, "to": 18}, "params": {"mode": "holes"}, "severityRange": [0.4, 0.8], "ramp": 7200},
      "answer": {"category": "fouling", "location": "stripping"},
-     "debrief": "**Trays 12â€“18 were fouling** (holes plugging) from {fault.onset:time}. Their pressure drop rose at constant flows while trays 1â€“11 did not change; the separation changed little at first."},
+     "debrief": "**Trays 12–18 were fouling** (holes plugging) from {fault.onset:time}. Their pressure drop rose at constant flows while trays 1–11 did not change; the separation changed little at first."},
     {"id": "foul_rect", "weight": 1,
      "fault": {"type": "trayFouling", "location": {"from": 2, "to": 8}, "params": {"mode": "holes"}, "severityRange": [0.4, 0.8], "ramp": 7200},
      "answer": {"category": "fouling", "location": "rectifying"},
-     "debrief": "**Trays 2â€“8 were fouling** from {fault.onset:time}. The Î”P rise was in the rectifying section only, at constant flows."},
+     "debrief": "**Trays 2–8 were fouling** from {fault.onset:time}. The ΔP rise was in the rectifying section only, at constant flows."},
     {"id": "feed_light", "weight": 2,
      "fault": {"type": "feedComposition", "params": {"dz": {"benzene": 0.10}, "sign": 1}, "severityRange": [1.0, 1.0], "ramp": 1800},
      "answer": {"category": "feedUpset", "location": "feed"},
-     "debrief": "**The feed got lighter** (+0.10 benzene) from {fault.onset:time}. Every temperature moved down together (a coherent wave on C6), AT-100 showed it, and no section's Î”P changed. More moles boiled at the same duty, so LC-101 raised the distillate."}
+     "debrief": "**The feed got lighter** (+0.10 benzene) from {fault.onset:time}. Every temperature moved down together (a coherent wave on C6), AT-100 showed it, and no section's ΔP changed. More moles boiled at the same duty, so LC-101 raised the distillate."}
   ],
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
   "hints": [
-    {"after": 1500, "cost": 0.03, "text": "Look at the pressure drop tray by tray (Profiles â†’ Î”P, a calculated value). A section whose Î”P rises while the flows stay put is changing inside."},
-    {"after": 3000, "cost": 0.03, "text": "A feed change moves all the temperatures together (C6 shows a coherent wave) and shows on the feed analyser AT-100, but it does not change any section's Î”P."},
-    {"after": 4500, "cost": 0.03, "text": "Fouled holes raise the dry-tray Î”P first, and the flood % of those trays rises with it."}
+    {"after": 1500, "cost": 0.03, "text": "Look at the pressure drop tray by tray (Profiles → ΔP, a calculated value). A section whose ΔP rises while the flows stay put is changing inside."},
+    {"after": 3000, "cost": 0.03, "text": "A feed change moves all the temperatures together (C6 shows a coherent wave) and shows on the feed analyser AT-100, but it does not change any section's ΔP."},
+    {"after": 4500, "cost": 0.03, "text": "Fouled holes raise the dry-tray ΔP first, and the flood % of those trays rises with it."}
   ],
   "diagnosis": {"categories": ["fouling", "feedUpset", "foaming", "trayDamage", "instrument", "none"],
                 "locations": ["rectifying", "stripping", "column", "feed", "instrument:*"], "modes": [], "attempts": 2},
@@ -260,7 +260,7 @@ const String h2Json = r'''
     {"id": "inerts", "weight": 1,
      "fault": {"type": "nonCondensables", "severityRange": [0.7, 1.0], "ramp": 0},
      "answer": {"category": "inerts", "location": "condenser"},
-     "debrief": "**Non-condensables were building up** from {fault.onset:time}. They blanket tubes, so the condensate came out *more* subcooled while the pressure rose â€” the classic tell. Opening the vent clears them."}
+     "debrief": "**Non-condensables were building up** from {fault.onset:time}. They blanket tubes, so the condensate came out *more* subcooled while the pressure rose — the classic tell. Opening the vent clears them."}
   ],
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
@@ -287,17 +287,17 @@ const String h3Json = r'''
   "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
             "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
   "timeLimit": 7200,
-  "briefing": "The distillate is going off-spec and nobody touched the set points. Something inside the column â€” or one of its meters â€” has changed. Find it.",
+  "briefing": "The distillate is going off-spec and nobody touched the set points. Something inside the column — or one of its meters — has changed. Find it.",
   "onsetWindow": [600, 1800],
   "candidates": [
     {"id": "broken_tray", "weight": 1,
      "fault": {"type": "trayDamage", "location": {"from": 5, "to": 5}, "severityRange": [0.8, 1.0], "ramp": 0},
      "answer": {"category": "trayDamage", "location": "rectifying"},
-     "debrief": "**Tray 5 was broken** at {fault.onset:time}: its calculated Î”P dropped to a small fraction of its neighbours', the column Î”P fell, and the distillate purity fell at the same L/D."},
+     "debrief": "**Tray 5 was broken** at {fault.onset:time}: its calculated ΔP dropped to a small fraction of its neighbours', the column ΔP fell, and the distillate purity fell at the same L/D."},
     {"id": "foam", "weight": 1,
      "fault": {"type": "foaming", "location": {"from": 1, "to": 20}, "severityRange": [0.8, 1.0], "ramp": 600},
      "answer": {"category": "foaming", "location": "column"},
-     "debrief": "**The column was foaming** from {fault.onset:time}. Flood % went to 100 % at normal rates while the measured column Î”P hardly moved. Antifoam fixes it."},
+     "debrief": "**The column was foaming** from {fault.onset:time}. Flood % went to 100 % at normal rates while the measured column ΔP hardly moved. Antifoam fixes it."},
     {"id": "ft102_bias", "weight": 1,
      "fault": {"type": "instrument", "location": {"tag": "FT-102"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.6], "ramp": 0},
      "answer": {"category": "instrument", "location": "instrument:FT-102"},
@@ -306,8 +306,8 @@ const String h3Json = r'''
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
   "hints": [
-    {"after": 1200, "cost": 0.03, "text": "Look at the calculated Î”P of each tray. One tray with almost none is a hole in the column."},
-    {"after": 2400, "cost": 0.03, "text": "Compare the flood % (calc) with the measured column Î”P (PDT-101). Foam floods the trays without raising the Î”P much."},
+    {"after": 1200, "cost": 0.03, "text": "Look at the calculated ΔP of each tray. One tray with almost none is a hole in the column."},
+    {"after": 2400, "cost": 0.03, "text": "Compare the flood % (calc) with the measured column ΔP (PDT-101). Foam floods the trays without raising the ΔP much."},
     {"after": 3300, "cost": 0.03, "text": "Open the Balance tab: if C3a and a valve check disagree, suspect a meter, not the column."}
   ],
   "diagnosis": {"categories": ["trayDamage", "foaming", "instrument", "valve", "fouling", "feedUpset", "none"],
@@ -334,7 +334,7 @@ const String h4Json = r'''
     {"id": "reb_foul", "weight": 1,
      "fault": {"type": "reboilerFouling", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 5400},
      "answer": {"category": "fouling", "location": "reboiler"},
-     "debrief": "**The reboiler was fouling** from {fault.onset:time}. For most of an hour nothing showed: the exchanger still had capacity to spare, so FC-103 held the duty with the steam valve where it was. Once the fouling ate that margin, the valve ran to 100 % within minutes, the duty fell short and the duty-limited alarm came on. The header pressure (PT-201) stayed normal. On a real plant the valve would creep open over that hour as the steam-chest pressure rose; LowSYS does not model the chest pressure."},
+     "debrief": "**The reboiler was fouling** from {fault.onset:time}. The steam valve crept open for about three quarters of an hour and then saturated, and only then did the duty fall short. The header pressure (PT-201) stayed normal."},
     {"id": "trap", "weight": 1,
      "fault": {"type": "condensateBackup", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 60},
      "answer": {"category": "condensate", "location": "reboiler"},
@@ -380,17 +380,17 @@ const String h5Json = r'''
     {"id": "ts_inlet", "weight": 1,
      "fault": {"type": "tsInletRestriction", "location": {"equipment": "reboiler"}, "severityRange": [0.3, 0.8], "ramp": 1800},
      "answer": {"category": "restriction", "location": "tsInletLine"},
-     "debrief": "**The reboiler inlet line was restricting** from {fault.onset:time}. The inlet-line Î”P rose, the circulation fell and the exit quality rose, but the loop did *not* surge: friction at the inlet stabilises a thermosyphon."},
+     "debrief": "**The reboiler inlet line was restricting** from {fault.onset:time}. The inlet-line ΔP rose, the circulation fell and the exit quality rose, but the loop did *not* surge: friction at the inlet stabilises a thermosyphon."},
     {"id": "ts_outlet", "weight": 1,
      "fault": {"type": "tsOutletRestriction", "location": {"equipment": "reboiler"}, "severityRange": [0.2, 0.6], "ramp": 1800},
      "answer": {"category": "restriction", "location": "tsOutletLine"},
-     "debrief": "**The reboiler outlet line was restricting** from {fault.onset:time}. The outlet-line Î”P rose, I_s went above 1 and the boilup surged with a period of about 10â€“13 s. Throttling the inlet valve damps it until the line is cleared."}
+     "debrief": "**The reboiler outlet line was restricting** from {fault.onset:time}. The outlet-line ΔP rose, I_s went above 1 and the boilup surged with a period of about 10–13 s. Throttling the inlet valve damps it until the line is cleared."}
   ],
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
   "hints": [
-    {"after": 1500, "cost": 0.03, "text": "Open the Equipment tab: the circulation, the exit quality and I_s tell you how healthy the loop is, and the inlet- and outlet-line Î”Ps tell you where it is being squeezed."},
-    {"after": 3000, "cost": 0.03, "text": "Is the sump level real? Compare LT-102 with C5 (sump) on the Balance tab â€” try the 1-hour window â€” and do a field check of LG-102."},
+    {"after": 1500, "cost": 0.03, "text": "Open the Equipment tab: the circulation, the exit quality and I_s tell you how healthy the loop is, and the inlet- and outlet-line ΔPs tell you where it is being squeezed."},
+    {"after": 3000, "cost": 0.03, "text": "Is the sump level real? Compare LT-102 with C5 (sump) on the Balance tab — try the 1-hour window — and do a field check of LG-102."},
     {"after": 4500, "cost": 0.03, "text": "Inlet restriction lowers circulation without surging; outlet restriction makes the loop surge."}
   ],
   "diagnosis": {"categories": ["restriction", "instrument", "fouling", "condensate", "steam", "valve", "none"],
@@ -398,5 +398,53 @@ const String h5Json = r'''
   "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
               "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
   "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; diagnosed: {result.diagnosisTime:time}."
+}
+''';
+
+/// h6Json: ENGINE_API.md 11.10 (M7), copied verbatim.
+const String h6Json = r'''
+{
+  "id": "H6_offspec_overhead", "kind": "drill", "title": "Off-spec overhead", "milestone": 7, "topic": "multicomponent",
+  "preset": "debut", "overrides": {"tier": "t3", "hydraulics": "ideal"}, "start": "steady", "noise": true,
+  "view": "plantCalc", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType", "tier"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "The LPG from this debutanizer is going off-spec: AT-101 shows too much isopentane and heavier in the overhead. At 45 minutes planning will raise the throughput by 8 % (feed, reflux and reboiler duty together). Find out why the overhead is going heavy: did the feed change, has the reflux pump lost capacity, or is the reflux valve not doing what FC-102 tells it?",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "feed_heavy_keys", "weight": 2,
+     "fault": {"type": "feedComposition", "params": {"dz": {"propane": -0.02, "isobutane": -0.04, "nbutane": 0.02, "isopentane": 0.04}, "sign": 1}, "severityRange": [0.5, 1.0], "ramp": 900},
+     "answer": {"category": "feedUpset", "location": "feed"},
+     "debrief": "**The feed got heavier in the keys** from {fault.onset:time}: less propane and isobutane, more n-butane and isopentane. AT-100's light cut fell by 0.02–0.04 while the reflux loop behaved normally. The column still drew the same distillate, so isopentane made up the missing light material and AT-101 rose. The fix is to cut D (or raise the reflux) to suit the new light cut."},
+    {"id": "reflux_pump", "weight": 2,
+     "fault": {"type": "refluxPumpTrip", "location": {"equipment": "refluxPump"}, "severityRange": [0.55, 0.62], "ramp": 0},
+     "answer": {"category": "pump", "location": "refluxPump"},
+     "debrief": "**The reflux pump lost capacity** at {fault.onset:time}: it could deliver only {fault.magnitude}. FT-102 fell below its set point at once, with no set-point change, and FC-102 went to 100 % (OPSAT). The valve was wide open and the meter was honest: there was simply no more flow. With less reflux at the same boilup, LC-101 sent the difference out as distillate, and isopentane went with it. Restore the pump; until then, cut the duty so that the reflux you can get is enough."},
+    {"id": "fv102_stuck", "weight": 2,
+     "fault": {"type": "valve", "location": {"tag": "FV-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "valve", "location": "valve:FV-102"},
+     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** Nothing showed until planning raised the rates at 45 min. Then the feed and the duty went up, FC-102's set point went up and its OP ran to 100 %, but the reflux flow did not move. The meter was honest (C3a green); only C4 for FV-102 failed. More vapour with the same reflux meant more distillate and a heavier overhead. Open `bypass.FV-102` and set the reflux by hand."}
+  ],
+  "events": [
+    {"id": "planning", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 2.22222,
+     "text": "Planning: throughput +8 %: feed +8 kmol/h, reflux +6.1 kmol/h, duty +54 kW."},
+    {"at": 2700, "action": "setSp", "tag": "FC-102", "delta": 1.69778},
+    {"at": 2700, "action": "setSp", "tag": "FC-103", "delta": 54375}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xDHeavy", "from": "start", "op": ">", "value": 0.01},
+                               {"metric": "kpi.xBLight", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1200, "cost": 0.03, "text": "Compare the two analysers on the Products tab: did the feed's light cut (AT-100) change before the overhead (AT-101) went heavy?"},
+    {"after": 2400, "cost": 0.03, "text": "Open FC-102's faceplate. Is the reflux flow at its set point, and is the operating point on the valve curve (C4)?"},
+    {"after": 3600, "cost": 0.03, "text": "A pump that cannot deliver drives its valve wide open at a lower flow, with no set-point change. A stuck valve keeps the old flow whatever its OP does. A feed change shows on AT-100 while FC-102 behaves normally."}
+  ],
+  "diagnosis": {"categories": ["feedUpset", "pump", "valve", "instrument", "none"],
+                "locations": ["feed", "refluxPump", "valve:FV-101", "valve:FV-102", "valve:FV-103",
+                              "instrument:FT-102", "instrument:AT-100", "instrument:AT-101"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
 }
 ''';

@@ -9,6 +9,7 @@ import '../faults/fault_effects.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/tier1_constant_alpha.dart';
 import '../thermo/tier2_raoult.dart';
+import 'explain_m7.dart';
 import 'explain_t2.dart';
 import 'explain_types.dart';
 
@@ -83,7 +84,9 @@ class ExplainEngine {
       case ExplainLoop():
         return _loop(t.tag);
       case ExplainMcCabe():
-        return _mccabe(t.element);
+        return nc > 2 ? hengstebeck() : _mccabe(t.element);
+      case ExplainFug():
+        return fug(t.targets);
       case ExplainInstrument():
         return _instrument(t.tag);
       case ExplainValve():
@@ -217,12 +220,13 @@ class ExplainEngine {
         ? 'feed tray'
         : (j < feed ? 'rectifying section' : 'stripping section');
     final groups = <EquationGroup>[];
-    final x = st.xAt(j, 0), y = st.yAt(j, 0), ys = st.yStarAt(j, 0);
+    final lkI = config.effectiveKeys.lk; // the light key (component 0 for a binary)
+    final x = st.xAt(j, lkI), y = st.yAt(j, lkI), ys = st.yStarAt(j, lkI);
     final L = st.liquidDown[j], V = st.vaporUp[j], vBelow = st.vaporUp[j + 1];
-    final yb = st.yAt(j + 1, 0);
+    final yb = st.yAt(j + 1, lkI);
     final E = st.efficiency[j];
-    final alpha = thermo.alpha[0] / thermo.alpha[1];
-    final light = snapshot.components.first;
+    final alpha = thermo.alpha[lkI] / thermo.alpha[config.effectiveKeys.hk];
+    final light = snapshot.components[lkI];
 
     // --- material balance of the light component (4.1)
     final e = st.entrain[j];
@@ -230,12 +234,12 @@ class ExplainEngine {
     final fj = full ? hyd.bypass[j] : 0.0;
     final fPrev = j >= 2 && full ? hyd.bypass[j - 1] : 0.0;
     final lUp = st.liquidDown[j - 1];
-    final xUp = st.xAt(j - 1, 0);
+    final xUp = st.xAt(j - 1, lkI);
     final lUp2 = j >= 2 ? st.liquidDown[j - 2] : 0.0;
-    final xUp2 = j >= 2 ? st.xAt(j - 2, 0) : 0.0;
-    final xDn = st.xAt(j + 1, 0);
+    final xUp2 = j >= 2 ? st.xAt(j - 2, lkI) : 0.0;
+    final xDn = st.xAt(j + 1, lkI);
     final fFeed = j == feed ? snapshot.streams[StreamId.feed]!.flow : 0.0;
-    final zF = snapshot.streams[StreamId.feed]!.composition[0];
+    final zF = snapshot.streams[StreamId.feed]!.composition[lkI];
     final inflow = (1 - fj) * lUp * xUp +
         fPrev * lUp2 * xUp2 +
         vBelow * yb +
@@ -258,7 +262,7 @@ class ExplainEngine {
 
     // --- equilibrium and Murphree (3.1, 4.2)
     final tier2 = t2 != null && snapshot.tier != ThermoTier.t1;
-    final t2Lines = tier2 ? ExplainT2(snapshot, t2!).stageLines(j) : const <EquationLine>[];
+    final t2Lines = tier2 ? ExplainT2(snapshot, t2!, lk: config.effectiveKeys.lk).stageLines(j) : const <EquationLine>[];
     groups.add(EquationGroup('Equilibrium and efficiency', [
       if (tier2) t2Lines[0],
       if (tier2) t2Lines[1],

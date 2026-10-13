@@ -29,6 +29,39 @@ class MeasurementBus {
   /// Light-component mole fractions: feed (effective), distillate, bottoms.
   double feedLight = 0.5, xD = 0.98, xB = 0.02;
 
+  /// M7 key cuts (PHYSICS.md 10.5): heavy cut in D, light cut in B; [feedLight] is the feed light cut and [xD], [xB]
+  /// the light key in D and B. For a binary the cuts are 1 - xD and xB.
+  double dHeavy = 0.02, bLight = 0.02;
+
+  /// Key indices (light key, heavy key) and the true feed, distillate and bottoms compositions (analyser GC results).
+  int lk = 0, hk = 1;
+  Float64List feedX = Float64List(0), dX = Float64List(0), bX = Float64List(0);
+
+  /// Fills the key cuts and the three composition vectors from the stage compositions.
+  void setCuts(Float64List z, Float64List xv, int xdOff, int xbOff, int nc) {
+    if (feedX.length != nc) {
+      feedX = Float64List(nc);
+      dX = Float64List(nc);
+      bX = Float64List(nc);
+    }
+    var fl = 0.0, bl = 0.0, dh = 0.0;
+    for (var i = 0; i < nc; i++) {
+      feedX[i] = z[i];
+      dX[i] = xv[xdOff + i];
+      bX[i] = xv[xbOff + i];
+      if (i <= lk) {
+        fl += z[i];
+        bl += bX[i];
+      }
+      if (i >= hk) dh += dX[i];
+    }
+    feedLight = nc == 2 ? z[0] : fl;
+    xD = xv[xdOff + lk];
+    xB = xv[xbOff + lk];
+    dHeavy = nc == 2 ? 1 - xv[xdOff] : dh;
+    bLight = nc == 2 ? xv[xbOff] : bl;
+  }
+
   /// Tier 2 true values (M4): top pressure (Pa), steam header gauge pressure (Pa), reflux temperature, CW inlet and
   /// outlet temperatures (K), CW volume flow (m3/s) and the stage temperatures (K).
   double pTop = 101325, steamGauge = 350000, tRefl = 350;
@@ -40,8 +73,8 @@ class MeasurementBus {
         'sump.levelPct' => sumpLevelPct,
         'columnDp' => columnDp,
         'stream.feed.x[0]' => feedLight,
-        'stream.distillate.heavy' => 1 - xD,
-        'stream.bottoms.x[0]' => xB,
+        'stream.distillate.heavy' => dHeavy,
+        'stream.bottoms.x[0]' => bLight,
         'pTop' => pTop,
         'steamGauge' => steamGauge,
         'refluxT' => tRefl,
@@ -73,6 +106,9 @@ class ControlDesign {
 
   /// dT_bub/dP of the design distillate (K/Pa), for TI-100's process sigma.
   final double dTbubDp;
+
+  /// PC-101 gain with a total condenser (%OP per % span).
+  final double pcKc;
   final int nTrays, tc101Tray;
   /// Partial condenser (PHYSICS.md 7.2, 10.7): PC-101 drives the vapour-product valve PV-102 (full scale [dvMax] mol/s,
   /// start OP [dvOp] %) and the CW valve sits at [cwManualOp] %.
@@ -92,6 +128,7 @@ class ControlDesign {
     this.dutyMax = 3.0e6,
     this.thermosyphon,
     this.dTbubDp = 3.2e-4,
+    this.pcKc = 10,
     this.partial = false,
     this.dvMax = 0,
     this.dvOp = 20,
@@ -485,13 +522,13 @@ class ControlSystem {
       mvRef: pv101.id,
       params: d.partial
           ? const PidParams(kc: 2.0, ti: 30, action: Action.direct, spKick: false)
-          : const PidParams(
-              kc: 10, ti: 120, action: Action.direct, spKick: false),
+          : PidParams(
+              kc: d.pcKc, ti: 120, action: Action.direct, spKick: false),
       fastLayer: false,
       lo: 0,
       hi: 2 * pDes,
       spLo: 20000,
-      spHi: 500000,
+      spHi: pDes > 5e5 ? 2.5e6 : 500000,
       sp: pDes,
       op: d.partial ? d.dvOp : d.cwDesign,
     );
@@ -610,8 +647,13 @@ class ControlSystem {
     lt102.reset(bus.sumpLevelPct, t);
     pdt101.reset(bus.columnDp, t);
     at100.reset(bus.feedLight, t);
-    at101.reset(1 - bus.xD, t);
-    at102.reset(bus.xB, t);
+    at101.reset(bus.dHeavy, t);
+    at102.reset(bus.bLight, t);
+    if (bus.feedX.isNotEmpty) {
+      at100.resetComp(bus.feedX);
+      at101.resetComp(bus.dX);
+      at102.resetComp(bus.bX);
+    }
     if (tier2) _resetT2Instruments(bus, t);
     for (final l in loops) {
       l.initHistory(_inst[l.pvTag]!.value);
@@ -945,9 +987,10 @@ class ControlSystem {
     lt101.update(dt, bus.drumLevelPct, tStart);
     lt102.update(dt, bus.sumpLevelPct, tStart);
     pdt101.update(dt, bus.columnDp, tStart);
-    at100.updateAnalyser(dt, bus.feedLight, t);
-    at101.updateAnalyser(dt, 1 - bus.xD, t);
-    at102.updateAnalyser(dt, bus.xB, t);
+    final hc = bus.feedX.isNotEmpty;
+    at100.updateAnalyser(dt, bus.feedLight, t, c: hc ? bus.feedX : null);
+    at101.updateAnalyser(dt, bus.dHeavy, t, c: hc ? bus.dX : null);
+    at102.updateAnalyser(dt, bus.bLight, t, c: hc ? bus.bX : null);
     for (final i in [lt101, lt102, pdt101, at100, at101, at102]) {
       _pushInstrument(i);
     }

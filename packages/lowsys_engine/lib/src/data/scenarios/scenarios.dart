@@ -605,3 +605,54 @@ const String g14Json = r'''
   "debrief": "A thermosyphon surges when the exit quality is high and the driving head is low. At 15 % sump level the head was small, so the circulation was low and the exit quality high (I_s above 1). Throttling the inlet adds single-phase friction that damps the density waves, but it also cuts the circulation, and at this level it cost more duty than it saved. Raising the level fixed the cause: more head, more circulation, lower exit quality."
 }
 ''';
+
+/// g13Json: ENGINE_API.md 11.8 (M7), `debut` at its defaults.
+const String g13Json = r'''
+{
+  "id": "G13_debutanizer_fug",
+  "kind": "guided",
+  "title": "Debutanizer keys and FUG",
+  "milestone": 7,
+  "topic": "multicomponent",
+  "preset": "debut",
+  "overrides": {"tier": "t3", "hydraulics": "ideal"},
+  "start": "steady",
+  "noise": false,
+  "levers": {
+    "set": {},
+    "lock": ["nTrays", "feedStage", "murphree", "tier"],
+    "show": ["refluxFlow", "reboilerDuty", "feedFlow"]
+  },
+  "timeLimit": 86400,
+  "parTime": 21600,
+  "briefing": "This debutanizer splits a six-component feed between n-butane (light key) and isopentane (heavy key). At its defaults it recovers about 97.8 % of the n-butane in the distillate and 97.8 % of the isopentane in the bottoms.\n\nOpen the Products tab. The FUG panel computes the shortcut design (Fenske, Underwood, Gilliland) for the column you are running. Switch it to targets of 98 % and 98 %, then raise reflux and duty together until the real column meets them. Read N_min and R_min off the panel and compare Gilliland's N with the column's stages.",
+  "objectives": [
+    {"id": "o1", "text": "Recover at least 98 % of the n-butane in the distillate and 98 % of the isopentane in the bottoms, at steady state.",
+     "when": {"all": [{"metric": "kpi.recoveryLK", "op": ">=", "value": 0.98},
+                      {"metric": "kpi.recoveryHK", "op": ">=", "value": 0.98},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o2", "text": "Underwood's R_min on the FUG panel.", "after": "o1",
+     "answer": {"type": "number", "correct": 1.30, "tolerance": 0.03}},
+    {"id": "o3", "text": "Fenske's N_min on the FUG panel.", "after": "o2",
+     "answer": {"type": "number", "correct": 10.9, "tolerance": 0.4}},
+    {"id": "o4", "text": "The column has 32 trays at E = 0.7. How do its stages compare with Gilliland's N?", "after": "o3",
+     "answer": {"type": "choice",
+                "options": ["about 23 equilibrium stages (32 x 0.7 + the reboiler), close to N", "32: every tray is a stage", "about 11: it runs near N_min", "about 46: twice N_min is the rule"],
+                "correct": 0}},
+    {"id": "o5", "text": "Why does the Tier-3 column need a little more reflux than the FUG design (R = 1.70 for 98/98)?", "after": "o4",
+     "answer": {"type": "choice",
+                "options": ["alpha falls down the column (about 2.2 at the top, 1.9 at the bottom), and FUG uses one mean alpha", "FUG ignores the reboiler", "the trays weep", "the feed is subcooled"],
+                "correct": 0}}
+  ],
+  "hints": [
+    {"after": 0, "text": "Open the Products tab. The FUG panel computes the shortcut design for the column you are running; switch it to targets 98 % / 98 %."},
+    {"after": 600, "text": "Raise the reflux to 80 kmol/h and the duty to 698 kW together, so that D stays near 45 kmol/h."},
+    {"when": {"metric": "objective[o1].met", "op": "==", "value": true},
+     "text": "Read N_min and R_min off the panel, and compare N with 32 x 0.7 + 1."}
+  ],
+  "events": [],
+  "scoring": {"objectives": 0.7, "time": 0.2, "safety": 0.1, "quality": 0.0},
+  "debrief": "At R = {kpi.refluxRatio:0.00} the column recovers {kpi.recoveryLK:0.0000} of the n-butane and {kpi.recoveryHK:0.0000} of the isopentane.\n\nThe FUG shortcut is a design estimate: it uses one mean relative volatility per component. The Tier-3 column's alpha falls from about 2.2 at the top to 1.9 at the bottom, so it needs a little more reflux than the shortcut asks for. The shortcut's N is the number of equilibrium stages; the real column has 32 trays at E = 0.7, i.e. 32 x 0.7 + 1 = 23.4 effective stages."
+}
+''';

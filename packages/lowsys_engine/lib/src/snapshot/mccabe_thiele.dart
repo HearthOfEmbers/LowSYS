@@ -4,6 +4,7 @@ import 'package:meta/meta.dart';
 
 import 'dart:typed_data';
 
+import '../config/column_config.dart' show KeyComponents;
 import '../core/ids.dart';
 import '../thermo/component.dart';
 import '../thermo/thermo_model.dart';
@@ -112,6 +113,9 @@ class McCabeThieleData {
   /// Intersection of the two CMO operating lines.
   final Point2 operatingIntersection;
 
+  /// Pseudo-binary (M7): alpha' = K_LK / K_HK at the top tray and at the reboiler (NaN otherwise).
+  final double alphaPrimeTop, alphaPrimeBottom;
+
   const McCabeThieleData({
     required this.pseudoBinary,
     required this.lightLabel,
@@ -134,6 +138,8 @@ class McCabeThieleData {
     required this.transient,
     required this.operatingIntersection,
     this.available = true,
+    this.alphaPrimeTop = double.nan,
+    this.alphaPrimeBottom = double.nan,
   });
 
   /// The empty diagram of plant view.
@@ -516,20 +522,151 @@ class McCabeThieleBuilder {
     );
   }
 
+  /// Hengstebeck pseudo-binary of a multicomponent column (PHYSICS.md 14.2): primed compositions
+  /// x' = x_LK / (x_LK + x_HK) on every stage, no CMO lines and no R_min construction.
+  McCabeThieleData _buildPseudo(SimSnapshot s, ThermoModel thermo, KeyComponents keys) {
+    final st = s.stages;
+    final N = s.layout.nTrays;
+    final nc = st.nc;
+    final lk = keys.lk, hk = keys.hk;
+    final feedStage = s.layout.feedStages.first;
+    double pr(Float64List a, int j) {
+      final l = a[j * nc + lk], h = a[j * nc + hk];
+      final sum = l + h;
+      return sum > 1e-12 ? l / sum : 0.0;
+    }
+
+    final isAlpha = thermo is ConstantAlphaThermo;
+    final zF = s.streams[StreamId.feed]!.composition;
+    final zl = zF[lk], zh = zF[hk];
+    final xF = zl + zh > 0 ? zl / (zl + zh) : 0.0;
+    final xD = pr(st.x, 0);
+    final xB = pr(st.x, N + 1);
+
+    final local = <Point2>[];
+    final corners = <StageCorner>[];
+    for (var j = 1; j <= N + 1; j++) {
+      local.add(Point2(pr(st.x, j), pr(st.yStar, j)));
+      corners.add(StageCorner(pr(st.x, j), pr(st.y, j), j, j == feedStage));
+    }
+    final locus = <Point2>[for (var j = 0; j <= N; j++) Point2(pr(st.x, j), pr(st.y, j + 1))];
+    final stair = <Point2>[Point2(xD, xD)];
+    for (var j = 0; j <= N; j++) {
+      stair.add(Point2(pr(st.x, j), pr(st.y, j + 1)));
+      stair.add(Point2(pr(st.x, j + 1), pr(st.y, j + 1)));
+    }
+    stair.add(Point2(xB, xB));
+
+    // alpha' at the top tray and the reboiler
+    double ap(int j) {
+      final xl = st.x[j * nc + lk], xh = st.x[j * nc + hk];
+      final yl = st.yStar[j * nc + lk], yh = st.yStar[j * nc + hk];
+      return xl > 1e-12 && xh > 1e-12 && yh > 1e-12 ? (yl / xl) / (yh / xh) : double.nan;
+    }
+
+    List<Point2> eqTop;
+    double apTop, apBot;
+    if (isAlpha) {
+      final a = thermo.alpha;
+      final alphaP = a[lk] / a[hk];
+      eqTop = _equilibrium(alphaP);
+      apTop = apBot = alphaP;
+    } else {
+      eqTop = List<Point2>.from(local)..sort((a, b) => a.x.compareTo(b.x));
+      apTop = ap(1);
+      apBot = ap(N + 1);
+    }
+    final pe = List<Point2>.from(corners.map((c) => Point2(c.x, c.y)))..sort((a, b) => a.x.compareTo(b.x));
+
+    // q-line through (z', z'): a dashed guide clipped to the frame, no intersection (PHYSICS.md 14.2)
+    var q = s.feedQ;
+    if (thermo is Tier2Raoult) {
+      final qs = s.streams[StreamId.feed]!.q;
+      if (qs.isFinite) q = qs;
+    }
+    double dx, dy;
+    if ((q - 1).abs() < 1e-9) {
+      dx = 0;
+      dy = 1;
+    } else {
+      final m = q / (q - 1);
+      if (m > 0) {
+        dx = 1;
+        dy = m;
+      } else {
+        dx = -1;
+        dy = -m;
+      }
+    }
+    var tMax = double.infinity;
+    if (dy > 0) tMax = math.min(tMax, (1 - xF) / dy);
+    if (dx > 0) tMax = math.min(tMax, (1 - xF) / dx);
+    if (dx < 0) tMax = math.min(tMax, (0 - xF) / dx);
+    final qLine = Segment2(Point2(xF, xF), Point2(xF + dx * tMax, xF + dy * tMax));
+
+    final zones = <RangeX>[];
+    var run = 0;
+    for (var j = 1; j <= N + 1; j++) {
+      final dxj = pr(st.x, j - 1) - pr(st.x, j);
+      if (dxj.abs() < 0.002) {
+        run++;
+        if (run >= 3) {
+          final lo = pr(st.x, j);
+          final hi = pr(st.x, j - run);
+          if (zones.isNotEmpty &&
+              (zones.last.lo - lo).abs() < 1.0 &&
+              zones.last.lo <= hi + 1e-12 &&
+              zones.last.hi >= lo - 1e-12) {
+            zones[zones.length - 1] = RangeX(math.min(zones.last.lo, lo), math.max(zones.last.hi, hi));
+          } else {
+            zones.add(RangeX(lo, hi));
+          }
+        }
+      } else {
+        run = 0;
+      }
+    }
+    final db = ComponentDb.load();
+    return McCabeThieleData(
+      pseudoBinary: true,
+      lightLabel: db[s.components[lk]].name,
+      heavyLabel: db[s.components[hk]].name,
+      equilibriumTop: eqTop,
+      equilibriumBottom: null,
+      localEquilibrium: local,
+      qLine: qLine,
+      cmoRectifying: const [],
+      cmoStripping: const [],
+      operatingLocus: locus,
+      staircase: stair,
+      corners: corners,
+      pseudoEquilibrium: pe,
+      xF: xF,
+      xD: xD,
+      xB: xB,
+      rmin: null,
+      pinchZones: zones,
+      transient: !s.steady.isSteady,
+      operatingIntersection: const Point2(double.nan, double.nan),
+      alphaPrimeTop: apTop,
+      alphaPrimeBottom: apBot,
+    );
+  }
+
   final Map<String, List<Azeotrope>> _azCache = {};
 
   /// [xDTarget] / [xBTarget] replace the live product compositions in the R_min construction only (what the
   /// construction asks "if the specification were ..."; VALIDATION.md VC-28.4).
   McCabeThieleData build(SimSnapshot s, ThermoModel thermo,
-      {bool showRmin = false, double? xDTarget, double? xBTarget}) {
+      {bool showRmin = false, double? xDTarget, double? xBTarget, KeyComponents? keys}) {
     if (s.view.isPlant) return McCabeThieleData.unavailable();
     final isT2 = thermo is Tier2Raoult;
     if (!isT2 && thermo is! ConstantAlphaThermo) {
       throw UnsupportedError('McCabe-Thiele data needs a Tier 1 or Tier 2 model');
     }
-    if (thermo.nc != 2)
-      throw UnsupportedError(
-          'Pseudo-binary (multicomponent) diagrams arrive with M7');
+    if (thermo.nc != 2) {
+      return _buildPseudo(s, thermo, keys ?? const KeyComponents(0, 1));
+    }
     final th2 = isT2 ? thermo : null;
     final alpha = isT2
         ? double.nan

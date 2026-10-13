@@ -97,6 +97,10 @@ class CondenserConfig {
   /// of TI-100's typical sigma (PHYSICS.md 10.5).
   final double dTbubDp;
 
+  /// PC-101 proportional gain for a total condenser (%OP per % span; the B-T value is 10). The light-hydrocarbon
+  /// presets (M7) have a much smaller process gain in % span per % OP (a 3.45 MPa span and a small condenser).
+  final double pcKc;
+
   /// Vapour-product header pressure (partial condenser), vent header pressure and capacities (PHYSICS.md 7.1, 7.2);
   /// null: P_design - 30 kPa, and 50 kPa below 3 bar design pressure else 1 atm.
   final double? pDown, pVent;
@@ -115,6 +119,7 @@ class CondenserConfig {
     this.dvMax = 0,
     this.cwOpPartial = 30,
     this.dTbubDp = 3.2e-4,
+    this.pcKc = 10,
     this.pDown,
     this.pVent,
     this.ventMax = 2.0,
@@ -140,6 +145,7 @@ class CondenserConfig {
       dvMax: g('dvMax', d.dvMax),
       cwOpPartial: g('cwOpPartial', d.cwOpPartial),
       dTbubDp: g('dTbubDp', d.dTbubDp),
+      pcKc: g('pcKc', d.pcKc),
       pDown: (j['pDown'] as num?)?.toDouble(),
       pVent: (j['pVent'] as num?)?.toDouble(),
       ventMax: g('ventMax', d.ventMax),
@@ -159,6 +165,7 @@ class CondenserConfig {
         'dvMax': dvMax,
         'cwOpPartial': cwOpPartial,
         'dTbubDp': dTbubDp,
+        if (pcKc != 10) 'pcKc': pcKc,
         if (pDown != null) 'pDown': pDown,
         if (pVent != null) 'pVent': pVent,
         'ventMax': ventMax,
@@ -391,6 +398,19 @@ class Tier1Props {
 /// Immutable, JSON-serialisable description of a column and its initial lever values
 /// (ENGINE_API.md 4). All values SI (mol/s, K, Pa, m, kg/s, W).
 @immutable
+/// Light and heavy key component indices of a multicomponent column (ENGINE_API.md 4, M7). Components are listed
+/// in order of decreasing volatility, so the light cut is every component up to [lk] and the heavy cut every
+/// component from [hk] on.
+@immutable
+class KeyComponents {
+  final int lk, hk;
+  const KeyComponents(this.lk, this.hk);
+  @override
+  bool operator ==(Object other) => other is KeyComponents && other.lk == lk && other.hk == hk;
+  @override
+  int get hashCode => Object.hash(lk, hk);
+}
+
 class ColumnConfig {
   final PresetId presetId;
   final String displayName;
@@ -413,6 +433,12 @@ class ColumnConfig {
   /// Tier-3 model (M5) and the "Tier 1 cannot represent this system" flag (`ac`, PHYSICS.md 2.3).
   final Tier3Model tier3Model;
   final bool tier1CannotRepresent;
+
+  /// Multicomponent keys (`debut`, `deprop`); null for binaries.
+  final KeyComponents? keys;
+
+  /// Key indices used by the analysers and KPIs: the declared keys, or (0, 1) for a binary.
+  KeyComponents get effectiveKeys => keys ?? const KeyComponents(0, 1);
 
   /// Tiers the learner may select (PHYSICS.md 13.5): `sameAsTier2` has no Tier 3, crude only Tier 2.
   Set<ThermoTier> get availableTiers {
@@ -441,6 +467,7 @@ class ColumnConfig {
     this.murphree = 0.7,
     this.tier3Model = Tier3Model.sameAsTier2,
     this.tier1CannotRepresent = false,
+    this.keys,
   });
 
   factory ColumnConfig.fromJson(Map<String, Object?> j) {
@@ -480,6 +507,13 @@ class ColumnConfig {
       tier3Model: Tier3Model.values.firstWhere(
           (e) => e.name == (j['tier3Model'] ?? 'sameAsTier2')),
       tier1CannotRepresent: (j['tier1CannotRepresent'] as bool?) ?? false,
+      keys: j['keys'] == null
+          ? null
+          : (() {
+              final k = j['keys']! as Map<String, Object?>;
+              final comps = [for (final c in (j['components']! as List<Object?>)) c! as String];
+              return KeyComponents(comps.indexOf(k['lk']! as String), comps.indexOf(k['hk']! as String));
+            })(),
     );
   }
 
@@ -500,6 +534,7 @@ class ColumnConfig {
         'murphree': murphree,
         'tier3Model': tier3Model.name,
         if (tier1CannotRepresent) 'tier1CannotRepresent': true,
+        if (keys != null) 'keys': {'lk': components[keys!.lk], 'hk': components[keys!.hk]},
         'initialLevers': initialLevers,
       };
 
@@ -568,6 +603,7 @@ class ColumnConfig {
     double? murphree,
     Tier3Model? tier3Model,
     bool? tier1CannotRepresent,
+    KeyComponents? keys,
   }) =>
       ColumnConfig(
         presetId: presetId ?? this.presetId,
@@ -587,6 +623,7 @@ class ColumnConfig {
         murphree: murphree ?? this.murphree,
         tier3Model: tier3Model ?? this.tier3Model,
         tier1CannotRepresent: tier1CannotRepresent ?? this.tier1CannotRepresent,
+        keys: keys ?? this.keys,
       );
 
   /// Convenience for tests and the app: same column with [trays] trays and the feed on [feedStage].

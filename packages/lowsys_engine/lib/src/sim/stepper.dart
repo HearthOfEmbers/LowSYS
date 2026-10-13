@@ -1295,9 +1295,7 @@ class Stepper {
     bus.drumLevelPct = 100 * s.holdup[0] * s.vLiq[0] / drumVolume;
     bus.sumpLevelPct = 100 * s.holdup[N + 1] * s.vLiq[N + 1] / sumpVolume;
     bus.columnDp = full ? hyd.pressureDropTotal : 0.0;
-    bus.feedLight = ep.zEff[0];
-    bus.xD = s.x[0];
-    bus.xB = s.x[(N + 1) * nc];
+    bus.setCuts(ep.zEff, s.x, 0, (N + 1) * nc, nc);
     control.modelFull = full;
     if (tier2) {
       fillBusT2();

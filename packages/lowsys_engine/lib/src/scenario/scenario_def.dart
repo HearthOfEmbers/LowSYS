@@ -400,7 +400,7 @@ class ScenarioDef {
   ColumnConfig buildConfig() => Presets.byId(preset).applyOverrides(overrides);
 
   static final RegExp _leverPattern = RegExp(
-      r'^(feedFlow|feedZ\.\w+|feedQ|feedT|feedVaporFraction|feedStage|refluxFlow|refluxRatio|refluxMode|refluxSubcooling|boilup|reboilerDuty|pTop|condenserType|drumLevelSp|sumpLevelSp|distillateValve|bottomsValve|nTrays|murphree|trayType\.\w+|hydraulics|cwInletT|cwMaxFlow|steamHeaderP|reboilerType|tsInletValve|antifoam|inertVent|tc101Enable|tc101Tray|tc101Sp|noise|crudeRate|cot|topTSp|drawRate\.\w+|paDuty|steam\.\w+|drumTSp|view|badPvShed|bypass\.[\w-]+|feedFlowOp|refluxOp|boilupOp|alpha)$');
+      r'^(feedFlow|feedZ\.\w+|feedQ|feedT|feedVaporFraction|feedStage|refluxFlow|refluxRatio|refluxMode|refluxSubcooling|boilup|reboilerDuty|pTop|condenserType|drumLevelSp|sumpLevelSp|distillateValve|bottomsValve|nTrays|murphree|trayType\.\w+|hydraulics|cwInletT|cwMaxFlow|steamHeaderP|reboilerType|tsInletValve|antifoam|inertVent|tc101Enable|tc101Tray|tc101Sp|tier|noise|crudeRate|cot|topTSp|drawRate\.\w+|paDuty|steam\.\w+|drumTSp|view|badPvShed|bypass\.[\w-]+|feedFlowOp|refluxOp|boilupOp|alpha)$');
   static final RegExp _loopPattern = RegExp(r'^(FC|LC|PC|TC)-\d+$');
   static const Set<String> _instrumentKinds = {
     'bias',
@@ -420,11 +420,11 @@ class ScenarioDef {
   /// Diagnosis vocabulary (ENGINE_API.md 11.2, with the M6 additions).
   static const Set<String> diagnosisCategories = {
     'cooling', 'fouling', 'inerts', 'foaming', 'trayDamage', 'instrument', 'valve', 'feedUpset', 'steam',
-    'thermosyphon', 'maldistribution', 'none', 'restriction', 'condensate',
+    'thermosyphon', 'maldistribution', 'none', 'restriction', 'condensate', 'pump',
   };
   static const Set<String> diagnosisLocations = {
     'condenser', 'reboiler', 'rectifying', 'stripping', 'feed', 'instrument:*', 'valve:*', 'packedBed', 'column',
-    'steamSupply', 'tsInletLine', 'tsOutletLine',
+    'steamSupply', 'tsInletLine', 'tsOutletLine', 'refluxPump',
   };
 
   /// True when [path] is a valid template variable of this scenario.
@@ -550,7 +550,7 @@ class ScenarioDef {
           if (!diagnosisCategories.contains(c)) p.add('unknown diagnosis category "$c"');
         }
         for (final l in dg.locations) {
-          if (!diagnosisLocations.contains(l)) p.add('unknown diagnosis location "$l"');
+          if (!diagnosisLocations.contains(l) && !diagnosisLocations.contains('${l.split(':').first}:*')) p.add('unknown diagnosis location "$l"');
         }
         for (final c in candidates) {
           if (!dg.categories.contains(c.answerCategory)) {

@@ -307,6 +307,7 @@ class Simulator {
           boilupMax: _rangeMax(config, 'boilup', 300),
           dutyMax: _rangeMax(config, 'reboilerDuty', 3.0e6, kmolh: false),
           dTbubDp: config.condenser.dTbubDp,
+          pcKc: config.condenser.pcKc,
           thermosyphon: config.reboiler.type == ReboilerType.thermosyphon ? config.reboiler.thermosyphon : null,
           dvMax: config.condenser.dvMax,
           cwManualOp: lev['cwOP'] ?? config.condenser.cwOpPartial,
@@ -396,9 +397,9 @@ class Simulator {
       ..drumLevelPct = _stepper.drumLevelPct
       ..sumpLevelPct = _stepper.sumpLevelPct
       ..columnDp = 0
-      ..feedLight = _inputs.z[0]
-      ..xD = _state.x[0]
-      ..xB = _state.x[(_state.nTrays + 1) * _state.nc];
+      ..lk = _config.effectiveKeys.lk
+      ..hk = _config.effectiveKeys.hk
+      ..setCuts(_inputs.z, _state.x, 0, (_state.nTrays + 1) * _state.nc, _state.nc);
     _stepper.fillBusT2();
     _control.initialise(_stepper.bus, _state.time);
     _trends.reset();
@@ -821,8 +822,8 @@ class Simulator {
           id: 'pTop',
           label: 'Top pressure',
           quantity: Quantity.pressure,
-          min: 20000,
-          max: 500000,
+          min: _config.condenser.pTopDesign > 5e5 ? 300000 : 20000,
+          max: _config.condenser.pTopDesign > 5e5 ? 2.5e6 : 500000,
           defaultValue: inp.pTopInit,
           tiers: const {ThermoTier.t2, ThermoTier.t3},
           boundLoop: 'PC-101',
@@ -1727,9 +1728,41 @@ class Simulator {
     final b = used ? _debug.bottomsFlow : _control.lv102.flow;
     switch (f) {
       case 'xD':
-        return s.x[0];
+        return s.x[_config.effectiveKeys.lk];
       case 'xB':
-        return s.x[(N + 1) * nc];
+        return s.x[(N + 1) * nc + _config.effectiveKeys.lk];
+      case 'xDHeavy':
+        {
+          if (nc == 2) return 1 - s.x[0];
+          var h = 0.0;
+          for (var i = _config.effectiveKeys.hk; i < nc; i++) {
+            h += s.x[i];
+          }
+          return h;
+        }
+      case 'xBLight':
+        {
+          if (nc == 2) return s.x[(N + 1) * nc];
+          var l = 0.0;
+          for (var i = 0; i <= _config.effectiveKeys.lk; i++) {
+            l += s.x[(N + 1) * nc + i];
+          }
+          return l;
+        }
+      case 'recoveryLK':
+        {
+          final kk = _config.effectiveKeys;
+          final fl = used ? _debug.feedFlow : s.feedAct;
+          final fzk = fl * _ep.zEff[kk.lk];
+          return fzk > 0 ? d * s.x[kk.lk] / fzk : double.nan;
+        }
+      case 'recoveryHK':
+        {
+          final kk = _config.effectiveKeys;
+          final fl = used ? _debug.feedFlow : s.feedAct;
+          final fzk = fl * _ep.zEff[kk.hk];
+          return fzk > 0 ? b * s.x[(N + 1) * nc + kk.hk] / fzk : double.nan;
+        }
       case 'd':
         return d;
       case 'b':
@@ -1756,8 +1789,14 @@ class Simulator {
         return _tier == ThermoTier.t1 ? double.nan : _stepper.qDelivered;
       case 'balanceResidual':
         final fl = used ? _debug.feedFlow : s.feedAct;
-        final fz = fl * _ep.zEff[0];
-        return fz > 0 ? (fz - d * s.x[0] - b * s.x[(N + 1) * nc]).abs() / fz : 0.0;
+        var zc = 0.0, dc = 0.0, bc = 0.0;
+        for (var i = 0; i <= _config.effectiveKeys.lk; i++) {
+          zc += _ep.zEff[i];
+          dc += s.x[i];
+          bc += s.x[(N + 1) * nc + i];
+        }
+        final fz = fl * zc;
+        return fz > 0 ? (fz - d * dc - b * bc).abs() / fz : 0.0;
     }
     return double.nan;
   }
@@ -2290,9 +2329,21 @@ class Simulator {
         StreamId.vaporProduct: StreamSnapshot(StreamId.vaporProduct, s.dV,
             Float64List.fromList(s.y.sublist(0, nc)), s.tSat0),
     };
-    final xD = s.x[0];
-    final xB = s.x[(N + 1) * nc];
-    final fz = f * zEff[0];
+    final keys = _config.effectiveKeys;
+    final xD = s.x[keys.lk];
+    final xB = s.x[(N + 1) * nc + keys.lk];
+    // key cuts (PHYSICS.md 10.5): light cut of F and B, heavy cut of D; for a binary they reduce to the light component
+    var zCut = 0.0, bCut = 0.0, dCut = 0.0, dHeavy = 0.0;
+    for (var i = 0; i < nc; i++) {
+      if (i <= keys.lk) {
+        zCut += zEff[i];
+        bCut += s.x[(N + 1) * nc + i];
+        dCut += s.x[i];
+      }
+      if (i >= keys.hk) dHeavy += s.x[i];
+    }
+    if (nc == 2) dHeavy = 1 - s.x[0];
+    final fz = f * zCut;
     // vapour product light flow D_V y_V (y_V: overhead-inventory composition, 2026-10-13 ruling)
     var dvLight = 0.0;
     if (t2 && _stepper.partial && s.dV > 0) {
@@ -2320,7 +2371,13 @@ class Simulator {
       drumLevelPct: drumPct,
       sumpLevelPct: sumpPct,
       pTop: t2 ? s.pTop : _config.condenser.pTopDesign,
-      balanceResidual: fz > 0 ? (fz - dFlow * xD - dvLight - bFlow * xB).abs() / fz : 0.0,
+      xDHeavy: dHeavy,
+      xBLight: bCut,
+      recoveryLK: _config.keys == null || f * zEff[keys.lk] <= 0 ? null : dFlow * xD / (f * zEff[keys.lk]),
+      recoveryHK: _config.keys == null || f * zEff[keys.hk] <= 0
+          ? null
+          : bFlow * s.x[(N + 1) * nc + keys.hk] / (f * zEff[keys.hk]),
+      balanceResidual: fz > 0 ? (fz - dFlow * dCut - dvLight - bFlow * bCut).abs() / fz : 0.0,
       energyResidual: t2 ? _stepper.energyResidual : nan,
     );
     final plant = _view.isPlant;
@@ -2446,9 +2503,11 @@ class Simulator {
       final at0 = rd('AT-100').value,
           at1 = rd('AT-101').value,
           at2 = rd('AT-102').value;
-      Float64List comp(double light) {
+      Float64List comp(double light, [Float64List? gc]) {
         final c = Float64List(nc)..fillRange(0, nc, nan);
-        if (nc == 2) {
+        if (gc != null && gc.length == nc && nc > 2) {
+          c.setAll(0, gc);
+        } else if (nc == 2) {
           c[0] = light;
           c[1] = 1 - light;
         }
@@ -2467,18 +2526,20 @@ class Simulator {
               (rd('TI-202').value - rd('TI-201').value)
           : nan;
       streamsOut = {
-        StreamId.feed: StreamSnapshot(StreamId.feed, ftF, comp(at0), nan),
-        StreamId.reflux: StreamSnapshot(StreamId.reflux, ftL, comp(1 - at1),
+        StreamId.feed: StreamSnapshot(StreamId.feed, ftF, comp(at0, rd('AT-100').components), nan),
+        StreamId.reflux: StreamSnapshot(StreamId.reflux, ftL, comp(1 - at1, rd('AT-101').components),
             t2 ? rd('TI-100').value : nan),
         StreamId.distillate:
-            StreamSnapshot(StreamId.distillate, ftD, comp(1 - at1), nan),
-        StreamId.bottoms: StreamSnapshot(StreamId.bottoms, ftB, comp(at2), nan),
+            StreamSnapshot(StreamId.distillate, ftD, comp(1 - at1, rd('AT-101').components), nan),
+        StreamId.bottoms: StreamSnapshot(StreamId.bottoms, ftB, comp(at2, rd('AT-102').components), nan),
         StreamId.boilup: StreamSnapshot(
             StreamId.boilup, t2 ? nan : ftV, comp(double.nan), nan),
       };
       kpisOut = Kpis(
-        xD: 1 - at1,
-        xB: at2,
+        xD: nc > 2 ? nan : 1 - at1,
+        xB: nc > 2 ? nan : at2,
+        xDHeavy: at1,
+        xBLight: at2,
         d: ftD,
         b: ftB,
         refluxRatio: ftD > 1e-9 ? ftL / ftD : nan,

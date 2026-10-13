@@ -77,10 +77,31 @@ class CrossCheckEngine {
   static CheckStatus worse(CheckStatus a, CheckStatus b) =>
       a.index >= b.index ? a : b;
 
-  final Float64List _x = Float64List(2),
+  Float64List _x = Float64List(2),
       _xb = Float64List(2),
       _y = Float64List(2),
       _k = Float64List(2);
+
+  /// Sizes the work vectors for [nc] components (multicomponent presets, M7).
+  void _size(int nc) {
+    if (_x.length == nc) return;
+    _x = Float64List(nc);
+    _xb = Float64List(nc);
+    _y = Float64List(nc);
+    _k = Float64List(nc);
+  }
+
+  /// Fills [dst] with the composition an analyser reports: [light] and 1 - [light] for a binary, the full GC
+  /// composition of [tag] for a multicomponent column (PHYSICS.md 10.5), light = the light cut or its complement.
+  void _comp(ControlSystem cs, Float64List dst, String tag, double light, {bool heavy = false}) {
+    final c = cs.instrument(tag).comp;
+    if (dst.length > 2 && c != null && c.length == dst.length) {
+      dst.setAll(0, c);
+    } else {
+      dst[0] = heavy ? 1 - light : light;
+      dst[1] = 1 - dst[0];
+    }
+  }
   final SolverHealth _health = SolverHealth();
 
   /// The TI tags of the Tier-2 tray set including the sump (ordered top to bottom).
@@ -234,9 +255,8 @@ class CrossCheckEngine {
             mean('PV:FT-201') *
             4180.0 *
             (mean('PV:TI-202') - mean('PV:TI-201'));
-        final xd = 1 - mean('PV:AT-101');
-        _x[0] = xd;
-        _x[1] = 1 - xd;
+        _size(th.nc);
+        _comp(cs, _x, 'AT-101', mean('PV:AT-101'), heavy: true);
         final p = mean('PV:PT-101');
         final tCond = th.bubbleAt(p, _x, 0, mean('PV:TI-100') + 1, _y, 0, _k, 0, _health);
         lamTop = th.hVAt(tCond, _x, 0) - th.hLAt(mean('PV:TI-100'), _x, 0);
@@ -313,14 +333,12 @@ class CrossCheckEngine {
           final xd = 1 - mean('PV:AT-101');
           final xbv = mean('PV:AT-102');
           final p = mean('PV:PT-101');
-          _x[0] = zl;
-          _x[1] = 1 - zl;
+          _size(th.nc);
+          _comp(cs, _x, 'AT-100', zl);
           final hF = th.feedEnthalpy(t2.feedT, p, _x);
-          _xb[0] = xd;
-          _xb[1] = 1 - xd;
+          _comp(cs, _xb, 'AT-101', 1 - xd, heavy: true);
           final hD = th.hLAt(mean('PV:TI-100'), _xb, 0);
-          _xb[0] = xbv;
-          _xb[1] = 1 - xbv;
+          _comp(cs, _xb, 'AT-102', xbv);
           final hB = th.hLAt(mean('PV:$sumpTi'), _xb, 0);
           final r = qr + f * hF - qCw - d * hD - b * hB;
           final band = 0.02 * qr;
@@ -533,15 +551,13 @@ class CrossCheckEngine {
           final p = mean('PV:PT-101');
           double r, tb2;
           if (top) {
-            final xd = 1 - mean('PV:AT-101');
-            _x[0] = xd;
-            _x[1] = 1 - xd;
+            _size(th.nc);
+            _comp(cs, _x, 'AT-101', mean('PV:AT-101'), heavy: true);
             tb2 = th.bubbleAt(p, _x, 0, mean('PV:TI-100') + 1, _y, 0, _k, 0, _health);
             r = mean('PV:TI-100') + t2.refluxSubLever - tb2;
           } else {
-            final xb = mean('PV:AT-102');
-            _x[0] = xb;
-            _x[1] = 1 - xb;
+            _size(th.nc);
+            _comp(cs, _x, 'AT-102', mean('PV:AT-102'));
             tb2 = th.bubbleAt(p + mean('PV:PDT-101'), _x, 0, mean('PV:$sumpTi'), _y, 0, _k, 0, _health);
             r = mean('PV:$sumpTi') - tb2;
           }
