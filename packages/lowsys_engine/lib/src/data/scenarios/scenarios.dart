@@ -679,9 +679,10 @@ const String g15Json = r'''
   "objectives": [
     {"id": "o1", "text": "Report the column pressure drop with the 20 sieve trays (kPa).",
      "answer": {"type": "number", "correct": 14490, "tolerance": 0.05, "toleranceKind": "rel", "quantity": "pressureDelta"}},
-    {"id": "o2", "text": "Switch to structured packing (Advanced > Internals) and reach steady state.", "after": "o1",
+    {"id": "o2", "text": "Switch to structured packing (Advanced > Internals) and wait until the column has settled (x_D above 0.993).", "after": "o1",
      "when": {"all": [{"metric": "lever.internals", "op": "==", "value": 1},
-                      {"metric": "steady", "op": "==", "value": true}]},
+                      {"metric": "kpi.xD", "op": ">=", "value": 0.993},
+                      {"metric": "kpi.columnDp", "op": "<=", "value": 1500}]},
      "holdFor": 300, "latch": true},
     {"id": "o3", "text": "Report the pressure-drop ratio, trays / packing.", "after": "o2",
      "answer": {"type": "number", "correct": 10.3, "tolerance": 0.10, "toleranceKind": "rel"}},
@@ -702,7 +703,7 @@ const String g15Json = r'''
   ],
   "hints": [
     {"after": 0, "text": "The KPI strip shows the column pressure drop and the max flood %. Note both for the trays."},
-    {"when": {"metric": "objective[o1].met", "op": "==", "value": true}, "text": "Pause, set Levers > Advanced > Internals to 'Structured packing, 2 x 4.5 m', resume at 300x and wait for steady state."},
+    {"when": {"metric": "objective[o1].met", "op": "==", "value": true}, "text": "Pause, set Levers > Advanced > Internals to 'Structured packing, 2 x 4.5 m', resume at 300x and wait until x_D has settled above 0.993 (about 50 minutes of process time)."},
     {"when": {"metric": "objective[o2].met", "op": "==", "value": true}, "text": "Divide the two pressure drops. Then look at the flood % of each bed: which one is the limit, and how much liquid does it carry compared with the other?"}
   ],
   "events": [],

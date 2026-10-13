@@ -434,11 +434,14 @@ class Simulator {
 
   /// Instruments, loop histories, trends and alarms start at the current true values (PHYSICS.md 13.1 step 6).
   void _initControl() {
+    if (_stepper.full) _stepper.refreshHydraulics(options.dt);
     _stepper.bus
       ..drumLevelPct = _stepper.drumLevelPct
       ..sumpLevelPct = _stepper.sumpLevelPct
-      ..columnDp = 0
-      ..bedDp = Float64List(_config.beds.length)
+      ..columnDp = _stepper.full ? _hyd.pressureDropTotal : 0
+      ..bedDp = Float64List.fromList([
+        for (var b = 0; b < _config.beds.length; b++) _stepper.full && _hyd.pk != null ? _hyd.pk!.bedDp[b] : 0.0
+      ])
       ..lk = _config.effectiveKeys.lk
       ..hk = _config.effectiveKeys.hk
       ..setCuts(_inputs.z, _state.x, 0, (_state.nTrays + 1) * _state.nc, _state.nc);
