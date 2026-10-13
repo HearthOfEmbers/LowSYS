@@ -69,4 +69,13 @@ Next (run in parallel):
 ## Needs user
 - Disable the `lowsys-coordinator` scheduled task (an unattended run can't; until then each tick just replies "LowSYS complete").
 - Packing constants (M8) and vapour heat capacities / Daubert constants (M9) are quoted from memory; check against the reference books (see OPEN_ITEMS.md).
-- iOS build/simulator validation needs a Mac.
+- iOS build/simulator validation needs a Mac. The user has a Mac (**Vishnu**) they can start up for this; see "iOS build on Vishnu" below.
+
+## iOS build on Vishnu
+The user can start up their Mac, Vishnu, for the iOS build. Run Claude Code there with a clone of this repo. Steps:
+1. Clone `github.com/HearthOfEmbers/LowSYS` (private) and check out `main`.
+2. Needs Xcode (with an iOS simulator runtime), CocoaPods and Flutter at the same version as `C:\dev\flutter` on the Windows box (`flutter --version` there). Installs on Vishnu need the user's OK.
+3. In `app/`: `flutter pub get`, `cd ios && pod install`, then `flutter build ios --simulator` (no signing needed) and `flutter run` on an iPhone simulator.
+4. Smoke check: the app launches, the sim runs, and there are no exceptions in the log. Save a screenshot to `docs/screenshots/m10/ios_sim_smoke.png`.
+5. For a device or TestFlight build, signing needs the user's Apple developer team, so ask them.
+6. Record results in DEVIATIONS ("iOS build (Vishnu)") and update the summary report's Known gaps. Commit and push following the git rules above.
