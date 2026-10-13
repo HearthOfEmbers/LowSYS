@@ -335,7 +335,8 @@ void main() {
               reason: 'tray $j');
           expect(l.texSymbolic, isNotEmpty);
           expect(l.texSubstituted, isNotEmpty);
-          expect(lines.any((l) => l.id == 'eq.equilibrium.T2' || l.id == 'eq.raoult'), isFalse);
+          // a Tier-3 tray traces its own K model only; Raoult (eq.raoult, formerly eq.equilibrium.T2, 30d7cb6) is Tier 2
+          expect(lines.any((l) => l.id == 'eq.raoult'), isFalse);
           for (final l in lines) {
             expect(l.value.isFinite, isTrue, reason: '${l.id} tray $j');
             expect(catalogue, contains(l.id), reason: 'tray $j');
@@ -343,6 +344,19 @@ void main() {
         }
       });
     }
+    test('c4 Tier 2 trays: Raoult is traced as eq.raoult (30d7cb6) and equals y*; the old id eq.equilibrium.T2 is gone', () {
+      final m = _sim('c4', tier: ThermoTier.t2);
+      m.advance(600);
+      final s = m.snapshot();
+      final nc = s.stages.nc;
+      for (final j in [1, s.layout.nTrays ~/ 2, s.layout.nTrays]) {
+        final lines = [for (final g in m.explain(ExplainStage(j)).groups) ...g.lines];
+        final l = lines.firstWhere((l) => l.id == 'eq.raoult', orElse: () => fail('eq.raoult missing on tray $j'));
+        expect((l.value - s.stages.yStar[j * nc]).abs(), lessThanOrEqualTo(1e-12 * s.stages.yStar[j * nc].abs() + 1e-300));
+        expect(l.texSymbolic, isNotEmpty);
+        expect(lines.any((l) => l.id == 'eq.equilibrium.T2'), isFalse, reason: 'tray $j');
+      }
+    });
     test('ew Tier 3 tray: the §15 tray row lists eq.bubblePoint (3.6.1 result); the line equals T_j', () {
       final m = _sim('ew');
       m.advance(600);

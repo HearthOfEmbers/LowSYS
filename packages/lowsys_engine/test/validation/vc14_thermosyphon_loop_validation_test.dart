@@ -135,13 +135,13 @@ void main() {
 
   group('E.3 spot values and hand checks', () {
     final l = _eng();
-    test('#13 subcooling 8.33 / 6.67 K and Q_max,0 1597 / 1636 kW at 75 / 50 % (hand: U A (T_st - T_sump - dT_sub/2))', () {
-      for (final (lv, dts, q0) in [(75.0, 8.33, 1597e3), (50.0, 6.67, 1636e3)]) {
+    test('#13 subcooling 8.33 / 6.66 K and Q_max,0 1597 / 1636 kW at 75 / 50 % (hand: U A (T_st - T_sump - dT_sub/2))', () {
+      for (final (lv, dts, q0) in [(75.0, 8.33, 1597e3), (50.0, 6.66, 1636e3)]) {
         final z = 1.2 + lv / 100 * 2.4;
         final hand = 3.63e-4 * 780 * 9.80665 * z;
         expect(l.subcooling(l.liquidHeight(lv, 2.4)), closeTo(hand, 1e-9));
-        // 50 %: 6.664 K (the spec's "6.67" is a rounding slip; its Q_max,0 1636 kW uses 6.664)
-        expect(hand, closeTo(dts, 0.007));
+        // 50 %: 6.664 K, printed 6.66 since d2cc6b5 (S2)
+        expect(hand, closeTo(dts, 0.005));
         final q0Hand = 1000 * 47.6 * (421.25 - (383.54 + hand / 2));
         expect(l.qMax0For(l.liquidHeight(lv, 2.4)), closeTo(q0Hand, 1e-6));
         expect(q0Hand, closeTo(q0, 1e3));
@@ -169,25 +169,17 @@ void main() {
       expect(k * l.qMax0For(l.liquidHeight(75, 2.4)) / 361e3, closeTo(8.2, 0.05));
       expect(k * l.qMax0For(l.liquidHeight(15, 2.4)) / 361e3, closeTo(8.7, 0.05));
     });
-    test('#18 cycle mean of u <= 0.005 in every oscillating row; steam side vs delivered inside the 2 % C3b band', () {
-      for (final r in _rows.where((r) => r.osc && !r.marginal)) {
+    test('#18 (d2cc6b5 S1) cycle mean of u <= 0.005 and delivered vs steam side <= 1.5 % in every oscillating row', () {
+      for (final r in _rows.where((r) => r.osc)) {
         final e = res[r.name]!.eng;
         expect(e.uMean.abs(), lessThanOrEqualTo(0.005), reason: r.name);
-        expect(_rel(e.qMean, e.qSteam), lessThanOrEqualTo(0.02), reason: r.name);
-      }
-    });
-    test('#18 as written: steam side vs delivered <= 0.5 %',
-        skip: 'spec item (DEVIATIONS "M6 validation"): the spec table itself gives 0.55 % (15 %), 0.92 % (K_out 20) '
-            'and 1.1 % (F18): Q_k and u_k correlate, so mean(Q(1+u)) - mean(Q) is not mean(u) mean(Q)', () {
-      for (final r in _rows.where((r) => r.osc && !r.marginal)) {
-        final e = res[r.name]!.eng;
-        expect(_rel(e.qMean, e.qSteam), lessThanOrEqualTo(0.005), reason: r.name);
+        expect(_rel(e.qMean, e.qSteam), lessThanOrEqualTo(0.015), reason: r.name);
       }
     });
   });
 
   group('E.3 loop transients and the stability boundary', () {
-    test('#3 the level where I_s = 1 (spec: about 29.5 %; 30 %: I_s 1.01)', () {
+    test('#3 the level where I_s = 1: 30.8 % ± 0.5 points (d2cc6b5 S2; 30 %: I_s 1.01, 31 %: 1.00)', () {
       double iSAt(double lv) {
         final l = _eng();
         for (var i = 0; i < 36000; i++) {
@@ -200,8 +192,17 @@ void main() {
       print('#3 I_s at 29/30/31/32 %: ${[i29, i30, i31, i32].map((e) => e.toStringAsFixed(4)).join(' / ')}');
       expect(i29, greaterThan(i30));
       expect(i30, closeTo(1.01, 0.03));
-      // the crossing lies between 30 and 32 %, not at 29.5 % (I_s falls with level and is 1.01 at 30 %)
       expect(i32, lessThan(1.0));
+      // linear crossing in the bracketing 1-point interval
+      final pts = [(29.0, i29), (30.0, i30), (31.0, i31), (32.0, i32)];
+      var cross = double.nan;
+      for (var k = 0; k < 3; k++) {
+        final (a, ia) = pts[k];
+        final (b, ib) = pts[k + 1];
+        if (ia >= 1 && ib < 1) cross = a + (ia - 1) / (ia - ib) * (b - a);
+      }
+      print('#3 I_s = 1 at ${cross.toStringAsFixed(2)} %');
+      expect(cross, closeTo(30.8, 0.5));
     });
     test('#21 level step 15 -> 50 %: amplitude < 0.01 after about 220 s', () {
       final l = _eng();

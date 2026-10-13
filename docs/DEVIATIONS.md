@@ -513,3 +513,90 @@ Rulings on the open items of "M7 checkpoint (engine, coder, 2026-10-13)" at eea0
 - H6 rows as changed: F07, F20 (C3a timing, C5 (drum) recorded), F12 brackets; rule 1 unchanged.
 - `c4` lever range 3–25 bar with the M5 `c4` tests still passing at 7 bar.
 - VC-21 covers `eq.fug.rigorous`; with `pTop` 25 bar on `debut`, `thermoOutOfRange` set and no NaN.
+
+## M7 validation
+
+Validator pass on engine eea0a5a, rebased on 54f9b41 ("Spec rulings M7"). New: `test/validation/m7_validation_test.dart` and an independent FUG `reference/fug_reference.dart` (PHYSICS.md §14.3, regula falsi for θ). Result: 23 pass, 2 skipped (M7-C1, M7-S2). Every check runs `ideal` hydraulics, so the steady values do not depend on the 0.75 / 0.55 m diameters. The H6 timings and the F07 transient may move with the smaller holdups, so they get a re-run after the diameter commit. VC-9.4 and 9.5 (E.3 #3–5) still pass in `m5_tier3_thermo_validation_test.dart`.
+
+**M6 follow-ups (30d7cb6, d2cc6b5): all pass.**
+- FT-103 5-s bins (Q_st buffer): un-skipped. 1.07 % p-p, limit 2 %. Unbuffered `kpi.qr` bins are 21.6 %.
+- E.3 #3: I_s = 1 at 30.76 %, limit 30.8 ± 0.5.
+- E.3 #13: printed value now 6.66 K.
+- E.3 #18: every oscillating row has u ≤ 0.005 and delivered vs steam side ≤ 1.5 %. The old 0.5 % skip is removed.
+- §H H4 F13 / E.3 #26: FV-103 1-min means stay flat (0.00 %) for 51 min, then reach 100 % 3.2 min after the duty drops below SP; `model.dutyLimited` is raised. The creep skip is replaced.
+- G14 o1:
+  - VC-14.3.4 sweep, inlet 8–16 %: o1 is never met. Inlet 8–11 % are stable but duty-limited (1157–1214 kW, FC-103 100 %). Inlet 12 %: I_s 0.995, 1238 kW, FC-103 100 %. Inlet 13–16 % surge (amplitude 0.034–0.070).
+  - Inlet 10 % with SP 1150 kW: stable at 1150 kW, FC-103 57 %, o1 not met (duty term).
+- `eq.raoult`: the stale `eq.equilibrium.T2` negative assertion is replaced. A new c4 Tier-2 test checks that `eq.raoult` = y* on three trays and that the old id is gone.
+- `m4_energy_faults_test.dart` F12 now uses s 0.6 instead of 0.5, so it passes with either cap (see M7-C1).
+
+**E.3 key numbers**
+
+| # | Quantity | Engine | Result |
+|---|---|---|---|
+| 1 | `debut` FUG design: N_min, θ, R_min, N, N_R/N_S, D; d_iC4, d_nC5 | 10.9100, 1.31112, 1.3073, 23.282, 1.0042, 44.9437; 14.9806, 0.0631 (spec tolerances); engine core matches the independent FUG to 1e-6 | pass |
+| 2 | `deprop` FUG design | 9.7203, 1.40567, 1.6522, 20.364, 0.4740, 30.7771 | pass |
+| 7, 8 | VC-9.3 (T1, 22/12, E 1): r_LK / r_HK; 22/8 | 0.9843 / 0.9849, D 44.940; 0.9689 / 0.9717 | pass |
+| 18 | Hengstebeck (VC-9.3 column): x′_D, x′_B | 0.98784, 0.01955; builder = stage compositions to 1e-9; α′ 2.041 | pass |
+| VC-9.7 r4 | live FUG (VC-9.3 column): N_min, θ, R_min, N, N_R; N_act, N_R,act | within tolerance; 23.00, 11.00; matches the independent FUG to 1e-6 | pass |
+| 10 | `debut` T3: r_LK / r_HK; xDHeavy, xBLight | 0.9781 / 0.9782; 0.01125, 0.01020 (KPIs = sums of the stage compositions to 1e-9); D 44.944; component closure 4e-11 | pass |
+| 11 | T_0, T_B; Q_C | 49.57, 112.72 °C (± 0.05); 616.3 kW; T rises monotonically down the column | pass |
+| 13 | FV-103 at the design duty = 60 % of Q_max,0 | `debut` 60.01 %, `deprop` 60.05 % | pass |
+| 17 | Hengstebeck `debut`: x′_F, x′_D, x′_B; α′ top / bottom (own K calls) | 0.55556, 0.98252, 0.02723; 2.2157 / 1.8853 | pass |
+| 19 | live FUG `debut`: α; N_min, θ, R_min, R, N, N_R; N_act, N_R,act | 5.1968 … 0.3844; 10.639, 1.3115, 1.2974, 1.6999, 22.56, 11.32; 23.4, 10.5; matches the independent FUG to 1e-6; N_act > N | pass |
+| 20 | targets 98/98: N_min, R_min, N | within ± 0.15 / 0.005 / 0.3; matches the independent FUG | pass |
+| VC-9.7 | guards: r_LK 0.5; keys iC4/iC5; R = R_min; plant view | invalid; `notAdjacent`; `belowRmin`, N = ∞; null | pass |
+| VC-21 | `eq.fug.rigorous` = N_act 23.4 (54f9b41 item 1) | yes | pass |
+| 12 | `deprop`: r_LK / r_HK; T_B; Q_C | 0.9906 / 0.9534; 123.85 °C; in band; P_top 17.24 bar | pass |
+| 21 | live FUG `deprop`: N_min, R_min, N; N_act, N_R,act | within tolerance; 20.6, 7.0; matches the independent FUG | pass |
+| 16 | `debut` T3 → T1 directly | V₁ continuous (121.344 → 121.344); D 44.944 → 44.794 at 1 s (LC-101 blip, 0.3 %) → 44.944; r 0.9835 / 0.9846 | pass |
+| 23 | G13 hint state (L₀ 80, 697.9 kW) | 0.9822 / 0.9826; Q_C 634.2 kW; D 44.946; both recoveries above the default and ≥ 0.98 | pass |
+| 25 | H6 F07 s 0.75 | AT-100 0.450 → 0.420 (−0.02 at 20 min); FC-102 / FT-102 unchanged before the event; TI-101 +4.7 K; xDHeavy 0.0626; D at 2 h −0.57 vs healthy | pass; "≤ 2.5 kmol/h throughout" fails (M7-S2) |
+| 26 | H6 F12 s 0.585 | FT-102 31.7 kmol/h, not the 63.4 cap; OPSAT; D +39.7 at 30 min; xDHeavy 0.10 (over-range) | evidence passes; cap wrong (M7-C1) |
+| 27 | H6 F20 + planning | D +3.97 vs healthy; xDHeavy 0.078; C3a fail at +10 min, check at 2 h (r/band 1.33), no fail from +60 min | pass (54f9b41 rows) |
+| healthy | planning event alone | xDHeavy / xBLight ± 0.0001; D 48.72 | pass |
+
+**Physical sense (pass):**
+- Tighter recoveries raise N_min and N.
+- R closer to R_min raises N.
+- More reflux at the same D improves both recoveries.
+- Moving the feed off its optimum tray lowers both recoveries.
+- On Tier 3, α′ falls down the column, so N_act > the FUG N.
+- The heavier feed raises TI-101 and xDHeavy while FC-102 stays put.
+
+**Coder items**
+- **M7-C1 (F12 cap).** `Stepper.refluxCapacity` is the design L₀ (simulator.dart: `refluxCapacity: l0`).
+  - Effect: F12 caps the reflux at (1 − s) × 76.4 = 31.7 kmol/h for s 0.585.
+  - Spec: PHYSICS.md §10.2 says F_cap = (1 − s) F_max of FV-102, and ENGINE_API.md §11.10 says (1 − s) × 152.8 = 63.4 (`{fault.magnitude}` 68.8–58.1 kmol/h).
+  - Fix: use FV-102's F_max, then re-run H6 F12 and un-skip the at-cap test.
+  - The checkpoint's "pump cap 63 kmol/h" for the D 81.6 / xDHeavy 0.40 result was really 31.7.
+- **H6 re-run.** Re-run H6 F07 and F20 on the 0.75-m trays and report the F07 D transient. M7-S2 asks whether that transient is physical.
+
+**Spec lead items**
+- **M7-S1, the C3a / C5 (drum) explanation in 54f9b41 item 4.** The explanation does not hold. The engine's C3a does carry the drum term: `vRefl = L0 + D + ΔN0/W` in cross_checks.dart. The healthy planning run, with FV-102 working, also fails C3a at +10 min:
+  - r/band 3.06: condenser side 138.2 vs 130.2 kmol/h;
+  - ok again at 2 h (r/band 0.95).
+  The planning step itself trips C3a in every candidate. So the F20 debrief's "C3a green" and the healthy row are misleading.
+
+  Two causes:
+  - (a) The overhead transient after +8 % with the CW near its limit.
+  - (b) A steady bias. §14.6 takes λ_top = H_V(x_D, **T_bub**) − h_L. The vapour leaves at its dew point, and `debut`'s distillate has T_bub 49.6 / T_dew 55.3 °C. So V_cw reads +1.9 % high (123.65 vs V₁ 121.34; with T_dew, 120.93, −0.3 %). C3a therefore sits at r/band 0.95 in normal operation, and the heavier F20 overhead pushes it to `check`.
+
+  C5 (drum) has the same pattern (−0.92 steady, fail −4.19 at +10 min, check −1.38 at 2 h), so it is not `ok` as expected.
+
+  Suggest:
+  - λ_top with H_V at T_dew(x_D, P̄_101), or at TI-101. This is unchanged for near-pure binaries.
+  - A rule for the post-event C3a / C5 transient: ignore it, or slow the planning event.
+  - Debrief text that does not promise C3a green.
+- **M7-S2, F07 "D within 2.5 kmol/h throughout".**
+  - Before the 45-min event, D peaks at +3.33 kmol/h 19.5 min after onset (drum level +1.4 %) and is +1.33 at 45 min. The 1.5 at 2600 s was one sample.
+  - "D within 1 kmol/h of its start at 2 h" ignores the +8 % event: D − start = +3.2, against −0.57 vs the healthy run (asserted that way).
+  - Suggest wording against the healthy response. Ask the coder whether a 7 % D swing from a dz ramp at fixed L₀ / Q_R is physical, once the 0.75-m holdups are in.
+- **M7-S3.** The F12 brackets "D 81.6, xDHeavy 0.40" in 54f9b41 come from the M7-C1 cap. Replace them after the fix.
+- **VC-9.6 tier-switch bullet** (checkpoint item 6, not ruled). VC-9.6 says the T2 numbers keep V₁ and D, but §13.5 keeps the duty on T2 ↔ T3. Say "at Q_R 681.4 kW" there. The T3 → T1 row is fine as is (validated directly).
+- **Still open.** These wait for the coder's diameter and pressure-lever commit:
+  - VC-16.6d;
+  - VC-9.6 geometry (a) and (b);
+  - `c4` 3–25 bar;
+  - `pTop` 25 bar on `debut` with `thermoOutOfRange`;
+  - VC-19 release timing.

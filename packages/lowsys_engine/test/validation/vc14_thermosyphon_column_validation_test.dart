@@ -149,9 +149,10 @@ void main() {
       expect(alarmSeen, isTrue, reason: 'model.tsUnstable');
       expect(tGrow90 - tGrow10, greaterThanOrEqualTo(30), reason: 'the amplitude grows, it does not step');
     }, timeout: _long);
-    test('14.2.2 FT-103 5-s bins vary <= 2 % peak to peak',
-        skip: 'ruled in 2044f1a item 1 (FT-103 reads the steam-chest buffer Q_st, tau 10 s): waits for the coder; '
-            'engine e9d0fbe: FT-103 = unbuffered Q_k, 7.8 % (see the print)', () {
+    test('14.2.2 FT-103 5-s bins vary <= 2 % peak to peak (Q_st buffer, tau 10 s, 30d7cb6)', () {
+      final qBins = [for (var i = 0; i + 10 <= qr.length; i += 10) _mean(qr.sublist(i, i + 10))];
+      print('14.2.2 FT-103 5-s bins p-p ${(100 * ftBinPp).toStringAsFixed(2)} %; kpi.qr 5-s bins '
+          '${(100 * _pp(qBins) / qBins.reduce(math.max)).toStringAsFixed(2)} %, raw ${(100 * _pp(qr) / qr.reduce(math.max)).toStringAsFixed(2)} %');
       expect(ftBinPp, lessThanOrEqualTo(0.02));
     });
     test('14.2.4 energy: mean FT-103 vs mean kpi.qr <= 1 % over 20 min; C3b ok', () {
@@ -194,6 +195,32 @@ void main() {
     test('start duty 1040-1180 kW (VC-14.3.1 after ruling 2044f1a item 2)', () {
       expect(q0, inInclusiveRange(1040e3, 1180e3));
     });
+    test('VC-14.3.4 throttle-only sweep (G14 o1 of 30d7cb6): inlet 8..16 % at 900 s, and inlet 10 % with FC-103 SP '
+        '1150 kW: o1 never met within 2 h; level stays 5-95 %', () {
+      final rows = <String>[];
+      for (final (inlet, sp) in [for (var v = 8; v <= 16; v++) (v.toDouble(), null), (10.0, 1150e3)]) {
+        final s = Simulator(Presets.byId('bt'), options: const SimOptions(seed: 3), warmStart: false);
+        s.startScenario(Scenarios.byId('G14_thermosyphon'));
+        s.advance(900);
+        s.setLever('tsInletValve', inlet);
+        if (sp != null) s.setLever('reboilerDuty', sp);
+        var met = false, lvMin = 100.0, lvMax = 0.0;
+        while (s.time < 7200) {
+          s.advance(30);
+          met = met || s.scenario!.objectives[0].achieved;
+          lvMin = math.min(lvMin, _level(s));
+          lvMax = math.max(lvMax, _level(s));
+        }
+        final ts = s.control.ts!;
+        rows.add('inlet ${inlet.toStringAsFixed(0)}${sp == null ? '' : ' SP 1150'}: o1 $met, amp ${ts.amplitude.toStringAsFixed(3)}, '
+            'I_s ${ts.iS.toStringAsFixed(3)}, qr ${(s.snapshot().kpis.qr / 1e3).toStringAsFixed(0)} kW, FC-103 '
+            '${s.control.fc103.op.toStringAsFixed(1)} %');
+        print('VC-14.3.4 ${rows.last}');
+        expect(met, isFalse, reason: rows.last);
+        expect(lvMin, greaterThanOrEqualTo(5));
+        expect(lvMax, lessThanOrEqualTo(95));
+      }
+    }, timeout: const Timeout(Duration(minutes: 40)));
   });
 
   test('E.3 #29 typical sigma at design (Tier 2, kettle, AUTO): PT-101 0.15 kPa, TI-100 0.05 K, FT-201 2.2 % of flow, TI-202 0.32 K',
@@ -330,6 +357,7 @@ void main() {
     double? tSat, opAt30, opPre, tShort;
     late double op0, qr2h;
     var limited = false;
+    var maxDev1min = 0.0, flatMin = double.infinity;
     setUpAll(() {
       final s = Simulator(Presets.byId('bt').copyWith(tier: ThermoTier.t2), options: const SimOptions(seed: 3), warmStart: false);
       s.runToSteadyState(maxSimSeconds: 400000);
@@ -342,9 +370,25 @@ void main() {
           onset: t0,
           ramp: 5400));
       var opPrev = op0;
+      var pre = 0.0;
+      for (var i = 0; i < 120; i++) {
+        s.advance(5);
+        pre += s.control.fv103.position / 120;
+      }
+      var minute = <double>[];
       while (s.time < t0 + 7200) {
         s.advance(5);
         final op = s.control.fv103.position;
+        if (s.time > t0) {
+          minute.add(op);
+          if (minute.length == 12) {
+            final dev = (_mean(minute) - pre).abs();
+            final m = (s.time - t0) / 60;
+            if (m <= 30) maxDev1min = math.max(maxDev1min, dev);
+            if (dev > 3 && flatMin.isInfinite) flatMin = m - 1;
+            minute = [];
+          }
+        }
         if (opAt30 == null && s.time >= t0 + 1800) opAt30 = op;
         if (tShort == null && s.time > t0 && s.snapshot().kpis.qr < 0.995 * 1300e3) tShort = (s.time - t0) / 60;
         if (tSat == null && op >= 99.5) {
@@ -367,10 +411,14 @@ void main() {
       expect(qr2h, lessThan(0.98 * 1300e3));
       expect(limited, isTrue);
     }, timeout: _long);
-    test('the steam valve creeps open over >= 30 min before saturating (§H H4 row, H4 debrief)',
-        skip: 'spec item (DEVIATIONS "M6 validation"): with Q_v = Q_max,0(clean) g(p) and Q = min(Q_v, Q_max) (§10.3) '
-            'the valve cannot see fouling until Q_max < Q_v; engine: flat at 58.7 %, then 100 % within seconds', () {
-      expect(opAt30!, greaterThan(op0 + 5));
+    test('§H H4 F13 row (d2cc6b5 S3): FV-103 1-min means within ± 3 % of the pre-onset mean for >= 30 min, '
+        '100 % within 5 min of the duty first falling below SP; no creep', () {
+      print('H4 F13: max |1-min mean - pre-onset| ${maxDev1min.toStringAsFixed(2)} % over the first '
+          '${flatMin.toStringAsFixed(1)} min; saturates ${(tSat! - tShort!).toStringAsFixed(2)} min after duty < SP');
+      expect(flatMin, greaterThanOrEqualTo(30));
+      expect(maxDev1min, lessThanOrEqualTo(3));
+      expect(tSat! - tShort!, inInclusiveRange(0, 5));
+      expect(limited, isTrue);
     });
   });
 
