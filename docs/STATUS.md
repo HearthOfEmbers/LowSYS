@@ -54,13 +54,14 @@ Last updated 2026-10-12 by the outgoing coordinator.
   3. Disable the `lowsys-coordinator` scheduled task.
 
 ## Next steps
-State 2026-10-13 (coordinator run started 2026-10-12):
-- M4: Tier-2 engine in and validated (M4 suite 80/80; da669b8). V1/V2 restore bugs fixed (7312519). M4 app surfaces mostly in (e1d4ae4). Spec decisions on the 9 M4 validation items: da8753e.
-- M5 spec ready (06d06e5, docs/milestones/M5.md). M6 spec ready (6d43717, docs/milestones/M6.md, 29 reference values).
-- In flight: a Sonnet coder finishing M4 leftovers (partial condenser E50, Control Room bars/bubbles, T* display, fonts, screenshots, emulator), then M5. An Opus xhigh validator fixing V3 and re-running the full suite against the da8753e decisions.
-- Decision: spec prototypes (Dart) go into `tools/prototypes/` (tracked). The next spec lane copies `.scratch/m6/` there.
+State 2026-10-13 (handoff from the coordinator run that started 2026-10-12):
+- M4 closed (engine validated, 452+ tests; app done incl. emulator pass). M5 closed (fb33c07, 601f80e): Tier 3, presets ew/ac/c4, T-x-y, G9/G10, Paper theme. Spec rulings: 4ee46dd, ce171db.
+- M6 engine checkpoint in (601f80e): thermosyphon (VC-14.1 reproduces), F17/F18, plantCalc view, H1–H5, G14. M6 app first pass (23d7368): Equipment card, drill list, HUD, Diagnose dialog. 25 app tests pass.
+- M7 spec ready (3062d2c, docs/milestones/M7.md, prototype in tools/prototypes/m7). Open: column diameters (~0.75/0.55 m recommended), 852 °R DePriester limit quoted from memory (validator found it plausible).
+- Known failing: `vc18_mccabe_thiele_data_test.dart` compile error and the dt-30 s test in `m5_columns_validation_test.dart` (validator's folder).
 
-Next:
-1. When the M5 engine checkpoint lands: Opus xhigh validator on M5 (docs/milestones/M5.md reference values).
-2. When the coder finishes M5: start M6 from docs/milestones/M6.md. Ready the M7 spec (Opus xhigh, new physics) while M6 is being coded.
-3. Report briefly to the user at each milestone.
+Next (run in parallel):
+1. **Validator (Opus xhigh):** fix the two failing tests above, un-skip the two VC-28.8 clauses (ce171db), then validate the M6 engine at 23d7368 against docs/milestones/M6.md's 29 reference values. Work in a clean worktree.
+2. **Spec lead (Opus high):** rule on the coder's open M6 items in DEVIATIONS.md (low-CW dip 8 kPa at 90 s vs the ce171db criteria; PC-101 limit cycle at dt 30 on the doubled-condenser case; VC-14.2.2 FT-103 5-s bins 8.3 % p-p vs ≤ 2 %; G14 throttling alone meets o1 at 10 % inlet; `eq.raoult` rename).
+3. **Coder (Sonnet):** finish the M6 app (loop schematic, HUD countdown, field-check buttons, sandbox plantCalc view toggle), apply the rulings, then start M7.
+4. While M7 is coded, ready the M8 spec (Opus xhigh if new physics).
