@@ -581,9 +581,9 @@ Tolerances:
 The table is a regression map of the specified model, not of a real exchanger. v1.0's table (1200 s, 3 fixed-point iterations, floor at every I_s) differs in the oscillating rows. It reported (max + min)/2 as the "mean", and the iteration jitter inflated its half-ranges (PHYSICS.md §8.3.2).
 
 Spot values in the same run:
-- ΔT_sub at 75 %: 8.33 K, at 50 %: 6.67 K.
+- ΔT_sub at 75 %: 8.33 K, at 50 %: 6.66 K.
 - Q_max,0 = U A (T_st − T_b,mean): 1597 kW at 75 %, 1636 kW at 50 %.
-- The cycle mean of u is ≤ 0.005 in every oscillating row.
+- The cycle mean of u is ≤ 0.005 in every oscillating row, and the mean of Q_k (1 + u_k) differs from the mean of Q_k (steam side) by ≤ 1.5 % (0.6–1.1 % at 15 % level, K_out 20 and F18; PHYSICS.md §8.3.4).
 
 Further unit checks:
 - **δ independence.** The 15 % / 100 % row at δ = 0.025 s matches the δ = 0.1 s row within the tolerances.
@@ -1035,7 +1035,7 @@ For each drill candidate the test injects the fault (fixed seed, onset at 600 s,
 | H3 | F04 broken tray, rectifying (tray 5), s = 0.9 (range [0.8, 1.0]) | column ΔP down; tray-5 ΔP ≤ 15 % of neighbours; x_D down at constant L/D |
 | H3 | F06 foaming s = 0.9 (with the v1.1 headroom, s ≤ 0.67 no longer floods; drill range [0.8, 1.0]) | max flood ≥ 100 % at unchanged load while column ΔP stays within ± 10 % of base ([P]: φ 1.08, ΔP × 0.97); x_D down ≥ 0.03 within 1 h ([P] 0.9783 → 0.908 at 60 min). Antifoam: max φ < 0.75 within 20 min, and x_D back within 0.03 of base within 40 min ([P] 0.953) |
 | H3 | F19 FT-102 bias, sign +1, s = 0.5 (+15 kmol/h; F19 biases are additive in % of span, PHYSICS.md §10.6) | displayed reflux = SP, true reflux 15 kmol/h lower; C3a: V₁ from the condenser duty disagrees with displayed L + D by ≥ 8 %; C4:FV-102 `fail` |
-| H4 | F13 reboiler fouling (s = 0.85, drill ramp 5400 s) | steam valve rises over ≥ 30 min, then saturates (the kettle is duty-limited once s(t) > 0.44: ≈ 47 min after onset); duty falls below SP after saturation; `model.dutyLimited` raised |
+| H4 | F13 reboiler fouling (s = 0.85, drill ramp 5400 s) | FV-103 OP stays within ± 3 % of its pre-onset mean (1-min means) for ≥ 30 min after onset, then reaches 100 % within 5 min of the duty first falling below SP (the kettle is duty-limited once s(t) > 0.44 at a 60 % design OP: ≈ 47 min after onset; engine at f5fcd32: flat at 58.7 %, duty below SP at 50.7 min, 100 % at 53.8 min). No creep is expected (PHYSICS.md §8.2, ruling 2026-10-13); `model.dutyLimited` raised |
 | H4 | F14 condensate backup | duty falls below SP within 5 min with the steam valve at 100 % |
 | H4 | F15 steam header loss (s ≥ 0.7) | header pressure reading down; `FC-103.OPSAT` (steam valve at 100 % with the duty below SP); T_st down. `model.dutyLimited` is **not** expected: a header loss lowers the valve's request Q_v and Q_max together (PHYSICS.md §8.2) |
 | H5 | F19 LT-102 drift, sign +1 (reads high), s = 1 (10 %/h, the F19 maximum); thermosyphon, LC-102 SP 50 %; this case runs 3.5 h | displayed sump level steady at SP, true level falling ≈ 10 %/h; circulation W down ≥ 8 % within 1 h [loop-only −11 %]; I_s > 1 once the true level is ≤ 32 % [30.7 %, 1.9 h]; boilup peak-to-peak ≥ 10 % before the true level reaches 22 % [25.5 %, 2.45 h]; C5 (sump) `fail` with the 3600-s window from 75 min after onset |

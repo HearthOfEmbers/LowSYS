@@ -438,3 +438,21 @@ Validator pass on engine 23d7368 / 0d2f7db (worktree). Files: `vc14_thermosyphon
 - S2. §8.3.4 / E.3 #3: "I_s crosses 1 at ≈ 29.5 %" contradicts the 30 % row (1.01). It is ≈ 30.8 %.
 - S3. §H H4 row and the H4 `reb_foul` debrief say the steam valve creeps open for ≈ 45 min. Under §10.3 (Q_v from the clean Q_max,0, Q = min(Q_v, Q_max)), the valve is flat until Q_max < Q_v, then saturates within seconds. Reword the evidence and debrief, or change the valve model. The M4 test reads "rises over ≥ 30 min" as "saturates ≥ 30 min after onset".
 - 2044f1a ruled on the FT-103, G14 and dt-30 items. What was applied, and what still waits for the coder, is listed above.
+
+## Spec rulings M6 validation (2026-10-13)
+
+Physics/spec lead on S1–S3 of "M6 validation" (f5fcd32) and the M8 readiness items in OPEN_ITEMS.md. Spec text changed in PHYSICS.md §8.2, §8.3.4 and §16; VALIDATION.md VC-14.1 spot values and §H H4; ENGINE_API.md §11.9 H4 `reb_foul` debrief; SCOPE.md F13; docs/milestones/M6.md copies and E.3 rows 3, 13, 18, 26. M4.md copies left as history.
+
+1. **S1, delivered vs FT-103: the bound becomes ≤ 1.5 %.** Q_k and u_k move together with x_e, so the mean of Q_k (1 + u_k) differs from the mean of Q_k by more than the cycle mean of u. The engine's 0.59 / 0.92 / 1.10 % is the model, not a defect. ≤ 1.5 % keeps a margin inside C3b's 2 %. The u ≤ 0.005 check stays.
+   - Coder: nothing.
+   - Validator: E.3 row 18 asserts u ≤ 0.005 and delivered vs steam side ≤ 1.5 % in every oscillating row (VALIDATION.md VC-14.1 spot values).
+2. **S2, I_s = 1 level: ≈ 30.8 %.** Interpolating 1.012 (30 %) and 0.996 (31 %). The "≥ 32 %" advice in §8.3.4 stands. ΔT_sub at 50 % is printed as 6.66 K (engine 6.664).
+   - Coder: nothing (check any hint or Equipment-tab text that quotes 29.5 %; none found in the spec).
+   - Validator: E.3 row 3 crossing 30.8 % ± 0.5 points; row 13 6.66 K.
+3. **S3, H4 "valve creeps open": fix the text, keep the model.** Physically the creep is real: fouling raises the shell temperature needed for the duty, the steam-chest pressure climbs toward the header, and the valve opens over the fouling time. LowSYS has no chest pressure (§10.3: Q_v from the clean Q_max,0 at the header, Q = min(Q_v, Q_max)), so FV-103 holds its clean position and saturates within minutes once Q_max < Q_v. A chest model would move every validated FV-103 OP (kettle 60 %, thermosyphon 77.6 %, G14 o1's FC-103 < 99) and needs an implicit solve, for a symptom whose duty, saturation time and `model.dutyLimited` are unchanged. PHYSICS.md §8.2 and §16 now state the missing creep; SCOPE.md F13, the H4 debrief and §H describe the modelled symptom. The drill stays solvable: onset speed (hint 2), PT-201 (hint 1) and `model.dutyLimited` (hint 3) separate the three candidates.
+   - Coder: replace the `reb_foul` debrief in the H4 scenario data with ENGINE_API.md §11.9's new text (no engine change).
+   - Validator: §H H4 F13 row as rewritten: FV-103 within ± 3 % of its pre-onset mean (1-min means) for ≥ 30 min, then 100 % within 5 min of the duty first falling below SP; `model.dutyLimited` raised. The engine's 53.8 min (s(t) 0.508 at 58.7 % OP) passes E.3 row 26.
+4. **PHYSICS.md §16 thermosyphon row** still described the steam side as a perfect buffer with ≤ 0.5 %. It now names the τ_st = 10 s chest buffer and ≤ 1.5 %. No action.
+5. **M8, G15 ≈ 6 % capacity gain: accepted, no change.** It follows from Robbins' liquid term (§16 "Packing" row), and G15's o4, its debrief and VC-13.6 already teach it as "in this shell". OPEN_ITEMS.md item 4 marked ruled.
+   - Coder / validator: nothing beyond VC-13.6 as written.
+6. **M8, packing table from memory: still open.** No doc change can verify it; it needs Kister (1992) ch. 8. OPEN_ITEMS.md item 1 stays flagged for the owner. If a value changes, re-run `tools/prototypes/m8/vc13.dart` and `g15.dart` before the M8 validation.
