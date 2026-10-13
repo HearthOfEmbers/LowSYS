@@ -1,6 +1,6 @@
 // M7 validation (engine eea0a5a): key numbers of docs/milestones/M7.md E.3 plus physical-sense checks. Everything
-// here runs with `ideal` hydraulics, so the steady values do not depend on the column diameter (0.75 / 0.55 m
-// pending); the H6 timings could move slightly with tray holdups. VC-9.4 / 9.5 (E.3 #3-5) are in
+// here runs with `ideal` hydraulics (steady values do not depend on the diameters) except the M7 close-out group: VC-9.6 (b)
+// (full hydraulics per tray section, debut 0.75 m, deprop 0.55 / 0.85 m) and VC-16.6d. H6 runs on 7f3e3db (C3a at T_dew, d48e6ff rows). VC-9.4 / 9.5 (E.3 #3-5) are in
 // m5_tier3_thermo_validation_test.dart. Independent FUG: reference/fug_reference.dart.
 import 'dart:convert';
 import 'dart:math' as math;
@@ -86,6 +86,7 @@ Simulator _h6(String candidate, {double? severity}) {
   }
   final sim = Simulator(Presets.byId('debut'), options: const SimOptions(seed: 3), warmStart: false);
   sim.startScenario(ScenarioDef.fromJson(j), seed: 3);
+  sim.setLever('view', 0); // model view: the validator reads the true state (the drill starts in a plant view)
   return sim;
 }
 
@@ -292,8 +293,18 @@ void main() {
       expect(const FugCalculator().compute(sim.snapshot(), k, thermo: sim.thermo), isNull);
       sim.setLever('view', 0);
     });
-    test('C3a lambda_top uses T_bub(x_D): on a wide-boiling distillate it over-reads the top vapour (record)', () {
-      // the true condenser duty is V1 (H_V(y1 = x_D, T_dew) - h_L(x_D, T_0)); C3a (PHYSICS.md 14.6) takes H_V at T_bub
+    test('C3a lambda_top at T_dew(x_D) (M7 close-out ruling 1): engine C3a reads V1 within 0.5 %, |r/band| < 0.5; '
+        'T_bub would over-read', () {
+      // the true condenser duty is V1 (H_V(y1 = x_D, T_dew) - h_L(x_D, T_0)); C3a (PHYSICS.md 14.6) now takes H_V at T_dew
+      final c3a = s.crossChecks.firstWhere((c) => c.id == 'C3a');
+      final c5 = s.crossChecks.firstWhere((c) => c.id == 'C5:drum');
+      print('C3a healthy steady: ${c3a.status.name} r/band ${(c3a.residual / c3a.band).toStringAsFixed(3)}, condenser side '
+          '${(c3a.terms['fromCondenser']! / _kmolh).toStringAsFixed(2)} vs V1 ${(s.stages.vaporUp[1] / _kmolh).toStringAsFixed(2)} '
+          'kmol/h; C5:drum ${c5.status.name} r/band ${(c5.residual / c5.band).toStringAsFixed(3)}');
+      expect(c3a.status, CheckStatus.ok);
+      expect((c3a.residual / c3a.band).abs(), lessThan(0.5));
+      expect(_rel(c3a.terms['fromCondenser']!, s.stages.vaporUp[1]), lessThan(0.005));
+      expect(c5.status, CheckStatus.ok);
       final th = sim.thermo, xd = Float64List.fromList(_x(s, 0)), p = s.stages.p[0], nc = s.stages.nc;
       final h = SolverHealth();
       final tb = th.bubbleT(p, xd, s.stages.t[0], Float64List(nc), Float64List(nc), h);
@@ -388,23 +399,47 @@ void main() {
     late double dHealthy2h, x0, b0;
     var fo7PeakBeforeEvent = double.nan;
     final c3aHealthy = <String>[];
+    var healthyFailLate = <String>[];
+    late CheckStatus c3aHealthy2h, c5Healthy2h;
     setUpAll(() {
       final h = _h6('feed_heavy_keys', severity: 0.0);
       x0 = h.snapshot().kpis.xDHeavy;
       b0 = h.snapshot().kpis.xBLight;
-      for (final t in [2600.0, 3300.0, 7200.0]) {
+      CrossCheckResult chk(String id) => h.snapshot().crossChecks.firstWhere((c) => c.id == id);
+      void rec(double t) {
         h.advance(t - h.time);
-        final c = h.snapshot().crossChecks.firstWhere((c) => c.id == 'C3a');
+        final c = chk('C3a'), c5 = chk('C5:drum');
         c3aHealthy.add('${(t / 60).toStringAsFixed(0)} min ${c.status.name} r/band ${(c.residual / c.band).toStringAsFixed(2)} '
             '(condenser ${(c.terms['fromCondenser']! / _kmolh).toStringAsFixed(2)}, reflux + D + dN0/W '
-            '${(c.terms['fromReflux']! / _kmolh).toStringAsFixed(2)}, true V1 ${(h.snapshot().stages.vaporUp[1] / _kmolh).toStringAsFixed(2)} kmol/h)');
+            '${(c.terms['fromReflux']! / _kmolh).toStringAsFixed(2)}, true V1 ${(h.snapshot().stages.vaporUp[1] / _kmolh).toStringAsFixed(2)} kmol/h; '
+            'C5:drum ${c5.status.name} r/band ${(c5.residual / c5.band).toStringAsFixed(2)})');
       }
+
+      rec(2600);
+      rec(3300);
+      rec(6300);
+      // ruling 1 (d48e6ff): healthy C3a and C5 (drum) not `fail` from event + 60 min, `ok` at 2 h
+      while (h.time < 7200) {
+        h.advance(30);
+        for (final id in ['C3a', 'C5:drum']) {
+          if (chk(id).status == CheckStatus.fail) healthyFailLate.add('$id at ${h.time.toStringAsFixed(0)} s');
+        }
+      }
+      rec(7200);
+      c3aHealthy2h = chk('C3a').status;
+      c5Healthy2h = chk('C5:drum').status;
       dHealthy2h = h.snapshot().kpis.d;
-      print('H6 healthy planning: C3a ${c3aHealthy.join('; ')}; D ${(dHealthy2h / _kmolh).toStringAsFixed(2)}, xDHeavy '
+      print('H6 healthy planning: C3a ${c3aHealthy.join('; ')}; fail after +60 min: $healthyFailLate; D '
+          '${(dHealthy2h / _kmolh).toStringAsFixed(2)}, xDHeavy '
           '${x0.toStringAsFixed(4)} -> ${h.snapshot().kpis.xDHeavy.toStringAsFixed(4)}, xBLight ${b0.toStringAsFixed(4)} -> '
           '${h.snapshot().kpis.xBLight.toStringAsFixed(4)}');
       expect((h.snapshot().kpis.xDHeavy - x0).abs(), lessThanOrEqualTo(0.005));
       expect((h.snapshot().kpis.xBLight - b0).abs(), lessThanOrEqualTo(0.005));
+    });
+    test('healthy planning (ruling 1, d48e6ff): C3a and C5 (drum) not fail from event + 60 min, ok at 2 h', () {
+      expect(healthyFailLate, isEmpty);
+      expect(c3aHealthy2h, CheckStatus.ok);
+      expect(c5Healthy2h, CheckStatus.ok);
     });
     test('F07 s 0.75: AT-100 0.450 -> 0.420 within 25 min; before the 45-min event FC-102 OP / FT-102 within 2 % and '
         'D within 1 kmol/h (record); TI-101 +2 K, xDHeavy +0.02; D at 2 h vs healthy', () {
@@ -414,8 +449,27 @@ void main() {
       var dMax = 0.0, opDev = 0.0, ftDev = 0.0, tAt = double.nan, dPeak = 0.0, tPeak = 0.0, peakNote = '';
       final q0 = sim.snapshot();
       final v10 = q0.stages.vaporUp[1], vb0 = q0.stages.vaporUp[q0.layout.nTrays + 1], lv0 = q0.kpis.drumLevelPct;
+      // feed-flash test of ruling 2: F (h_F - h_L,fs) / lambda_fs is the vapour the feed adds (> 0) or condenses (< 0)
+      // on its tray; its change from t0 is the flash part of the D transient
+      final fs = sim.config.feeds.first.stage;
+      ({double dT, double vFlash}) flash(SimSnapshot q) {
+        final fd = q.streams[StreamId.feed]!, th = sim.thermo;
+        final xf = Float64List.fromList(_x(q, fs)), yf = Float64List.fromList(q.stages.y.sublist(fs * q.stages.nc, (fs + 1) * q.stages.nc));
+        final tf = q.stages.t[fs], hlf = th.hL(tf, xf);
+        return (dT: fd.temperature - tf, vFlash: fd.flow * (th.hL(fd.temperature, fd.composition) - hlf) / (th.hV(tf, yf) - hlf));
+      }
+
+      ({double dT, double vFlash})? fl0; // pre-onset value (the t = 0 stream snapshot has no feed temperature yet)
+      var flashNote = '';
+      var flMax = -1e9, tFlMax = 0.0;
       while (sim.time < 2700) {
         sim.advance(30);
+        final flNow = flash(sim.snapshot());
+        if (sim.time <= 600) fl0 = flNow;
+        if (flNow.vFlash > flMax) {
+          flMax = flNow.vFlash;
+          tFlMax = (sim.time - 600) / 60;
+        }
         final dd = (sim.snapshot().kpis.d - d0) / _kmolh;
         if (dd.abs() > dMax) {
           dPeak = dd;
@@ -424,6 +478,10 @@ void main() {
           peakNote = 'V1 ${((q.stages.vaporUp[1] - v10) / _kmolh).toStringAsFixed(2)}, V_B '
               '${((q.stages.vaporUp[q.layout.nTrays + 1] - vb0) / _kmolh).toStringAsFixed(2)} kmol/h, drum level '
               '${(q.kpis.drumLevelPct - lv0).toStringAsFixed(2)} %';
+          final fl = flash(q);
+          flashNote = 'T_F - T_$fs ${fl0!.dT.toStringAsFixed(2)} -> ${fl.dT.toStringAsFixed(2)} K, feed flash '
+              '${(fl0.vFlash / _kmolh).toStringAsFixed(2)} -> ${(fl.vFlash / _kmolh).toStringAsFixed(2)} kmol/h (change '
+              '${((fl.vFlash - fl0.vFlash) / _kmolh).toStringAsFixed(2)})';
         }
         dMax = math.max(dMax, dd.abs());
         opDev = math.max(opDev, (sim.control.fc102.op - op0).abs());
@@ -435,7 +493,7 @@ void main() {
       final s = sim.snapshot();
       final dVsHealthy = (s.kpis.d - dHealthy2h) / _kmolh;
       print('H6 F07: AT-100 ${a0.toStringAsFixed(4)} -> ${_inst(sim)['AT-100']!.value.toStringAsFixed(4)} (-0.02 at '
-          '${tAt.toStringAsFixed(1)} min); before 45 min: peak dD ${dPeak.toStringAsFixed(2)} at ${tPeak.toStringAsFixed(1)} min after onset [d$peakNote] (at 45 min ${d45.toStringAsFixed(2)}) '
+          '${tAt.toStringAsFixed(1)} min); before 45 min: peak dD ${dPeak.toStringAsFixed(2)} at ${tPeak.toStringAsFixed(1)} min after onset [d$peakNote; $flashNote; max feed-flash change ${((flMax - fl0!.vFlash) / _kmolh).toStringAsFixed(2)} kmol/h at ${tFlMax.toStringAsFixed(1)} min] (at 45 min ${d45.toStringAsFixed(2)}) '
           'kmol/h, FC-102 OP ${opDev.toStringAsFixed(2)} %, FT-102 ${(100 * ftDev).toStringAsFixed(2)} % span; 2 h: D - healthy '
           '${dVsHealthy.toStringAsFixed(2)} kmol/h, TI-101 +${(_inst(sim)['TI-101']!.value - ti0).toStringAsFixed(2)} K, xDHeavy '
           '${x0.toStringAsFixed(4)} -> ${s.kpis.xDHeavy.toStringAsFixed(4)}');
@@ -450,10 +508,8 @@ void main() {
       expect(dVsHealthy.abs(), lessThan(1.0), reason: 'D vs the healthy planning response (steady 44.94 -> 44.54 x 1.08)');
       fo7PeakBeforeEvent = dMax;
     }, timeout: _long);
-    test('F07: D within 2.5 kmol/h of its start throughout (54f9b41 row; until the 45-min event)',
-        skip: 'spec/coder item M7-S2: engine eea0a5a peaks at +3.33 kmol/h 19.5 min after onset (drum level +1.4 %), '
-            '+1.33 at 45 min; the 1.5 at 2600 s in the checkpoint was a single sample. Re-run on the 0.75-m trays', () {
-      expect(fo7PeakBeforeEvent, lessThanOrEqualTo(2.5));
+    test('F07: D at most 4.5 kmol/h above its start until the 45-min event (ruling 2, d48e6ff; below F12\'s 5)', () {
+      expect(fo7PeakBeforeEvent, lessThanOrEqualTo(4.5));
     });
     test('F12 s 0.585: FT-102 below the cap 63.4 kmol/h and SP, FC-102 OPSAT within 2 min, D +5 within 30 min, TI-101 +3 K, '
         'xDHeavy +0.05, AT-100 unchanged', () {
@@ -468,10 +524,13 @@ void main() {
       final dd30 = (sim.snapshot().kpis.d - d0) / _kmolh;
       sim.advance(7200 - sim.time);
       final s = sim.snapshot();
-      print('H6 F12: cap ${cap.toStringAsFixed(2)} kmol/h, FT-102 at 30 s ${ft30.toStringAsFixed(2)} kmol/h (engine cap = '
-          '(1 - s) x design L0 76.4 = ${(0.415 * 76.4).toStringAsFixed(2)}); dD at 30 min ${dd30.toStringAsFixed(2)}; D at 2 h '
-          '${(s.kpis.d / _kmolh).toStringAsFixed(2)}; xDHeavy ${s.kpis.xDHeavy.toStringAsFixed(4)}');
+      print('H6 F12: cap ${cap.toStringAsFixed(2)} kmol/h, FT-102 at 30 s ${ft30.toStringAsFixed(2)} kmol/h; dD at 30 min '
+          '${dd30.toStringAsFixed(2)}; D at 2 h ${(s.kpis.d / _kmolh).toStringAsFixed(2)} [62.4]; true xDHeavy '
+          '${s.kpis.xDHeavy.toStringAsFixed(4)} [0.22], AT-101 ${_inst(sim)['AT-101']!.value.toStringAsFixed(4)}');
       expect(cap, closeTo(63.4, 0.05));
+      // ruling 3 brackets (af6864e, 0.75-m trays, noise off, 2 h): D 62.4, true xDHeavy 0.22
+      expect(s.kpis.d / _kmolh, closeTo(62.4, 1.0));
+      expect(s.kpis.xDHeavy, closeTo(0.22, 0.01));
       expect(ft30, lessThanOrEqualTo(cap * 1.01));
       expect(sat, isTrue);
       expect(dd30, greaterThanOrEqualTo(5));
@@ -479,9 +538,7 @@ void main() {
       expect(s.kpis.xDHeavy - x0, greaterThanOrEqualTo(0.05));
       expect((_inst(sim)['AT-100']!.value - a0).abs(), lessThan(0.002));
     }, timeout: _long);
-    test('F12 s 0.585: FT-102 settles AT the cap (1 - s) F_max = 63.4 kmol/h (± 2 %)',
-        skip: 'coder item M7-C1: the engine caps L0 at (1 - s) x the design reflux 76.4 (31.7 kmol/h), PHYSICS.md 10.2 / '
-            'ENGINE_API.md 11.10 say (1 - s) F_max of FV-102 = (1 - s) x 152.8', () {
+    test('F12 s 0.585: FT-102 settles AT the cap (1 - s) F_max = 63.4 kmol/h (± 2 %; M7-C1 fixed in af6864e)', () {
       final sim = _h6('reflux_pump', severity: 0.585);
       sim.advance(900);
       expect(_inst(sim)['FT-102']!.value / _kmolh, closeTo(63.4, 0.02 * 63.4));
@@ -511,5 +568,176 @@ void main() {
       expect(dd, greaterThanOrEqualTo(3.5));
       expect(sim.snapshot().kpis.xDHeavy - x0, greaterThanOrEqualTo(0.02));
     }, timeout: _long);
+  }, timeout: _long);
+
+  group('M7 close-out (d48e6ff, 7f3e3db): VC-9.6 (b) per tray section, VC-16.6d', () {
+    // VC-9.6 (b): full hydraulics at the defaults, one steady run; per section max jet flood 45-85 %, Phi_min >= 0.75,
+    // no flood / weep alarm, column dP recorded
+    ({double jetMax, double jetMin, double phiMin, double weepMax, double dcMax}) sec(SimSnapshot s, int a, int b) {
+      var jx = 0.0, jn = 9.0, pm = 9.0, wm = 0.0, dc = 0.0;
+      for (var j = a; j <= b; j++) {
+        jx = math.max(jx, s.stages.jetFlood[j]);
+        jn = math.min(jn, s.stages.jetFlood[j]);
+        pm = math.min(pm, s.stages.stability[j]);
+        wm = math.max(wm, s.stages.weepFrac[j]);
+        dc = math.max(dc, s.stages.dcFlood[j]);
+      }
+      return (jetMax: jx, jetMin: jn, phiMin: pm, weepMax: wm, dcMax: dc);
+    }
+
+    final full = <String, ({Simulator sim, SimSnapshot s, bool reached, String note})>{};
+    ({Simulator sim, SimSnapshot s, bool reached, String note}) runFull(String id, [Map<String, Object?>? ov]) {
+      final key = '$id${ov == null ? '' : jsonEncode(ov)}';
+      return full.putIfAbsent(key, () {
+        final sim = _sim(Presets.byId(id).applyOverrides({'hydraulics': 'full', ...?ov}));
+        final reached = sim.runToSteadyState(maxSimSeconds: 400000).reached;
+        // last 2 h: D and Phi_min ranges (a limit cycle shows here)
+        var dn = 1e9, dx = -1e9, pn = 9.0, px = 0.0;
+        for (var k = 0; k < 240; k++) {
+          sim.advance(30);
+          final q = sim.snapshot();
+          dn = math.min(dn, q.kpis.d);
+          dx = math.max(dx, q.kpis.d);
+          final ph = sec(q, 1, q.layout.nTrays).phiMin;
+          pn = math.min(pn, ph);
+          px = math.max(px, ph);
+        }
+        return (
+          sim: sim,
+          s: sim.snapshot(),
+          reached: reached,
+          note: 'steady ${reached ? 'reached' : 'NOT reached'} (${sim.time.toStringAsFixed(0)} s); last 2 h D '
+              '${(dn / _kmolh).toStringAsFixed(3)}-${(dx / _kmolh).toStringAsFixed(3)} kmol/h, Phi_min ${pn.toStringAsFixed(3)}-'
+              '${px.toStringAsFixed(3)}'
+        );
+      });
+    }
+
+    String row(String id, SimSnapshot s, List<(int, int)> secs) {
+      final n = s.layout.nTrays;
+      final parts = [
+        for (final (a, b) in secs)
+          () {
+            final r = sec(s, a, b);
+            return 'trays $a-$b jet ${(100 * r.jetMin).toStringAsFixed(1)}-${(100 * r.jetMax).toStringAsFixed(1)} %, '
+                'Phi_min ${r.phiMin.toStringAsFixed(3)}, weep <= ${(100 * r.weepMax).toStringAsFixed(1)} %, dc flood <= ${(100 * r.dcMax).toStringAsFixed(1)} %';
+          }()
+      ];
+      return '$id full: ${parts.join('; ')}; column dP ${((s.stages.p[n + 1] - s.stages.p[1]) / 1000).toStringAsFixed(2)} kPa; '
+          'max flood KPI ${s.kpis.maxFloodPct.toStringAsFixed(1)} %; r ${s.kpis.recoveryLK!.toStringAsFixed(4)} / ${s.kpis.recoveryHK!.toStringAsFixed(4)}';
+    }
+
+    test('VC-9.6 (b) debut (0.75 m, one section): jet flood 45-85 %, Phi_min >= 0.75, max flood KPI < 90 % (the model.flood threshold), downcomer flood < 50 %', () {
+      final r = runFull('debut');
+      print('VC-9.6 (b) ${row('debut', r.s, [(1, 11), (12, 22)])}; ${r.note}');
+      expect(r.reached, isTrue);
+      final all = sec(r.s, 1, r.s.layout.nTrays);
+      expect(all.jetMax, inInclusiveRange(0.45, 0.85));
+      expect(all.phiMin, greaterThanOrEqualTo(0.75));
+      // the alarms latch start-up transients of the cold start, so the steady values are checked against their thresholds
+      expect(r.s.kpis.maxFloodPct, lessThan(90));
+      expect(all.dcMax, lessThan(0.5));
+    }, timeout: _long);
+    test('VC-9.6 (b) deprop (0.55 m trays 1-10, 0.85 m trays 11-28): max jet flood per section in 45-85 %, max flood KPI < 90 %',
+        () {
+      final r = runFull('deprop');
+      print('VC-9.6 (b) ${row('deprop', r.s, [(1, 10), (11, 28)])}; ${r.note}');
+      expect(sec(r.s, 1, 10).jetMax, inInclusiveRange(0.45, 0.85));
+      expect(sec(r.s, 11, 28).jetMax, inInclusiveRange(0.45, 0.85));
+      expect(r.s.kpis.maxFloodPct, lessThan(90));
+      expect(sec(r.s, 1, 28).dcMax, lessThan(0.5));
+    }, timeout: _long);
+    test('VC-9.6 (b) deprop: Phi_min >= 0.75 in the stripping section (no weeping)',
+        skip: 'spec-pending (M7 close-out coder item 5): the 0.85-m stripping trays weep (Phi_min 0.341, weep 74 %) and '
+            'runToSteadyState does not converge in 400 000 s (D 30.83-30.91 over the last 2 h); see DEVIATIONS "M7 close-out validation"', () {
+      expect(runFull('deprop').reached, isTrue);
+      expect(sec(runFull('deprop').s, 11, 28).phiMin, greaterThanOrEqualTo(0.75));
+    });
+    test('deprop stripping-section probe (record, for the spec lead): hole fraction 0.10 -> 0.05 at 0.85 m', () {
+      for (final hf in [0.05]) {
+        final sections = [
+          for (final (n, d, h) in [(10, 0.55, 0.10), (18, 0.85, hf)])
+            {
+              'kind': 'trays', 'trays': n, 'type': 'sieve',
+              'geometry': {'diameter': d, 'traySpacing': 0.9, 'downcomerFraction': 0.12, 'weirHeight': 0.05,
+                'apronClearance': 0.038, 'holeFraction': h, 'holeDiameter': 0.0127, 'orificeCoeff': 0.73,
+                'downcomerAeration': 0.5, 'systemFactor': 1.0}
+            }
+        ];
+        final r = runFull('deprop', {'sections': sections});
+        print('probe hole fraction $hf: ${row('deprop', r.s, [(1, 10), (11, 28)])}; ${r.note}');
+        expect(r.s.kpis.d.isFinite, isTrue);
+      }
+    }, timeout: _long);
+
+    for (final id in ['debut', 'deprop']) {
+      test('VC-16.6d $id (ideal, noise off): 24 h quiet (D p-p <= 0.2, P_top +-0.5 kPa); SP +-10 kPa within 1 kPa in '
+          '10 min, overshoot <= 30 %, decay <= 0.3', () {
+        final sim = _sim(Presets.byId(id));
+        _steady(sim);
+        final sp0 = sim.snapshot().kpis.pTop;
+        var dMin = 1e9, dMax = -1e9, pDev = 0.0;
+        for (var k = 0; k < 24 * 60; k++) {
+          sim.advance(60);
+          final q = sim.snapshot();
+          dMin = math.min(dMin, q.kpis.d);
+          dMax = math.max(dMax, q.kpis.d);
+          pDev = math.max(pDev, (q.kpis.pTop - sp0).abs());
+        }
+        final rows = <String>['24 h: D p-p ${((dMax - dMin) / _kmolh).toStringAsFixed(4)} kmol/h, P_top dev '
+            '${(pDev / 1000).toStringAsFixed(3)} kPa'];
+        final badStep = <String>[];
+        final bad = <String>[if ((dMax - dMin) / _kmolh > 0.2) 'D p-p', if (pDev > 500) 'P_top quiet'];
+        for (final step in [10000.0, -10000.0, if (id == 'deprop') 50000.0]) {
+          final base = sim.snapshot().kpis.pTop, sp = base + step;
+          sim.setLever('pTop', sp);
+          final e = <double>[];
+          var tIn = double.nan;
+          for (var k = 0; k < 360; k++) {
+            sim.advance(5);
+            final ek = (sim.snapshot().kpis.pTop - sp) / step; // normalised: starts at -1, 0 at SP, > 0 overshoot
+            e.add(ek);
+            if ((ek * step).abs() > 1000) tIn = double.nan;
+            if (tIn.isNaN && (ek * step).abs() <= 1000) tIn = 5.0 * (k + 1);
+          }
+          // overshoot = first maximum after the first crossing; decay = next overshoot peak / first
+          final i0 = e.indexWhere((v) => v >= 0);
+          var a1 = 0.0, a3 = 0.0;
+          if (i0 >= 0) {
+            var i = i0;
+            while (i < e.length && e[i] >= 0) {
+              a1 = math.max(a1, e[i]);
+              i++;
+            }
+            while (i < e.length && e[i] < 0) {
+              i++;
+            }
+            while (i < e.length && e[i] >= 0) {
+              a3 = math.max(a3, e[i]);
+              i++;
+            }
+          }
+          final decay = a1 > 1e-3 ? a3 / a1 : 0.0;
+          rows.add('SP ${step > 0 ? '+' : ''}${(step / 1000).toStringAsFixed(0)} kPa: within 1 kPa from '
+              '${tIn.toStringAsFixed(0)} s, overshoot ${(100 * a1).toStringAsFixed(1)} %, decay ${decay.toStringAsFixed(2)}, '
+              'CW valve ${sim.control.pc101.op.toStringAsFixed(1)} %');
+          if (step.abs() == 10000) {
+            if (!(tIn <= 600) || a1 > 0.30 || decay > 0.3) badStep.add('SP $step');
+          } else if (sim.control.alarms.isActive('model.relief')) {
+            bad.add('relief at +50 kPa');
+          }
+          sim.setLever('pTop', base);
+          sim.advance(1800);
+        }
+        print('VC-16.6d $id (pcKc ${sim.config.condenser.pcKc}): ${rows.join('; ')}');
+        expect(bad, isEmpty);
+        // deprop's step response is the coder item below (recorded here, asserted there)
+        if (id == 'debut') expect(badStep, isEmpty);
+      }, timeout: _long);
+    }
+    test('VC-16.6d (b) deprop: PC-101 SP +-10 kPa within 1 kPa in 10 min, overshoot <= 30 %, decay <= 0.3',
+        skip: 'coder item M7-C2 (M7 close-out validation): with pcKc 120 on the 0.55 / 0.85 m column the loop is '
+            'underdamped: +10 kPa settles in 1720 s, decay 0.65; -10 kPa overshoots 45 %, decay 0.85. Measure the '
+            'open-loop gain (VC-16.6d (d), ruling 5) and retune', () {});
   }, timeout: _long);
 }

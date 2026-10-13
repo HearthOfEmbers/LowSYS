@@ -232,15 +232,16 @@ void main() {
           reason: 'P creeps once the valve saturates or nearly');
     });
     test(
-        'F12 partial reflux loss (s 0.6): reflux below SP with FC-102 at 100 %, top T up, drum level up',
+        'F12 partial reflux loss (s 0.8): reflux at the cap 0.2 x F_max 300 = 60 kmol/h, below SP with FC-102 at 100 %, top T up, drum level up',
         () {
       final sim = _steady();
       final t1 = tC(sim.snapshot(), 1);
-      // s 0.6, not 0.5: with the spec's cap (1 - s) F_max of FV-102 (F_max = 2 x design, ENGINE_API.md 11.10) s 0.5
-      // gives no symptom; s 0.6 is below the design reflux with either cap (M7 validation, coder item M7-C1)
-      _equip(sim, FaultType.refluxPumpTrip, 'reflux', severity: 0.6);
+      // s 0.8 (spec ruling M7 close-out item 3): the cap is (1 - s) F_max of FV-102; B-T's F_max is 300 kmol/h (3 x the
+      // design reflux), so s 0.6 leaves the cap (120) above the design reflux and gives no symptom
+      _equip(sim, FaultType.refluxPumpTrip, 'reflux', severity: 0.8);
       sim.advance(1800);
       final s = sim.snapshot();
+      expect(reading(s, 'FT-102').value / kmolh, closeTo(60, 1.2), reason: 'at the cap 0.2 x 300');
       expect(loopOf(s, 'FC-102').op, closeTo(100, 0.5));
       expect(reading(s, 'FT-102').value,
           lessThan(loopOf(s, 'FC-102').sp - 5 * kmolh));
