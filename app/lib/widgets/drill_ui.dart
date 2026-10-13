@@ -27,6 +27,8 @@ String diagnosisLabel(String id) {
     'stripping': 'Stripping section',
     'feed': 'Feed',
     'packedBed': 'Packed bed',
+    'packingDamage': 'Packing damage (crushed)',
+    'flooding': 'Flooding (operating limit)',
     'column': 'Whole column',
     'steamSupply': 'Steam supply',
     'tsInletLine': 'Reboiler inlet line',
@@ -41,8 +43,12 @@ String diagnosisLabel(String id) {
   };
   if (id.startsWith('instrument:')) return 'Instrument ${id.substring(11)}';
   if (id.startsWith('valve:')) return 'Valve ${id.substring(6)}';
+  if (id.startsWith('bed:')) return bedLabel(int.tryParse(id.substring(4)) ?? 1);
   return names[id] ?? id;
 }
+
+/// Display name of packed bed [b] (1 = top): the PDT that watches it is PDT-(101 + b) (PHYSICS.md 10.5).
+String bedLabel(int b) => b == 1 ? 'Upper bed (PDT-102)' : (b == 2 ? 'Lower bed (PDT-103)' : 'Bed $b (PDT-${101 + b})');
 
 /// The locations offered by a drill: `instrument:*` and `valve:*` expand to every tag visible in the drill.
 List<String> expandLocations(DiagnosisDef d, SimSnapshot? s) {
@@ -51,6 +57,10 @@ List<String> expandLocations(DiagnosisDef d, SimSnapshot? s) {
     if (l == 'instrument:*') {
       for (final i in s?.instruments ?? const <InstrumentReading>[]) {
         out.add('instrument:${i.tag}');
+      }
+    } else if (l == 'bed:*') {
+      for (final b in s?.beds ?? const <PackedBedSnapshot>[]) {
+        out.add('bed:${b.bed}');
       }
     } else if (l == 'valve:*') {
       for (final v in s?.valves ?? const <ValveSnapshot>[]) {

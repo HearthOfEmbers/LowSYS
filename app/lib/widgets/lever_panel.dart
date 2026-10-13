@@ -179,12 +179,27 @@ class LeverPanel extends StatelessWidget {
                 ],
               ]);
             }
+            final trayLever = levers.where((l) => l.id.startsWith('trayType.')).map((l) => l.id).firstOrNull;
             group('COLUMN', [
-              tile('nTrays'),
-              tile('murphree'),
+              if (byId('nTrays') != null) tile('nTrays'),
+              if (byId('murphree') != null) tile('murphree'),
               if (byId('alpha') != null) tile('alpha'),
             ]);
             group('INTERNALS', [
+              if (byId('internals') != null)
+                _Labeled(
+                  label: sim.paused ? 'Internals' : 'Internals (pause first)',
+                  t: t,
+                  child: _Segments(
+                    key: const ValueKey('lever-internals'),
+                    options: const ['Trays', 'Packing', 'Mixed'],
+                    selected: (values['internals'] ?? 0).round().clamp(0, 2),
+                    onSelect: locked.contains('internals') || !sim.paused
+                        ? null
+                        : (i) => sim.setLever('internals', i.toDouble()),
+                    t: t,
+                  ),
+                ),
               _Labeled(
                 label: 'Hydraulics',
                 t: t,
@@ -197,16 +212,16 @@ class LeverPanel extends StatelessWidget {
                   t: t,
                 ),
               ),
-              if (full)
+              if (full && trayLever != null)
                 _Labeled(
                   label: 'Tray type',
                   t: t,
                   child: _Segments(
                     options: const ['Sieve', 'Valve'],
-                    selected: (values['trayType.0'] ?? 0) >= 0.5 ? 1 : 0,
-                    onSelect: locked.contains('trayType.0')
+                    selected: (values[trayLever] ?? 0) >= 0.5 ? 1 : 0,
+                    onSelect: locked.contains(trayLever)
                         ? null
-                        : (i) => sim.setLever('trayType.0', i.toDouble()),
+                        : (i) => sim.setLever(trayLever, i.toDouble()),
                     t: t,
                   ),
                 ),
@@ -416,10 +431,21 @@ class LeverTile extends StatelessWidget {
       spec.integer ? si : units.fromSI(spec.quantity, si);
   double _toSI(double d) => spec.integer ? d : units.toSI(spec.quantity, d);
 
+  /// Integer levers with an offered set (feed stage on a packed column: trays and bed tops) snap to the nearest option.
+  double _snap(double v) {
+    final o = spec.options;
+    if (o == null || o.isEmpty) return v;
+    var best = o.first.toDouble();
+    for (final x in o) {
+      if ((x - v).abs() < (best - v).abs()) best = x.toDouble();
+    }
+    return best;
+  }
+
   void _set(double display) {
     if (locked) return;
     final c = display.clamp(_dMin, _dMax).toDouble();
-    sim.setLever(spec.id, spec.integer ? c.roundToDouble() : _toSI(c));
+    sim.setLever(spec.id, spec.integer ? _snap(c.roundToDouble()) : _toSI(c));
   }
 
   Future<void> _edit(BuildContext context) async {

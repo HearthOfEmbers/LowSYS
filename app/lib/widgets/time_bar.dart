@@ -24,6 +24,7 @@ const Map<String, String> kPresetNames = {
   Presets.c4: 'Isobutane–n-butane (C4 splitter)',
   Presets.debut: 'Debutanizer (6 components)',
   Presets.deprop: 'Depropanizer (6 components)',
+  Presets.btPacked: 'Benzene–toluene, packed (2 × 4.5 m)',
 };
 
 /// Pause, clock, speed, steady indicator, run-to-steady and the preset menu (SCOPE.md 3.2).

@@ -4,6 +4,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../painters/column_geometry.dart';
 import '../painters/column_painter.dart';
+import '../painters/packed_painter.dart';
 import '../painters/mccabe_painter.dart';
 import '../theme/lowsys_theme.dart';
 
@@ -47,8 +48,9 @@ class ColumnView extends StatelessWidget {
                     trays: sim.structure.value.trays,
                     feedStage: sim.structure.value.feed,
                     broken: sim.brokenStages.value,
-                    trayHeightM: sim.config.traySection.geometry.traySpacing,
-                    diameterM: sim.config.traySection.geometry.diameter,
+                    beds: BedSpec.parse(sim.structure.value.beds),
+                    trayHeightM: sim.config.hasTrays ? sim.config.traySection.geometry.traySpacing : 0.9,
+                    diameterM: sim.config.hydraulicsGeometry.diameter,
                   ),
                 ),
               ),

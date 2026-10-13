@@ -1,10 +1,13 @@
 // M8 coder tests: bt_packed steady states (VC-13.5), the mixed template, structure rules (VC-13.9).
+import 'dart:convert';
+
 import 'package:lowsys_engine/lowsys_engine.dart';
 import 'package:test/test.dart';
 
 import 'm8_helpers.dart';
 
 void main() {
+  saveRestoreTests();
   group('VC-13.5 steady states', () {
     test('Tier 1 full: x_D, x_B, D, bed dP and phi_p, column dP, max flood', () {
       final sim = steady(packedSim());
@@ -240,4 +243,23 @@ void main() {
       sim.faults.inject(FaultSpec(type: FaultType.packingCrush, location: const FaultLocation.bed(2), severity: 0.3));
     });
   }, timeout: const Timeout(Duration(minutes: 10)));
+}
+
+/// Save and restore (the app persists sessions): a packed column with a bed fault resumes bit for bit.
+void saveRestoreTests() {
+  test('saveState / restore on bt_packed (Tier 2, F23 on bed 2): the restored run follows the original', () {
+    final a = h7Sim();
+    a.faults.inject(FaultSpec(type: FaultType.packingCrush, location: const FaultLocation.bed(2), severity: 0.3, onset: 100));
+    a.advance(600);
+    final saved = jsonDecode(jsonEncode(a.saveState())) as Map<String, Object?>;
+    final b = Simulator.restore(saved);
+    expect(b.config.beds.length, 2);
+    expect(b.config.internals, -1, reason: 'the H7 sections override removed the templates');
+    a.advance(300);
+    b.advance(300);
+    final sa = a.snapshot(), sb = b.snapshot();
+    expect(sb.beds[1].dp, closeTo(sa.beds[1].dp, 1e-4 * sa.beds[1].dp), reason: "the holdup-factor lag restarts at its raw value");
+    expect(sb.kpis.xD, closeTo(sa.kpis.xD, 1e-5));
+    expect(sb.stages.hetp[18], closeTo(sa.stages.hetp[18], 1e-4));
+  });
 }

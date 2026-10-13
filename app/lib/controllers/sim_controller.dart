@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
+import '../painters/packed_painter.dart' show BedSpec;
 import '../painters/profile_painter.dart' show TierGhost;
 import 'save_store.dart';
 
@@ -63,9 +64,10 @@ class SimController extends ChangeNotifier {
       ValueNotifier<McCabeThieleData?>(null);
 
   /// Column structure (trays, feed tray); changes rarely, so the static vessel layer rebuilds rarely.
-  final ValueNotifier<({int trays, int feed})> structure = ValueNotifier((
+  final ValueNotifier<({int trays, int feed, String beds})> structure = ValueNotifier((
     trays: 20,
     feed: 10,
+    beds: '',
   ));
 
   /// Broken trays from the visible faults (stage to open fraction); the static vessel layer redraws on change.
@@ -502,7 +504,7 @@ class SimController extends ChangeNotifier {
       perfNotify.add(t2 - t1);
       perfMccabe.add(sw.elapsedMicroseconds - t2);
     }
-    final st = (trays: s.layout.nTrays, feed: s.layout.feedStages.first);
+    final st = (trays: s.layout.nTrays, feed: s.layout.feedStages.first, beds: BedSpec.key(BedSpec.of(s)));
     if (st != structure.value) structure.value = st;
     if (!_sameLevers(s.levers, leverValues.value)) leverValues.value = s.levers;
     final br = <int, double>{};

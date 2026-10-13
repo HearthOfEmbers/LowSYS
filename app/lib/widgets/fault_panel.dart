@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -23,6 +25,8 @@ class _FaultPanelState extends State<FaultPanel> {
   int tray = 8;
   int fromTray = 12, toTray = 16;
   double sBroken = 1.0, sFoul = 0.6, sFoam = 0.5, sFeed = 1.0;
+  int bed = 1;
+  double sMal = 0.5, sCrush = 0.3;
   String foulMode = 'holes';
   double foulRamp = 0;
 
@@ -37,6 +41,9 @@ class _FaultPanelState extends State<FaultPanel> {
         if (s == null) return const SizedBox();
         final n = s.layout.nTrays;
         final full = s.hydraulics == HydraulicsMode.full;
+        final hasTrays = s.layout.kinds.contains(StageKind.tray);
+        const trayCards = {'Broken tray', 'Fouled trays', 'Foaming'};
+        bed = bed.clamp(1, math.max(1, s.beds.length));
         tray = tray.clamp(1, n);
         fromTray = fromTray.clamp(1, n);
         toTray = toTray.clamp(fromTray, n);
@@ -102,12 +109,12 @@ class _FaultPanelState extends State<FaultPanel> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: full ? go : null,
+                  onPressed: full && (hasTrays || !trayCards.contains(title)) ? go : null,
                   child: Text(
                     action,
                     style: t.type.label.style(
                       13.5,
-                      full ? p.warn : p.inkFaint,
+                      full && (hasTrays || !trayCards.contains(title)) ? p.warn : p.inkFaint,
                       weight: FontWeight.w700,
                     ),
                   ),
@@ -173,6 +180,41 @@ class _FaultPanelState extends State<FaultPanel> {
                   ),
                 ),
             ],
+            if (s.beds.isNotEmpty)
+              card(
+                'Packing maldistribution',
+                'F21: a plugged distributor sends more liquid to one side of the bed (f = 0.6 s). The pressure drop hardly moves; the separation and the bed temperature profile do.',
+                [
+                  slider('Bed', bed.toDouble(), 1, s.beds.length.toDouble(), s.beds.length > 1 ? s.beds.length - 1 : null,
+                      (x) => bed = x.round(), (v) => '${v.round()}'),
+                  slider('Severity', sMal, 0.1, 1, 9, (x) => sMal = x, (v) => '${(100 * v).round()}%'),
+                ],
+                'Plug the distributor',
+                () => sim.injectFault(FaultSpec(
+                  type: FaultType.packingMaldistribution,
+                  location: FaultLocation.bed(bed),
+                  severity: sMal,
+                  onset: s.time,
+                  ramp: 900,
+                )),
+              ),
+            if (s.beds.isNotEmpty)
+              card(
+                'Crushed packing',
+                'F23: the packing factor rises by 150 % of s and the bed gets 15 % of s shorter. Higher dP at the same load, earlier flooding.',
+                [
+                  slider('Bed', bed.toDouble(), 1, s.beds.length.toDouble(), s.beds.length > 1 ? s.beds.length - 1 : null,
+                      (x) => bed = x.round(), (v) => '${v.round()}'),
+                  slider('Severity', sCrush, 0.1, 1, 9, (x) => sCrush = x, (v) => '${(100 * v).round()}%'),
+                ],
+                'Crush the packing',
+                () => sim.injectFault(FaultSpec(
+                  type: FaultType.packingCrush,
+                  location: FaultLocation.bed(bed),
+                  severity: sCrush,
+                  onset: s.time,
+                )),
+              ),
             card(
               'Broken tray',
               'F04: part of the deck is missing. Liquid and vapour bypass it.',

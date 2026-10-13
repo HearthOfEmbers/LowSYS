@@ -45,11 +45,11 @@ Future<void> loadFonts() async {
 
 final bool shots = Platform.environment['LOWSYS_SHOTS'] == '1';
 
-Future<void> snap(WidgetTester tester, GlobalKey key, String name, {String dir = 'm1'}) async {
+Future<void> snap(WidgetTester tester, GlobalKey key, String name, {String dir = 'm1', double ratio = 2.0}) async {
   if (!shots) return;
   await tester.runAsync(() async {
     final b = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-    final img = await b.toImage(pixelRatio: 2.0);
+    final img = await b.toImage(pixelRatio: ratio);
     final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
     final folder = Directory('../docs/screenshots/$dir')..createSync(recursive: true);
     File('${folder.path}/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());

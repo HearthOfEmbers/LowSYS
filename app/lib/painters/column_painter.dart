@@ -7,6 +7,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
 import 'column_geometry.dart';
+import 'packed_painter.dart';
 
 /// UI clock for animation that must run at wall speed whatever the simulation speed is
 /// (SCOPE.md 7.3: particle positions advance on the UI clock).
@@ -134,6 +135,9 @@ class ColumnVesselPainter extends CustomPainter {
   /// Broken trays: stage to open fraction s (F04), drawn as a deck with a gap and bent ends.
   final Map<int, double> broken;
 
+  /// Packed beds (M8); their stages get packing texture instead of decks and downcomers.
+  final List<BedSpec> beds;
+
   ColumnVesselPainter({
     required this.theme,
     required this.trays,
@@ -141,11 +145,16 @@ class ColumnVesselPainter extends CustomPainter {
     this.trayHeightM = 0.9,
     this.diameterM = 1.2,
     this.broken = const {},
+    this.beds = const [],
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final g = ColumnGeometry(size, trays, feedStage);
+    final packedStages = <int>{
+      for (final b in beds)
+        for (var j = b.first; j <= b.last; j++) j
+    };
     final p = theme.palette;
     final st = theme.column;
     final steel = Paint()
@@ -229,6 +238,7 @@ class ColumnVesselPainter extends CustomPainter {
       ..strokeWidth = compact ? 1.0 : st.trayStrokeWidth
       ..style = PaintingStyle.stroke;
     for (var j = 1; j <= trays; j++) {
+      if (packedStages.contains(j)) continue;
       final dy = g.deckY(j);
       final (x0, x1) = g.deckX(j);
       final bs = broken[j];
@@ -281,6 +291,8 @@ class ColumnVesselPainter extends CustomPainter {
         fine,
       );
     }
+
+    paintPackedBedsStatic(canvas, g, theme, beds);
 
     // --- overhead: vapour line, condenser, drum, pipes
     final pipe = Paint()
@@ -421,9 +433,12 @@ class ColumnVesselPainter extends CustomPainter {
         4.5,
         Paint()..color = p.inkMuted,
       );
+      // on a packed bed the dimension is the segment height (HETP_ref), on trays the tray spacing
+      final onBed = packedStages.contains(mid);
+      final segM = onBed ? PackingData.byId(beds.firstWhere((b) => b.first <= mid && b.last >= mid).packingId).hetpRef : trayHeightM;
       final tsText = size.width > 220
-          ? 'TS ${trayHeightM.toStringAsFixed(2)} m'
-          : '${trayHeightM.toStringAsFixed(1)} m';
+          ? '${onBed ? 'HETP' : 'TS'} ${segM.toStringAsFixed(2)} m'
+          : '${segM.toStringAsFixed(1)} m';
       _drawText(
         canvas,
         tsText,
@@ -482,6 +497,7 @@ class ColumnVesselPainter extends CustomPainter {
       old.feedStage != feedStage ||
       !_sameMap(old.broken, broken) ||
       old.trayHeightM != trayHeightM ||
+      BedSpec.key(old.beds) != BedSpec.key(beds) ||
       old.diameterM != diameterM;
 }
 
@@ -656,7 +672,9 @@ class ColumnLivePainter extends CustomPainter {
       ..color = p.liquidLight
       ..strokeWidth = 1.2
       ..strokeCap = StrokeCap.round;
+    final isPacked = [for (var j = 0; j < s.layout.kinds.length; j++) s.layout.kinds[j] == StageKind.packed];
     for (var j = 1; j <= N; j++) {
+      if (isPacked[j]) continue;
       final col = compColor(j);
       final dy = g.deckY(j);
       final (x0, x1) = g.deckX(j);
@@ -861,6 +879,8 @@ class ColumnLivePainter extends CustomPainter {
     if (sprayPts.isNotEmpty)
       canvas.drawPoints(PointMode.points, sprayPts, sprayPaint);
 
+    paintPackedLive(canvas, g, s, theme, anim.flowPhase, anim.bubblePhase, anim.time, compColor);
+
     // ---- sump
     final sumpRect = Rect.fromLTRB(
       g.shellL + 1,
@@ -933,6 +953,7 @@ class ColumnLivePainter extends CustomPainter {
       ..strokeWidth = 0.9
       ..color = glowDots ? p.vapor.withValues(alpha: 0.55) : p.vapor;
     for (var j = 1; j <= N; j++) {
+      if (isPacked[j]) continue;
       // vapour leaving tray j+1 rises through tray j's liquid into the space above it
       final vJ = plant ? vNom : st.vaporUp[j + 1];
       final count = (perGap * (vJ / vNom).clamp(0.0, 1.6)).round();
@@ -983,7 +1004,9 @@ class ColumnLivePainter extends CustomPainter {
     String kmolh(double v) =>
         uSys.fromSI(Quantity.molarFlow, v).toStringAsFixed(1);
     // feed: value above the line, tray number below
-    final fy = g.deckY(s.layout.feedStages.first) - g.spacing * 0.5;
+    final fy = isPacked[s.layout.feedStages.first]
+        ? g.deckY(s.layout.feedStages.first) - g.spacing * 0.85
+        : g.deckY(s.layout.feedStages.first) - g.spacing * 0.5;
     _dashedLine(
       canvas,
       Offset(6, fy),
@@ -1011,8 +1034,8 @@ class ColumnLivePainter extends CustomPainter {
       _drawText(
         canvas,
         g.shellL < 90
-            ? 'tray ${s.layout.feedStages.first}'
-            : 'feed tray ${s.layout.feedStages.first}',
+            ? '${isPacked[s.layout.feedStages.first] ? 'stage' : 'tray'} ${s.layout.feedStages.first}'
+            : 'feed ${isPacked[s.layout.feedStages.first] ? 'bed top' : 'tray'} ${s.layout.feedStages.first}',
         Offset(5, fy + 4),
         lab.style(12, p.inkMuted),
         anchor: Alignment.topLeft,
