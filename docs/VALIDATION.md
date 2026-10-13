@@ -180,7 +180,7 @@ Each check: start at a steady state, make the change, run to the new steady stat
 
 ## VC-9 Multicomponent shortcut (FUG) [I]
 
-Relative volatilities are fixed in these tests (they were computed once from DePriester K-values at the geometric mean of the top dew point and bottom bubble point; PHYSICS.md §2.3) so the test is deterministic. Saturated liquid feed (q = 1), F = 100 kmol/h.
+Relative volatilities are fixed in VC-9.1–9.3 (they were computed once from DePriester K-values at the geometric mean of the top dew point and bottom bubble point; PHYSICS.md §2.3) so the test is deterministic. Saturated liquid feed (q = 1), F = 100 kmol/h.
 
 Procedure (must match the FUG module): Fenske N_min from the key recoveries; non-key distribution from Fenske at N_min; Underwood θ between α_HK = 1 and α_LK (bisection); R_min from Underwood using x_D from the Fenske distribution; R = 1.3 R_min; Gilliland via Molokanov; Kirkbride feed ratio with x_B,LK and x_D,HK from the Fenske distribution.
 
@@ -199,11 +199,75 @@ N_min = 10.9100, θ = 1.31112, R_min = 1.3073, R = 1.6996, X = 0.14528, Y = 0.50
 
 **VC-9.2 Depropanizer** (LK propane 99 % to D, HK isobutane 95 % to B), α = 2.172, 1.000, 0.747, 0.378, 0.330, 0.157 for C3, iC4, nC4, iC5, nC5, nC6; z = 0.30, 0.20, 0.25, 0.10, 0.10, 0.05: N_min = 9.7203, θ = 1.40567, R_min = 1.6522, N = 20.364, N_R/N_S = 0.4740, D = 30.7771 kmol/h.
 
-**VC-9.3 Rigorous check [P].** Debutanizer, Tier 1 with the α above, E = 1, ideal hydraulics, 22 trays + reboiler (23 stages ≈ FUG N), feed tray 12, R = 1.6996 (L₀ = 76.39 kmol/h, V_B = 121.33 kmol/h, D = 44.9437). Expected recoveries: n-butane to D 0.984 ± 0.005, isopentane to B 0.985 ± 0.005 (FUG is slightly conservative, as usual). With 30 trays both exceed 0.99; moving the feed to tray 8 or 16 lowers both below 0.975.
+**VC-9.3 Rigorous check [P].** Debutanizer, Tier 1 with the α above, E = 1, ideal hydraulics, 22 trays + reboiler (23 stages ≈ FUG N), feed tray 12, R = 1.6996 (L₀ = 76.39 kmol/h, V_B = 121.33 kmol/h, D = 44.9437). Expected recoveries: n-butane to D 0.984 ± 0.005, isopentane to B 0.985 ± 0.005 (FUG is slightly conservative, as usual). With 30 trays and feed tray 16 both exceed 0.99 (with feed tray 12 they do not: 0.9896 / 0.9912). Moving the feed to tray 8 or 16 on the 22-tray column lowers both below 0.975. **[I] since M7:** an independent steady-state solver gives n-butane 0.9843 and isopentane 0.9849 (D 44.940, x_D,HK 0.00674, x_B,LK 0.00713). It is a bubble-point method with Murphree efficiency and a dense linear solve per component (`tools/prototypes/m7/col.dart`), and it reproduces VC-4.1's x_D 0.981183. Further rows: 30 trays, feed 16: 0.9949 / 0.9967; 22 trays, feed 8: 0.9689 / 0.9717; feed 16: 0.9694 / 0.9643. Hengstebeck values of the 22-tray column: x′_D 0.98784, x′_B 0.01955, x′ on tray 12 0.56314 (PHYSICS.md §14.2; this is Tier 1, so every stage lies on the α′ = 2.041 curve).
 
-**VC-9.4 DePriester spot values [I]** (McWilliams equation, PHYSICS.md (3.9)): n-butane 150 °F, 100 psia → K = 1.0648; isopentane 200 °F, 100 psia → 0.8922; n-pentane 200 °F, 100 psia → 0.7572; propane 100 °F, 200 psia → 1.0073; isobutane 100 °F, 100 psia → 0.7826; n-hexane 250 °F, 100 psia → 0.6301. Tolerance 1×10⁻⁴. (Raoult with Lee–Kesler gives 1.066, 0.911, 0.744, 0.946, 0.731, 0.597 — the DePriester values must be within 10 % of these, which is the consistency check that caught the n-butane coefficient error noted in PHYSICS.md §3.4.2.)
+**VC-9.4 DePriester spot values [I]** (McWilliams equation, PHYSICS.md (3.9)): n-butane 150 °F, 100 psia → K = 1.0648; isopentane 200 °F, 100 psia → 0.8922; n-pentane 200 °F, 100 psia → 0.7572; propane 100 °F, 200 psia → 1.0073; isobutane 100 °F, 100 psia → 0.7826; n-hexane 250 °F, 100 psia → 0.6301. Tolerance 1×10⁻⁴. (Raoult with Lee–Kesler gives 1.066, 0.911, 0.744, 0.946, 0.731, 0.597 — the DePriester values must be within 10 % of these, which is the consistency check that caught the n-butane coefficient error noted in PHYSICS.md §3.4.2.) The n-hexane point (250 °F = 709.7 °R) lies above v1.0's 700 °R limit. With the corrected range (365–852 °R, no clamping; PHYSICS.md §3.4.2, M7) it is evaluated as written; a clamp at 700 °R would give 0.5711.
 
-**VC-9.5 Feed bubble/dew points with DePriester at 100 psia [I]:** debutanizer feed bubble point 75.10 °C; with the FUG product compositions, distillate dew point 55.11 °C, bottoms bubble point 112.80 °C (± 0.05 K). Depropanizer at 250 psia: feed bubble point 89.53 °C, top dew 49.21 °C, bottom bubble 123.83 °C.
+**VC-9.5 Feed bubble/dew points with DePriester at 100 psia [I]:** debutanizer feed bubble point 75.10 °C; with the FUG product compositions, distillate dew point **55.25 °C**, bottoms bubble point **112.77 °C** (± 0.05 K). Depropanizer at 250 psia: feed bubble point 89.53 °C, top dew **49.52 °C**, bottom bubble **123.84 °C**.
+- **M7 corrections.** v1.0 had 55.11, 112.80, 49.21 and 123.83 °C, and its two dew points did not satisfy Σ y/K = 1. Hand check for the depropanizer at 49.52 °C (580.81 °R, 250 psia): K = 1.05137 (C3), 0.43877 (iC4) and 0.30977 (nC4), so Σ y/K = 0.91785 + 0.07405 + 0.00807 = 0.99997. At 49.21 °C the sum is ≈ 1.006.
+- The depropanizer bottoms (714.6 °R) need the corrected DePriester range.
+- Tier 2 (Lee–Kesler Raoult) for comparison: debutanizer 73.18 / 56.14 / 109.85 °C, depropanizer 85.22 / 52.61 / 113.82 °C.
+
+**VC-9.6 Preset steady states, Tier 3 [I]** (M7 readiness pass)
+- **Configuration.** Preset defaults (PHYSICS.md §2.3: `debut` 32 trays / feed 16, `deprop` 28 / 11), DePriester, E = 0.7, ideal hydraulics (isobaric at P_top), saturated-liquid feed at P_top; specs L₀ and D.
+- **Method.** The VC-9.3 solver with the §3.3 enthalpies and top-down energy balances. Energy closure < 1×10⁻⁹ W; component closure < 2×10⁻¹².
+- **Simulator test.** Tier 3 at the preset defaults, with the FC-103 duty SP **679.68 kW** (`debut`) or **416.55 kW** (`deprop`). Run to steady state. D settles at the table D ± 0.02 kmol/h, and every row matches within its tolerance.
+
+| Quantity | `debut` | `deprop` | Tolerance |
+|---|---|---|---|
+| r_LK / r_HK | 0.9781 / 0.9783 | 0.9906 / 0.9535 | ± 0.002 |
+| x_D,LK / x_D,HK | 0.54406 / 0.00968 | 0.96557 / 0.03024 | ± 5×10⁻⁴ |
+| x_B,LK / x_B,HK | 0.00995 / 0.35537 | 0.00408 / 0.27548 | ± 5×10⁻⁴ |
+| AT cuts: `kpi.xDHeavy` / `kpi.xBLight` / feed light cut | 0.01124 / 0.01020 / 0.450 | 0.03443 / 0.00408 / 0.300 | ± 5×10⁻⁴ |
+| T_0 (drum bubble) / T_1 / T on the feed tray / T_B (°C) | 49.573 / 54.423 / 78.64 / 112.719 | 47.898 / 48.883 / 85.06 / 123.851 | ± 0.05 K |
+| Q_R / Q_C (kW) | 679.68 / 616.34 | 416.55 / 349.84 | input / ± 0.3 % |
+| V₁ / V_B (kmol/h) | 121.34 / 115.36 | 96.88 / 110.55 | ± 0.2 % |
+| Feed bubble point (°C) | 75.10 | 89.53 | ± 0.02 K |
+| Hengstebeck x′_F / x′_D / x′_B | 0.55556 / 0.98253 / 0.02723 | 0.60000 / 0.96963 / 0.01461 | ± 5×10⁻⁴ |
+| α′ = K_LK/K_HK at stage 1 / stage N+1 | 2.2157 / 1.8853 | 2.4017 / 1.9670 | ± 0.002 |
+
+- **Feed-tray scan** (same L₀ and D; r_LK / r_HK), which is how the default feed trays were chosen:
+  - `debut`: tray 14: 0.9769 / 0.9779; 15: 0.9780 / 0.9786; **16: 0.9781 / 0.9783**; 17: 0.9771 / 0.9767; 18: 0.9750 / 0.9738.
+  - `deprop`: tray 8: 0.9779 / 0.9428; 9: 0.9850 / 0.9492; 10: 0.9890 / 0.9527; **11: 0.9906 / 0.9535**; 12: 0.9908 / 0.9527.
+  - The v1.0 counts (22 / 12 and 20 / 8, the E = 1 designs) give `debut` 0.9432 / 0.9417 at E = 0.7.
+- **Tier switch at steady state** (the top-vapour rule keeps V₁ and D, PHYSICS.md §13.5; r_LK / r_HK at the same L₀ and D):
+  - `debut`: T2 0.9933 / 0.9948 (Q_R 681.4 kW, T_B 110.29 °C); T1 0.9835 / 0.9846 (V_B 121.34 kmol/h).
+  - `deprop`: T2 0.9978 / 0.9634 (Q_R 396.4 kW, T_B 114.15 °C); T1 0.9934 / 0.9581 (V_B 96.88).
+  - The same check as VC-8.9: no NaN, and V₁ and D continuous.
+- **Utility sizing** (PHYSICS.md §7.2, §8.2, from the rows above):
+  - UA_clean 38.47 / 22.03 kW/K; the CW outlet at 50 % CW is 37.10 / 34.03 °C.
+  - Q_C at 100 % CW is 677.8 / 370.7 kW, i.e. +10 % / +6 % headroom (B-T +7.9 %).
+  - UA_R,clean 32.02 / 28.63 kW/K; Q_max,0 1132.8 / 694.3 kW (design duty at 60 %).
+
+**VC-9.7 Live FUG panel [I]** (PHYSICS.md §14.3 rules, applied to the VC-9.6 states)
+- **Exact check.** On any snapshot, `FugCalculator` equals an independent FUG with the same α, z, q, recoveries and R: 1×10⁻⁶ relative on N_min, θ, R_min, N and N_R/N_S.
+- **Values on the defaults.** Tolerances: N_min ± 0.15, N ± 0.3, θ ± 0.001, R_min ± 0.005. The live inputs carry VC-9.6's ± 0.002 on the recoveries, and N_min moves ≈ 65 per unit of recovery.
+
+| Case | α (geometric, Tier 3) | N_min | θ | R_min | R | N | N_R/N_S, N_R | Rigorous N_act, N_R,act |
+|---|---|---|---|---|---|---|---|---|
+| `debut` default, live | 5.1968, 2.6337, 2.0438, 1, 0.8423, 0.3844 | 10.639 | 1.3115 | 1.2974 | 1.6999 | 22.56 | 1.007, 11.32 | 23.40, 10.50 |
+| `debut` default, targets 0.98 / 0.98, live R | same | 10.889 | 1.3115 | 1.3030 | 1.6999 | 23.16 | 1.004, 11.60 | 23.40, 10.50 |
+| `deprop` default, live | (K at 48.88 / 123.85 °C) | 9.886 | 1.4060 | 1.6628 | 2.1477 | 20.83 | 0.476, 6.72 | 20.60, 7.00 |
+| VC-9.3 column (Tier 1, E = 1, 22 / 12), live | preset constants | 11.652 | 1.3111 | 1.3223 | 1.6998 | 25.07 | 1.019, 12.65 | 23.00, 11.00 |
+
+- **Guards.** Each of these returns `valid = false` or the stated flag:
+  - r_LK = 0.5;
+  - F = 0;
+  - keys isobutane / isopentane on `debut` (n-butane lies between them: "keys must be adjacent");
+  - R set equal to R_min in target mode: `belowRmin`, N = ∞;
+  - plant view: no result.
+
+**VC-9.8 G13 references [I]** (`debut`, Tier 3, the preset defaults; ENGINE_API.md §11.8 G13). Steady states with D held at 44.94 kmol/h:
+
+| L₀ (kmol/h) | Q_R (kW) | r_LK / r_HK | Q_C (kW) | Live FUG N_min / R_min / N |
+|---|---|---|---|---|
+| 76.4 (start) | 679.7 | 0.9781 / 0.9783 | 616.3 | 10.639 / 1.2974 / 22.56 |
+| **77.95** (R 1.7345, the least for 98/98) | 687.5 | 0.9800 / 0.9803 | 624.0 | 10.913 / 1.3038 / 22.74 |
+| 80 (hint) | 697.9 | 0.9821 / 0.9827 | 634.2 | – |
+| 85 | 723.2 | 0.9861 / 0.9870 | 659.1 | – |
+| 90 | 748.4 | 0.9887 / 0.9899 | 684.2 (> 677.8 at 100 % CW: P_top rises) | – |
+
+The `debut` FUG design column (22 trays, feed 12, E = 1) in Tier 3 reaches only 0.9763 / 0.9751 at the design L₀ and D. Tier 3's α varies along the column (α_LK 2.22 at the top, 1.89 at the bottom), while the Tier-1 constants are geometric means.
 
 ## VC-10 Thermodynamic spot values
 
@@ -602,7 +666,7 @@ Round trip toSI(fromSI(v)) = v: linear quantities (every conversion that is a pu
 | Measure | Target | Platform |
 |---|---|---|
 | `Simulator.step()` B-T Tier 1, 22 stages | ≤ 30 µs | Windows dev machine (release/AOT) |
-| `step()` 40 trays × 8 components Tier 2 (synthetic config from the debutanizer components plus two heavier) | ≤ 100 µs (desktop), ≤ 300 µs (mid-range Android, release) | both |
+| `step()` 40 trays × 7 components, Tier 3 DePriester (synthetic config: the seven C3–nC7 components of PHYSICS.md §2.1, z = 0.05, 0.15, 0.25, 0.20, 0.15, 0.12, 0.08, `debut` geometry and pressure, feed tray 20). v1.0 said "8 components, Tier 2", but the database has only seven light hydrocarbons (M7 readiness pass; OPEN_ITEMS.md) | ≤ 100 µs (desktop), ≤ 300 µs (mid-range Android, release) | both |
 | `step()` crude, default | ≤ 150 µs desktop, ≤ 450 µs Android | both |
 | `snapshot()` for 42 stages × 8 components | ≤ 50 µs | desktop |
 | McCabe–Thiele build (warm cache) | ≤ 0.3 ms | desktop |
@@ -900,7 +964,7 @@ The bottoms approach the maximum-boiling azeotrope (0.3334) from above and never
 
 ## H. Hidden-fault drill symptom tests
 
-For each drill candidate the test injects the fault (fixed seed, onset at 600 s, severity at the middle of its range unless the row says otherwise, the candidate's own ramp), runs 2 h with noise off (unless the row says otherwise), and asserts the *key evidence*, i.e. the observation a learner is expected to use. Direction thresholds are deliberately loose; they check that the evidence exists, not its exact size. Ranges and ramps are those of ENGINE_API.md §11.9 (H1–H5, M6). Values in [ ] for H5 are loop-only prototype numbers (PHYSICS.md §8.3 with the VC-14.1 inputs) for orientation. The thresholds are the assertions; record the engine's column-coupled values.
+For each drill candidate the test injects the fault (fixed seed, onset at 600 s, severity at the middle of its range unless the row says otherwise, the candidate's own ramp), runs 2 h with noise off (unless the row says otherwise), and asserts the *key evidence*, i.e. the observation a learner is expected to use. Direction thresholds are deliberately loose; they check that the evidence exists, not its exact size. Ranges and ramps are those of ENGINE_API.md §11.9 (H1–H5, M6) and §11.10 (H6, M7; `debut` Tier 3, ideal hydraulics, the drill's events included; values in [ ] are [I] steady states from the M7 prototype at fixed L₀ and Q_R, the LV-control end state). Values in [ ] for H5 are loop-only prototype numbers (PHYSICS.md §8.3 with the VC-14.1 inputs) for orientation. The thresholds are the assertions; record the engine's column-coupled values.
 
 | Drill | Fault | Key evidence to assert |
 |---|---|---|
@@ -920,9 +984,10 @@ For each drill candidate the test injects the fault (fixed seed, onset at 600 s,
 | H5 | F19 LT-102 drift, sign +1 (reads high), s = 1 (10 %/h, the F19 maximum); thermosyphon, LC-102 SP 50 %; this case runs 3.5 h | displayed sump level steady at SP, true level falling ≈ 10 %/h; circulation W down ≥ 8 % within 1 h [loop-only −11 %]; I_s > 1 once the true level is ≤ 32 % [30.7 %, 1.9 h]; boilup peak-to-peak ≥ 10 % before the true level reaches 22 % [25.5 %, 2.45 h]; C5 (sump) `fail` with the 3600-s window from 75 min after onset |
 | H5 | F17 inlet restriction (s = 0.55, the middle of [0.3, 0.8]) | circulation W down ≥ 20 % [−40 %]; x_e up ≥ 0.1 [0.24 → 0.42]; inlet-line ΔP up ≥ 5× [≈ 12×]; I_s < 1 throughout [falls from 0.74 to ≈ 0.66]; `oscAmplitude` < 0.01; no oscillation unless the duty is raised |
 | H5 | F18 outlet restriction (s = 0.4, the middle of [0.2, 0.6]) | I_s > 1 within 15 min of onset [6 min]; boilup oscillation with period 5–15 s [11.5 s] and peak-to-peak ≥ 10 % within 30 min [amplitude 0.05 at 14 min]; outlet-line ΔP up ≥ 1.5× [≈ 2.6×]; duty below SP with FC-103 at 100 % [mean 1096 kW] |
-| H6 | F07 feed upset (debutanizer, +0.05 nC4, −0.05 iC5) | feed analyser trend changes (dead time 300 s); LK recovery changes with reflux unchanged |
-| H6 | F12 partial reflux loss (s = 0.5) | reflux flow below SP with FC output at 100 %; top T up; drum level up |
-| H6 | F20 reflux valve stuck | FC-102 output moves ≥ 10 % while flow is constant |
+| H6 | F07 heavier keys: dz C3 −0.02, iC4 −0.04, nC4 +0.02, iC5 +0.04 (s = 0.75, the middle of [0.5, 1.0]; ramp 900 s). M7 row: v1.0's "+0.05 nC4, −0.05 iC5" made the feed *lighter*, which puts n-butane into the bottoms rather than the overhead off-spec | AT-100 (feed light cut) down ≥ 0.02 within 25 min of onset [0.450 → 0.420]; FT-102 and FC-102 OP within ± 2 % of span of their start values; D changes < 1 kmol/h [44.94 → 44.54]; TI-101 up ≥ 2 K within 1 h [steady 54.42 → 59.15 °C]; `kpi.xDHeavy` up ≥ 0.02 [steady 0.0112 → 0.0628] |
+| H6 | F12 reflux pump capacity loss (s = 0.585, the middle of [0.55, 0.62]; cap (1 − s) × 152.8 = 63.4 kmol/h; step). v1.0's s = 0.5 gives a cap equal to the design reflux (F_max is 2 × default) and so no symptom | FT-102 falls to the cap within 30 s and stays below SP; FC-102 OP at 100 % within 2 min (`FC-102.OPSAT`); D up ≥ 5 kmol/h within 30 min via LC-101 [steady 54.0]; TI-101 up ≥ 3 K [steady 64.2 °C]; `kpi.xDHeavy` up ≥ 0.05 [steady 0.168; AT-101 reads its 0.10 over-range]; AT-100 unchanged |
+| H6 | F20 FV-102 stuck, with the drill's planning event at 2700 s (FC-101, FC-102 and FC-103 SPs +8 %) | until 2700 s, no change beyond noise; after it, FC-102 OP rises ≥ 10 % within 10 min (it runs to 100 %) while FT-102 stays within ± 1 % of span of its pre-event value; C4:FV-102 `fail`; C3a `ok` (the meter is honest); D up ≥ 4 kmol/h against the healthy response [steady 52.6 vs 48.5]; `kpi.xDHeavy` up ≥ 0.02 [steady 0.079]. **Noise on (rule 1, ENGINE_API.md §11.10), seeds 1–3:** C4:FV-102 leaves `ok` within 10 min of the event, and FT-102's σ_5min stays within 0.5–2 × typical (a stuck valve leaves the meter's noise alone). Otherwise set the candidate's weight to 0 and record it |
+| H6 | none: the planning event alone, healthy (the H10.0 analogue) | `kpi.xDHeavy` and `kpi.xBLight` stay within ± 0.005 of their start values for 2 h, and the drill's off-spec predicate never holds. Uniform +8 % scaling of F, L₀ and Q_R leaves every steady composition unchanged [D 48.54; Q_C 665.6 kW, below the 677.8 kW at 100 % CW] |
 | H7 | F21 maldistribution f = 0.4 | bed ΔP change < 5 %; separation worse (x_D down); bed T profile flattens in the middle |
 | H7 | F22 near-flood (load +25 %) | bed ΔP rises ≥ 2× while load rises 25 % |
 | H7 | F23 crushed packing s = 0.5 | bed ΔP up ≥ 30 % at constant load |

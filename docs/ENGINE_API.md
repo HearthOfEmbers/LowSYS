@@ -621,6 +621,8 @@ class Kpis {
   final double maxWeepFraction;     // max over trays of the weeping fraction w_j (M2, DEVIATIONS.md E23)
   final double drumLevelPct, sumpLevelPct, pTop;
   final double? recoveryLK, recoveryHK;                 // multicomponent
+  final double xDHeavy, xBLight;    // M7: key cuts, what AT-101/AT-102 read (PHYSICS.md §10.5): HK and heavier in D,
+                                    // LK and lighter in B; binary: 1 − xD and xB. Drill off-spec predicates use them
   final CrudeProductKpis? crude;                        // crude
   final double balanceResidual;     // |F z − D xD − B xB| / F z, light component (should → 0 at steady state)
   final double energyResidual;      // Tiers 2/3, relative
@@ -710,6 +712,19 @@ abstract final class McCabeThieleMath {
 class ProfileData { static ProfileData from(SimSnapshot s); /* series per PHYSICS.md §14.5 */ }
 class FugResult { final double nMin, theta, rMin, nGilliland, nrOverNs; final Float64List alpha, dToB; /* §14.3 */ }
 class FugCalculator { FugResult compute(SimSnapshot s, KeyComponents keys, {FugTargets? targets}); }
+// M7 readiness pass: the full shapes (PHYSICS.md §14.3 rules; VALIDATION.md VC-9.1, 9.2, 9.7)
+@immutable class KeyComponents { final int lk, hk; }            // component indices; preset default in ColumnConfig.keys
+@immutable class FugTargets { final double rLK, rHK; final double? rOverRmin; }   // null rOverRmin: use the live R
+// FugResult in full:
+//   bool valid; FugInvalidReason? reason          // notAdjacent | noSplit (recovery guard)
+//   double rLK, rHK, r, q                         // the inputs actually used (live or targets)
+//   Float64List alpha                             // relative to HK (geometric mean in Tiers 2/3)
+//   double nMin, theta, rMin, x, y, nGilliland    // N includes the reboiler; ∞ when belowRmin
+//   bool belowRmin
+//   double nrOverNs, nR                           // Kirkbride ratio and stages above the feed stage
+//   Float64List d, b, xD, xB, dToB                // Fenske split (mol/s; mole fractions)
+//   double nActual, nRActual, rActual             // rigorous: Σ E_j^eff + 1, Σ_{j<nF} E_j^eff, L0/D
+// FugCalculator.compute returns null in plant and plantCalc views. The panel refreshes every 10 s of sim time.
 class CrudeProductData { /* TBP & D86 curves per product, gaps, yields; PHYSICS.md §9.6 */ }
 ```
 
@@ -1030,7 +1045,7 @@ An objective counts for scoring if it is achieved when the scenario finishes. Ev
 
 **Metric paths**
 - `time`, `steady`, `tier` (1, 2 or 3), `preset` (string; `==`/`!=` only)
-- `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFraction (M2, DEVIATIONS.md E23), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, balanceResidual.
+- `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFraction (M2, DEVIATIONS.md E23), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, xDHeavy, xBLight (M7), balanceResidual.
 - `stage[<j>].<t|p|x|holdup|weepFrac|jetFlood>` (x = light component)
 - `reboiler.<circulation|exitQuality|instabilityIndex|oscAmplitude|oscPeriod|inletValve>` (M6; true values; units kg/s, –, –, –, s, % open; NaN with a kettle). M3's `reboiler.<qr|steamValveOp>` below is unchanged
 - `loop[<tag>].<pv|sp|op|mode>` (pv is the reading)
@@ -1445,6 +1460,7 @@ All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`,
 | G10 The other azeotrope (M5) | `ac`, overrides tier t3, murphree 1.0 (locked); `steady` at the preset defaults (L₀ 150 kmol/h, duty 1515.9 kW, D 38). Time limit 86 400 s, par 28 800 | o1 tier == 3 ∧ kpi.d ≥ 13.06 mol/s (47 kmol/h) ∧ steady, hold 300; o2 (after o1) choice "D rose by 10 kmol/h. Where does the azeotrope leave the column?" → "in the bottoms" (others: "in the distillate", "split between both", "it never forms in a column"); o3 (after o2) number "Read the azeotrope's acetone mole fraction off the T-x-y tab" = 0.333 ± 0.02. All latch | (1) at 0: "Keep the duty and lower the reflux to 140 kmol/h: D rises to about 48 kmol/h." (2) with o1's predicate: "x_B moved only from 0.378 to 0.363 while x_D fell from 0.96 to 0.86: the bottoms are pinned near a limit." (3) after o2: "Open the T-x-y tab: the azeotrope is where the bubble and dew curves touch at a temperature maximum (the diamond)." | [I] defaults x_D 0.96153, x_B 0.37842. L₀ 140 at 1515.9 kW: D 48.01, x_D 0.85666, x_B 0.36298; L₀ 130: D 58.21, x_D 0.77811, x_B 0.35190. Azeotrope 0.3335 / 64.61 °C (VC-10.5). VC-28.8 |
 | G11 Flooding (shipped in M2, `scenarios.dart`) | as shipped: `steady`, Tier 1, full hydraulics, E 0.7; **briefing text must change** from "about 83 % of flood" to "about 63 %" (TS 0.9 m) | As shipped: o1 kpi.maxFloodPct ≥ 100, hold 30, latch; o2 (after o1) maxFloodPct between 80 and 92 ∧ xD ≥ 0.95, hold 600. M3 adds o3: number "throughput at flood onset (% of design)" = 160 ± 10 | As shipped; the first hint should add "about six steps of 10 %" | [P] at TS 0.9 m, uniform scaling ×k of F, L₀, V_B, steady state: ×1.0 62.9 % / xD 0.9783; ×1.1 69.2 / 0.9766; ×1.2 75.6 / 0.9737; ×1.3 81.9 / 0.9687; ×1.4 88.5 / 0.9601; ×1.5 95.2 / 0.9460; ×1.6 102.1 / 0.9236; ×1.7 109.7 / 0.8885. Flood onset ≈ ×1.57; o2 is reachable at ×1.3–1.4 |
 | G12 Turndown and weeping (shipped in M2) | as shipped | As shipped: o1 lever.feedFlow ≤ 11.12 mol/s ∧ lever.trayType.0 == 0 ∧ kpi.maxWeepFraction ≥ 0.3, hold 60, latch; o2 (after o1) the same throughput, lever.trayType.0 == 1, maxWeepFraction < 0.05, xB ≤ 0.03, hold 300. M3 adds o3: choice "Why don't valve trays weep yet?" → "closed valves keep the hole velocity up" | As shipped | VC-12.4 (w 0.51 on sieve trays at 35 %), VC-12.5 (w 0 on valve trays at 35 %) |
+| G13 Debutanizer keys and FUG (M7) | `debut` at its defaults: Tier 3, E 0.7, 32 trays / feed 16, ideal hydraulics, model view, noise off. `steady` start: r_LK 0.978, r_HK 0.978, L₀ 76.4 kmol/h, duty 679.68 kW. Locked: `nTrays`, `feedStage`, `murphree`, `tier`. Time limit 86 400 s, par 21 600 (estimates; VALIDATION.md VC-9.8 asks for the settling times) | o1 kpi.recoveryLK ≥ 0.98 ∧ kpi.recoveryHK ≥ 0.98 ∧ steady, hold 300; o2 (after o1) number "Underwood's R_min on the FUG panel" = 1.30 ± 0.03; o3 (after o2) number "Fenske's N_min on the FUG panel" = 10.9 ± 0.4 (live or 98/98 targets: 10.6–11.3); o4 (after o3) choice "The column has 32 trays at E = 0.7. How do its stages compare with Gilliland's N?" → "about 23 equilibrium stages (32 × 0.7 + the reboiler), close to N" (others: "32: every tray is a stage", "about 11: it runs near N_min", "about 46: twice N_min is the rule"); o5 (after o4) choice "Why does the Tier-3 column need a little more reflux than the FUG design (R = 1.70 for 98/98)?" → "α falls down the column (about 2.2 at the top, 1.9 at the bottom), and FUG uses one mean α" (others: "FUG ignores the reboiler", "the trays weep", "the feed is subcooled"). All latch | (1) at 0: "Open the Products tab. The FUG panel computes the shortcut design for the column you are running; switch it to targets 98 % / 98 %." (2) at 600 s: "Raise the reflux to 80 kmol/h and the duty to 698 kW together, so that D stays near 45 kmol/h." (3) after o1: "Read N_min and R_min off the panel, and compare N with 32 × 0.7 + 1." | [I] VC-9.8: the least reflux for 98/98 at D 44.94 is L₀ 77.95 (R 1.7345, Q_R 687.5 kW). Hint state L₀ 80 / 697.9 kW → 0.9821 / 0.9827, Q_C 634.2 kW (the condenser limit at 100 % CW is 677.8 kW, so above L₀ ≈ 88 P_top rises). FUG at 98/98: N_min 10.89–10.91, R_min 1.303–1.304, N 22.7–23.2 against N_act 23.4. VC-9.7 |
 | G14 Thermosyphon tuning (M6) | B-T, overrides tier t2, hydraulics full; model view, noise off. `levers.set`: `reboilerType` 1, `sumpLevelSp` 15 (%), `tsInletValve` 8 (%) (locked: `reboilerType`). `steady` start: stable (I_s ≈ 0.87) but duty-limited by mist flow (≈ 1090 kW with FC-103 at 100 % OP; SP 1300 kW). Event at 0: `setLever tsInletValve` 100, text "The outside operator has opened the reboiler inlet valve fully." Time limit 14 400 s, par 3600 | o1 reboiler.oscAmplitude < 0.02 ∧ reboiler.instabilityIndex < 1 ∧ kpi.qr ≥ 1 170 000 W (90 % of the 1300 kW SP), hold 300, latch. At the start o1 is false through the duty term. o2 (after o1) choice "Throttling the inlet valve calms a thermosyphon because…" → "extra single-phase friction at the inlet damps the density waves" (others: "it raises the circulation", "it lowers the exit quality", "it raises the sump level") | (1) at 0: "Open the Equipment tab. I_s above 1 means the loop will surge. Your handles: the sump level (driving head), the inlet valve (stabilising friction, but less circulation) and the duty." (2) when reboiler.oscAmplitude ≥ 0.05: "Raise the LC-102 set point to 40 %. More head means more circulation, an exit quality below 0.3 and I_s below 1." (3) after o1: "At 15 % level the inlet valve could only trade surge for duty: 16 % open still surged (I_s ≈ 1.08), and 8 % open lost ≈ 16 % of the duty." | [P-loop]: §8.3 alone with the VC-14.1 inputs (frozen column). Start: I_s 0.87, Q 1087 kW. After opening: I_s > 1 within 17 s; amplitude 0.05 at ≈ 5 min and 0.13 at ≈ 7 min (limit 0.141, period 8.6 s). A level ramp 15 → 40 % over 30 min gives I_s < 1 at 31 % level and amplitude < 0.02 about 6 min later. Inlet 16 % at 15 % level: limit 0.082, so o1 cannot be met by throttling. Inlet 10 %: stable, but 1147 kW < 1170. Level ≥ 32 % with the inlet open: stable at 1300 kW. The validator records the column-coupled times (VALIDATION.md VC-14.3) |
 
 Every guided scenario's JSON carries these objectives verbatim. Its hints must, followed literally, complete it (SCOPE.md M3 acceptance; VC-26.4 plays G1–G6 automatically by applying the hint values).
@@ -1682,6 +1698,72 @@ Notes:
 - **H2 F09 temperature.** With the 1800-s ramp, the CW valve saturates during the ramp, not "within 2 min" (VALIDATION.md §H, corrected). The flow candidate is the step.
 - **Hidden fault parameters.** H2 and H4 run in model view. The snapshot must not show UA_eff, R_f, Q_max, the inert inventory, K_in or K_out while a drill runs (PHYSICS.md §10.9).
 - **Decoys.** H3 and H5 mix process and instrument answers (rule 6). H1, H2 and H4 are process-only drills. Their category question is about *which* process cause, so they need no instrument decoy.
+
+### 11.10 Drill H6 "Off-spec overhead" (M7)
+
+Frame:
+- `debut` in Tier 3 (locked) with **ideal** hydraulics. The preset has the B-T tray geometry and would weep with full hydraulics (PHYSICS.md §2.3, M7 rules).
+- `plantCalc` view, because a feed candidate is present (SCOPE.md §6.2). Noise on; all loops in AUTO.
+- A planning event at 45 min raises F, L₀ and Q_R by 8 % together, like H10's. Uniform scaling keeps every steady composition, so the event cannot trip the off-spec test by itself (VALIDATION.md §H, H6 "none" row). It is what turns a quietly stuck FV-102 into a heavy overhead.
+- Severity ranges, dz and the event sizes come from the M7 prototype (VALIDATION.md §H).
+
+```json
+{
+  "id": "H6_offspec_overhead", "kind": "drill", "title": "Off-spec overhead", "milestone": 7, "topic": "multicomponent",
+  "preset": "debut", "overrides": {"tier": "t3", "hydraulics": "ideal"}, "start": "steady", "noise": true,
+  "view": "plantCalc", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType", "tier"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "The LPG from this debutanizer is going off-spec: AT-101 shows too much isopentane and heavier in the overhead. At 45 minutes planning will raise the throughput by 8 % (feed, reflux and reboiler duty together). Find out why the overhead is going heavy: did the feed change, has the reflux pump lost capacity, or is the reflux valve not doing what FC-102 tells it?",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "feed_heavy_keys", "weight": 2,
+     "fault": {"type": "feedComposition", "params": {"dz": {"propane": -0.02, "isobutane": -0.04, "nbutane": 0.02, "isopentane": 0.04}, "sign": 1}, "severityRange": [0.5, 1.0], "ramp": 900},
+     "answer": {"category": "feedUpset", "location": "feed"},
+     "debrief": "**The feed got heavier in the keys** from {fault.onset:time}: less propane and isobutane, more n-butane and isopentane. AT-100's light cut fell by 0.02–0.04 while the reflux loop behaved normally. The column still drew the same distillate, so isopentane made up the missing light material and AT-101 rose. The fix is to cut D (or raise the reflux) to suit the new light cut."},
+    {"id": "reflux_pump", "weight": 2,
+     "fault": {"type": "refluxPumpTrip", "location": {"equipment": "refluxPump"}, "severityRange": [0.55, 0.62], "ramp": 0},
+     "answer": {"category": "pump", "location": "refluxPump"},
+     "debrief": "**The reflux pump lost capacity** at {fault.onset:time}: it could deliver only {fault.magnitude}. FT-102 fell below its set point at once, with no set-point change, and FC-102 went to 100 % (OPSAT). The valve was wide open and the meter was honest: there was simply no more flow. With less reflux at the same boilup, LC-101 sent the difference out as distillate, and isopentane went with it. Restore the pump; until then, cut the duty so that the reflux you can get is enough."},
+    {"id": "fv102_stuck", "weight": 2,
+     "fault": {"type": "valve", "location": {"tag": "FV-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "valve", "location": "valve:FV-102"},
+     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** Nothing showed until planning raised the rates at 45 min. Then the feed and the duty went up, FC-102's set point went up and its OP ran to 100 %, but the reflux flow did not move. The meter was honest (C3a green); only C4 for FV-102 failed. More vapour with the same reflux meant more distillate and a heavier overhead. Open `bypass.FV-102` and set the reflux by hand."}
+  ],
+  "events": [
+    {"id": "planning", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 2.22222,
+     "text": "Planning: throughput +8 %: feed +8 kmol/h, reflux +6.1 kmol/h, duty +54 kW."},
+    {"at": 2700, "action": "setSp", "tag": "FC-102", "delta": 1.69778},
+    {"at": 2700, "action": "setSp", "tag": "FC-103", "delta": 54375}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xDHeavy", "from": "start", "op": ">", "value": 0.01},
+                               {"metric": "kpi.xBLight", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1200, "cost": 0.03, "text": "Compare the two analysers on the Products tab: did the feed's light cut (AT-100) change before the overhead (AT-101) went heavy?"},
+    {"after": 2400, "cost": 0.03, "text": "Open FC-102's faceplate. Is the reflux flow at its set point, and is the operating point on the valve curve (C4)?"},
+    {"after": 3600, "cost": 0.03, "text": "A pump that cannot deliver drives its valve wide open at a lower flow, with no set-point change. A stuck valve keeps the old flow whatever its OP does. A feed change shows on AT-100 while FC-102 behaves normally."}
+  ],
+  "diagnosis": {"categories": ["feedUpset", "pump", "valve", "instrument", "none"],
+                "locations": ["feed", "refluxPump", "valve:FV-101", "valve:FV-102", "valve:FV-103",
+                              "instrument:FT-102", "instrument:AT-100", "instrument:AT-101"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+Notes:
+- **M7 vocabulary.**
+  - Category `pump` ("Pump / lost capacity") and location `refluxPump` ("Reflux pump"). F12's JSON location is `{"equipment": "refluxPump"}`.
+  - F12's `{fault.magnitude}` is the cap (1 − s) F_max of FV-102, in the reflux lever's unit: 68.8–58.1 kmol/h for s 0.55–0.62. F_max is 2 × the 76.4 kmol/h default (PHYSICS.md §2.3, lever ranges).
+- **F12 and F20 both end with FC-102 at 100 % OP.** The flow is what separates them:
+  - F12 drops the flow at onset, with no set-point change.
+  - F20 holds the old flow, and shows only when the set point moves.
+  - A feed change leaves FC-102 alone and shows on AT-100 after the analyser delay (5–10 min).
+- **Rule 1** (§11.5) applies to `fv102_stuck`. Its evidence is the H10 evidence (C4 for FV-102 after a set-point change), on a smaller span: FT-102 is 152.8 kmol/h here, against 300 for B-T. The validator runs the H10-style noise-on check for this candidate (VALIDATION.md §H). If it fails, set the weight to 0 and record it.
+- `feed_heavy_keys` and `reflux_pump` are process candidates, checked by their key-evidence rows.
 
 ---
 

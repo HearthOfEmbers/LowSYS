@@ -157,9 +157,13 @@ Ranges are hard limits; defaults are for the benzene–toluene (B-T) preset unle
 | Feed | 100 kmol/h; C3 0.05, iC4 0.15, nC4 0.25, iC5 0.20, nC5 0.20, nC6 0.15; saturated liquid | 100 kmol/h; C3 0.30, iC4 0.20, nC4 0.25, iC5 0.10, nC5 0.10, nC6 0.05; saturated liquid |
 | Keys | LK n-butane, HK isopentane | LK propane, HK isobutane |
 | P_top | 6.895 bar(a) (100 psia) | 17.24 bar(a) (250 psia) |
-| Trays / feed tray | 22 / 12 | 20 / 8 |
+| Trays / feed tray | 32 / 16 (E = 0.7; the FUG design's 22 / 12 at E = 1, M7 readiness pass) | 28 / 11 (E = 0.7; FUG design 20 / 8 at E = 1) |
+| Default tier; duty (T2/T3) | T3 DePriester; 679.7 kW | T3 DePriester; 416.6 kW |
 | Reflux | 76.4 kmol/h (R = 1.70) | 66.1 kmol/h (R = 2.15) |
 | Boilup (T1) | 121.3 kmol/h | 96.9 kmol/h |
+| Design recoveries at the defaults (T3) | n-butane 0.978 to D, isopentane 0.978 to B | propane 0.991 to D, isobutane 0.954 to B |
+
+Utilities, Tier-2 equivalents and the reasons for these numbers: PHYSICS.md §2.3 (M7 rules); reference steady states: VALIDATION.md VC-9.6.
 
 ### 4.3b Methanol–water preset `mw` (M4)
 
@@ -252,12 +256,12 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G10 | The other azeotrope | Acetone–chloroform, T3 | Draw more distillate at fixed duty and see where the azeotrope ends up; read it off the T-x-y tab | Identify that the maximum-boiling azeotrope leaves in the bottoms (x_B 0.378 approaches it from above), and read x_az = 0.333 ± 0.02 off the T-x-y diagram | M5 |
 | G11 | Flooding | B-T, T2, full hydraulics | Push throughput up 10 % per step | The default column runs at 63 % of flood and floods at about 160 % throughput. Find the onset (ΔP slope change, xD collapse); back off to 80–92 % flood (≈ 130–140 %) with xD ≥ 0.95 | M2 (T1), upgraded in M4 |
 | G12 | Turndown and weeping | B-T, sieve then valve trays | Cut throughput to 35 % | See weeping cost separation on sieve trays and not (yet) on valve trays | M2 |
-| G13 | Debutanizer keys and FUG | Debutanizer, T3 | Compare the FUG panel to the rigorous column | Meet 98 % LK/HK recoveries; compare N and R_min with Fenske/Underwood/Gilliland | M7 |
+| G13 | Debutanizer keys and FUG | Debutanizer, T3 at the sandbox defaults (32 trays, E = 0.7) | Compare the FUG panel to the rigorous column; raise reflux and duty together | Meet 98 % LK/HK recoveries (R ≈ 1.73); read N_min and R_min off the FUG panel; compare Gilliland's N with 32 × 0.7 + 1 (ENGINE_API.md §11.8) | M7 |
 | G14 | Thermosyphon tuning | B-T, T2, thermosyphon | Restore stable boilup after a low sump level causes surging. Start: sump held at 15 % with the inlet valve pinched to 8 % (stable, duty-limited); at t = 0 the inlet is opened fully and the loop starts to surge | Stop the oscillation (amplitude < 2 % of boilup, I_s < 1) without losing more than 10 % duty (≥ 1170 kW of the 1300 kW SP); then explain why throttling helps. Throttling alone cannot do it at 15 % level (ENGINE_API.md §11.8) | M6 |
 | G15 | Packing retrofit | B-T, T2 | Compare 20 sieve trays to 9 m of structured packing | Report ΔP ratio and capacity gain (flood % at the same load) | M8 |
 | G16 | Crude cut points and gaps | Crude, T2 | Set draws and PA to meet kero D86 95 % ≤ 235 °C and a diesel–kero gap ≥ 0 °C | Meet both specs with residue D86-equivalent IBP ≥ 340 °C | M9 |
 
-Objective predicates, hints and reference numbers for G1–G12 and G14: ENGINE_API.md §11.8.
+Objective predicates, hints and reference numbers for G1–G14: ENGINE_API.md §11.8.
 
 ### 6.2 Hidden-fault drills (10)
 
@@ -270,7 +274,7 @@ In a drill the engine injects one fault (from the drill's candidate list, chosen
 | H3 | Lost separation | B-T, T2, plant view with calculations | F04 broken tray (rectifying), F06 foaming (s 0.8–1.0), F19 reflux flow meter bias | One tray's ΔP near zero (broken tray) vs flood % high at normal load with unchanged column ΔP (foam) vs balance mismatch (meter bias: L + D ≠ V₁ from heat balance) |
 | H4 | Reboiler can't keep up | B-T, T2 | F13 fouling, F14 condensate backup, F15 steam header loss | Onset speed; steam flow vs valve position; header pressure reading |
 | H5 | Bottoms level swings | B-T, T2, thermosyphon, plant view with calculations | F19 sump level transmitter drift (true level low → surge), F17 inlet restriction, F18 outlet restriction | Thermosyphon circulation and exit quality; inlet vs outlet line ΔP; compare level with mass balance and the LG-102 sight glass |
-| H6 | Off-spec overhead | Debutanizer, T3 | F07 feed upset (more nC4/iC5), F12 partial reflux loss, F20 reflux valve stuck | Feed analyser trend vs reflux flow vs valve OP–flow mismatch |
+| H6 | Off-spec overhead | Debutanizer, T3, ideal hydraulics, plant view with calculations; planning raises feed, reflux and duty by 8 % at 45 min | F07 feed heavier in the keys (less C3/iC4, more nC4/iC5), F12 reflux pump capacity loss, F20 reflux valve FV-102 stuck | Feed analyser AT-100 (light cut) moves vs reflux flow below SP with FC-102 at 100 % from the onset vs FC-102 OP running away after the planning event while the flow stays flat (C4). Full JSON: ENGINE_API.md §11.10 |
 | H7 | Packed bed underperforms | B-T packed, T2 | F21 maldistribution, F22 near-flood operation, F23 crushed packing | ΔP at constant load (crushed: up; maldistribution: flat) and bed T profile |
 | H8 | Crude product drift | Crude, T2 | F24 stripping steam loss, F25 pumparound trip, F26 COT upset | Bottom T and residue yield; overhead duty and top T; flash-zone T |
 | H9 | Don't trust the gauge | B-T, **T2** (T1 has no temperatures or pressure), full hydraulics, plant view, all loops in AUTO with the TC-101 cascade, no bad-PV shedding | One draw from 13: twelve instrument faults on FT-101/102/103/104, LT-101/102, PT-101, TI-107, TI-114 (F19 bias/drift/stuck, F28 signal loss/plugged/spiking/coated), or, about 1 in 8, a **real** feed change with every instrument healthy (decoy). Full JSON: ENGINE_API.md §11.6 | Decide *process problem vs instrument problem* and name the tag: cross-check neighbouring TIs, material and energy balance, valve OP vs measured flow, "too steady" trends. Bonus for putting the affected loop in MAN before product goes off-spec. |
@@ -285,7 +289,7 @@ Scoring (exact formulas: ENGINE_API.md §11.4).
 
 Drills must be winnable on a phone with noise on. Every instrument and valve candidate's evidence must clear the signal-to-noise rules of ENGINE_API.md §11.5, which VALIDATION.md §H tests with noise on; process candidates are checked by the key-evidence rows of VALIDATION.md §H.
 
-**Views in drills (M6).** A drill must not show the learner the truth that its candidates hide. H9 and H10 use plant view. H1, H3 and H5 contain instrument or feed candidates, so they use *plant view with engineering calculations*: readings everywhere, plus the computed tray hydraulics (ΔP per tray, flood %) and thermosyphon figures (circulation, exit quality, I_s) that an online rating model gives a plant engineer (PHYSICS.md §10.9). H2 and H4 use model view, with fault parameters (UA, fouling resistance, inert inventory, loss coefficients) hidden. Full drill definitions for H1–H5: ENGINE_API.md §11.9.
+**Views in drills (M6).** A drill must not show the learner the truth that its candidates hide. H9 and H10 use plant view. H1, H3, H5 and H6 (M7) contain instrument or feed candidates, so they use *plant view with engineering calculations*: readings everywhere, plus the computed tray hydraulics (ΔP per tray, flood %) and thermosyphon figures (circulation, exit quality, I_s) that an online rating model gives a plant engineer (PHYSICS.md §10.9). H2 and H4 use model view, with fault parameters (UA, fouling resistance, inert inventory, loss coefficients) hidden. Full drill definitions for H1–H5: ENGINE_API.md §11.9; H6: §11.10.
 
 ---
 
@@ -295,7 +299,7 @@ Themes are pure data (`LowsysTheme`, ENGINE_API.md §13.4) plus a small set of p
 
 ### 7.1 Token set (all themes)
 
-Colour tokens: `bg`, `bgAlt`, `surface`, `surfaceAlt`, `ink`, `inkMuted`, `inkFaint`, `grid`, `gridMajor`, `accent`, `accent2`, `steel` (vessel outline), `liquidLight`, `liquidHeavy` (composition gradient ends), `froth`, `vapor`, `hot`, `cold`, `ok`, `warn`, `alarm`, `info`, `selection`, `eqCurve`, `opLine`, `opLineCmo`, `qLine`, `stepLine`, `diagonal`, `pseudoEq`, `marker`, and six series colours `series1`…`series6` (trends, profiles with several components, pinned variables). The series colours were added for the M3 Trends tab; if M3 already shipped its own colours, it moves them into these tokens. A theme without colour freedom (Phosphor) varies dash pattern and intensity instead. Every theme fills every token; a missing token is a build-time error, not a fallback.
+Colour tokens: `bg`, `bgAlt`, `surface`, `surfaceAlt`, `ink`, `inkMuted`, `inkFaint`, `grid`, `gridMajor`, `accent`, `accent2`, `steel` (vessel outline), `liquidLight`, `liquidHeavy` (composition gradient ends), `froth`, `vapor`, `hot`, `cold`, `ok`, `warn`, `alarm`, `info`, `selection`, `eqCurve`, `opLine`, `opLineCmo`, `qLine`, `stepLine`, `diagonal`, `pseudoEq`, `marker`, and six series colours `series1`…`series6` (trends, profiles with several components, pinned variables). The series colours were added for the M3 Trends tab; if M3 already shipped its own colours, it moves them into these tokens. A theme without colour freedom (Phosphor) varies dash pattern and intensity instead. From M7 the set includes `seriesDash1`…`seriesDash6`: a dash pattern in logical px, or solid. Blueprint, Control Room and Paper set all six to solid. The component profile chart draws component i with series ((i mod 6) + 1); a seventh or later component also gets point markers. Every theme fills every token; a missing token is a build-time error, not a fallback.
 
 Typography tokens: `display`, `label`, `number` (tabular figures), `math` (font family, weight, letter spacing).
 
@@ -339,6 +343,13 @@ Style switches (enums): `vesselStyle` {outline, flat, bevel, vector}, `liquidSty
 
 **T-3 Phosphor — "Green Screen CRT"** (M7)
 - Palette: single hue. bg `#031A09`, bgAlt `#02140A`, surface `#06240F`, ink `#33FF66`, inkMuted `#1F9940`, inkFaint `#0E5223`, grid `#0B3D1A`, gridMajor `#12602A`, accent `#9CFFB5`, accent2 `#FFB000` (amber, used only for the selection cursor), steel `#33FF66`, liquidLight `#66FF99`, liquidHeavy `#1A8F3A`, froth `#9CFFB5`, vapor `#33FF66` at 40 %, hot/cold = ink at 100 %/60 %, ok `#33FF66`, warn `#FFB000`, alarm = inverse video (green block, black text) blinking, eqCurve `#33FF66`, opLine `#9CFFB5`, qLine `#9CFFB5` dotted, stepLine `#66FF99`, diagonal `#0E5223`, pseudoEq `#1F9940`.
+- Remaining tokens (M7 readiness pass): surfaceAlt `#0A2E14`, info `#9CFFB5`, selection `#FFB000` (the amber cursor), marker `#9CFFB5`, opLineCmo `#9CFFB5` dashed.
+- Series (colour plus dash, since the hue is fixed):
+  - `series1` `#33FF66` solid; `series2` `#9CFFB5` dashed [6, 3]; `series3` `#1F9940` solid;
+  - `series4` `#33FF66` dotted [1.5, 3]; `series5` `#9CFFB5` dash-dot [6, 3, 1.5, 3]; `series6` `#1F9940` dashed [6, 3].
+  - Amber stays reserved for the cursor and warn.
+- Alarm priorities are told apart by the Control Room symbols (◆ ▲ ■) and text, not by colour.
+- Contrast on bg `#031A09` (VALIDATION.md U2): ink 13.5:1, inkMuted 4.9:1, accent and info 15.0:1, liquidLight and stepLine 14.1:1, amber 9.9:1. The weakest series (`#1F9940`) is 4.9:1, so every chart line clears 3:1.
 - Typography: "VT323" for everything; numbers padded to fixed width.
 - Column: vector-display drawing; liquid as a fill of `≈` glyph rows; vapour as `°` glyphs drifting up.
 - Charts: vector lines with persistence — the previous 4 staircase states drawn with alpha 0.5, 0.3, 0.15, 0.07, so changes leave fading trails.
@@ -506,9 +517,21 @@ Readiness pass completed 2026-10-13 (excerpt: docs/milestones/M6.md). It changed
 
 ### M7 — Multicomponent light hydrocarbons
 
-- Engine: hydrocarbon components C3–nC7 (PHYSICS.md §3.1), Tier 1 multicomponent constant α, Tier 2 Raoult with Lee–Kesler, Tier 3 DePriester (McWilliams; the K model ships in M5 with `c4`); debutanizer and depropanizer presets; key components; FUG shortcut module (Fenske, Underwood, Gilliland/Molokanov, Kirkbride) computed live; Hengstebeck pseudo-binary McCabe–Thiele.
+- Engine: hydrocarbon components C3–nC7 (PHYSICS.md §2.1), Tier 1 multicomponent constant α, Tier 2 Raoult with Lee–Kesler, Tier 3 DePriester (McWilliams; the K model ships in M5 with `c4`); debutanizer and depropanizer presets; key components; FUG shortcut module (Fenske, Underwood, Gilliland/Molokanov, Kirkbride) computed live; Hengstebeck pseudo-binary McCabe–Thiele.
 - App: Phosphor theme; Products tab with the FUG panel; component profile chart; scenario G13; drill H6.
-- Acceptance: VC-9 (FUG numbers and rigorous-vs-shortcut check) passes; 40 trays × 8 components Tier 3 runs at ≥ 100× on the reference phone (VC-19).
+- Acceptance:
+  - VC-9.1–9.8: FUG numbers, DePriester spot values, bubble and dew points, the rigorous-vs-shortcut check, preset steady states with tier switches, the live FUG panel and the G13 references.
+  - VC-21 for `eq.fug.*` and `eq.hengstebeck`; VC-26.1 on G13 and H6.
+  - The VALIDATION.md §H rows for H6 (noise off, plus the noise-on rule-1 check for `fv102_stuck`).
+  - U2 for Phosphor.
+  - 40 trays × 7 components in Tier 3 runs at ≥ 100× on the reference phone (VC-19). v1.0 said 8 components, but the database has seven light hydrocarbons.
+
+Readiness pass completed 2026-10-13 (excerpt: docs/milestones/M7.md). Spec changes:
+- The sandbox presets get E = 0.7 tray counts (32 / 16 and 28 / 11) and default to Tier 3, with utilities sized from the Tier-3 steady state (PHYSICS.md §2.3).
+- The DePriester validity range is corrected to 852 °R, with no clamping (§3.4.2).
+- The FUG and Hengstebeck rules are made exact (§14.2–14.3), and multicomponent analysers read key cuts (§10.5, `kpi.xDHeavy` / `kpi.xBLight`).
+- VC-9.5 dew points are corrected; VC-9.6–9.8, the G13 objectives and the full H6 drill (ENGINE_API.md §11.8, §11.10) are new.
+- Phosphor's missing tokens are filled in, and `seriesDash` tokens are added.
 
 ### M8 — Packed sections
 
@@ -558,6 +581,8 @@ Readiness pass completed 2026-10-13 (excerpt: docs/milestones/M6.md). It changed
 | Azeotropic presets' efficiency (M5) | `ew` and `ac` ship with E = 0.7 like every sandbox preset; VC-28 and G9/G10 set E = 1 | Keeps the "0.70 in sandbox" rule; the reference steady states are textbook (E = 1) cases |
 | Tier 1 T-x-y (M5) | Drawn from the Tier-2 (Raoult) model and labelled "ideal" | Constant α has no temperatures; matches M4's display-only bubble point |
 | Figure export (M5) | PNG to Downloads (Windows) or the app's external files folder (Android) via `path_provider`; no share sheet | One small first-party dependency; sharing waits for M10 |
+| Multicomponent sandbox columns (M7) | `debut` 32 trays and `deprop` 28 trays at E = 0.7, defaulting to Tier 3. These are the FUG designs divided by the sandbox efficiency | With the E = 1 counts at E = 0.7, the sandbox ran 4 % below its design recoveries. With these counts the FUG panel's N matches N × E + 1 (PHYSICS.md §2.3) |
+| Multicomponent analysers (M7) | AT-100/101/102 read key cuts: feed light cut, HK and heavier in D, LK and lighter in B | These are the specs a real debutanizer is run to (C5+ in LPG, C4− in gasoline), and they reduce to the binary tags |
 
 ## 10. Open items for the user (not blocking)
 

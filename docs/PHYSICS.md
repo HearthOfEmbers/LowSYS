@@ -181,6 +181,8 @@ Used for T_r ≥ 0.30. Above T_c the formula is evaluated as is (smooth extrapol
 | `ew` | 40 / 30 | 0.10 | 1.01325 bar | 100 | 110 | 1206.8 kW (T3, E = 1) | 10 | 28.83 | 38.98 | 3.5 bar(a) |
 | `ac` | 30 / 15 | 0.60 | 1.01325 bar | 150 | 188 | 1515.9 kW (T3, E = 1) | 38 | 83.7 | 30.24 | 3.5 bar(a) |
 | `c4` | 60 / 30 | 0.40 | 7.0 bar | 280 | 320 | 1542.6 kW (T2 Lee–Kesler, E = 0.7) | 40 | 122.8 | 30.15 | 10.5 bar(a) (1.5 × P_design) |
+| `debut` (M7) | 32 / 16 | SCOPE.md §4.3 (light cut 0.45) | 6.895 bar | 76.4 | 121.3 | 679.7 kW (T3 DePriester, E = 0.7) | 44.94 | 38.47 | 32.02 | 10.34 bar(a) (1.5 × P_design) |
+| `deprop` (M7) | 28 / 11 | SCOPE.md §4.3 (light cut 0.30) | 17.24 bar | 66.1 | 96.9 | 416.6 kW (T3 DePriester, E = 0.7) | 30.78 | 22.03 | 28.63 | 25.86 bar(a) (1.5 × P_design) |
 
 - **Lever ranges.** SCOPE.md §4.1's flow ranges are the B-T ones. For every other preset, the flow and duty levers (and the matching FT spans) run from 0 to 2 × the preset's default. Example: the `c4` boilup goes up to 640 kmol/h, so its default of 320 is not outside the B-T range of 300.
 - **`ac`** has a small condenser ΔT (57 °C distillate against 30 °C CW), hence the large UA; `c4` likewise (51 °C).
@@ -192,8 +194,17 @@ Used for T_r ≥ 0.30. Above T_c the formula is evaluated as is (smooth extrapol
   - Feed thermal condition: vapour fraction β = 0 (`FeedVaporFraction(0)`), i.e. saturated liquid at the feed-tray pressure. T_F then follows the pressure, which every reference at another pressure assumes (VC-28.1 at 0.5 atm, G9).
   - CW: m_cw,max = 41.54 kg/s (150 m³/h) and T_cw,in = 30 °C for every preset; the UA values in the table were sized with these.
   - Initial levers: L₀ and the duty (Tiers 2/3) or V_B (Tier 1) from the table; level SPs 50 %. A Tier-1 start uses the table's V_B and a Tier-2/3 start the table's duty; both settle near the table's D.
+- **Rules for the M7 presets** (`debut`, `deprop`; M7 readiness pass 2026-10-13; prototype `tools/prototypes/m7/`, steady states in VALIDATION.md VC-9.6):
+  - Default tier 3 (DePriester, the light-hydrocarbon model). The table duty is the Tier-3 value at the table L₀ and D with E = 0.7. At the same L₀ and D, Tier 2 needs 681.4 / 396.4 kW and Tier 1 needs V_B 121.34 / 96.88 kmol/h.
+  - **Trays at the sandbox efficiency.** The FUG designs of VC-9.1/9.2 need 23.28 and 20.36 theoretical stages (reboiler included). Divided by E = 0.7: (23.28 − 1)/0.7 = 31.8 → 32 trays, and (20.36 − 1)/0.7 = 27.7 → 28 trays. Feed trays 16 and 11 are the Tier-3 optima of a feed-tray scan (VC-9.6). With these, the defaults sit near the design recoveries (debut 0.978 / 0.978, deprop 0.991 / 0.954), and the FUG panel compares like with like: 32 × 0.7 + 1 = 23.4 effective stages against Gilliland's 22.6–23.2 (§14.3). VC-9.3 keeps its 22-tray, E = 1 column as an explicit configuration. v1.0 had 22 / 12 and 20 / 8, the E = 1 counts; at E = 0.7 they gave only 0.943 / 0.942 (debut, Tier 3).
+  - E = 0.70 (sandbox rule), hydraulics `ideal`, feed β = 0 at the feed-tray pressure, CW and steam as for the M5 presets, level SPs 50 %.
+  - Keys: `debut` LK nbutane, HK isopentane; `deprop` LK propane, HK isobutane. Each pair is adjacent in volatility, as the FUG panel requires (§14.3).
+  - Geometry: the B-T tray geometry, like every preset. At these vapour loads (ρ_V 15–36 kg/m³) the column runs at only about 20–25 % (`debut`) and 10–15 % (`deprop`) of jet flood, estimated by scaling the capacity factor against B-T's 63 %, so full hydraulics would weep. The default stays `ideal`; the diameter question is in OPEN_ITEMS.md.
+  - dT_bub/dP for the process-driven σ of TI-100 (§10.5): `debut` 0.062 K/kPa, `deprop` 0.026 K/kPa. This is the slope of the design distillate's Tier-3 bubble point at P_top.
+  - The `deprop` bottoms (≈ 124 °C) are above propane's T_c (96.7 °C). In Tier 2, Lee–Kesler extrapolates and flags `supercriticalComponent`. In all tiers the Watson λ of propane is 0 there (§3.3). With x_B,C3 ≈ 0.004 the effect on the reboiler balance is below 0.3 %. DePriester covers this range (§3.4.2).
+  - The analysers read key cuts (§10.5). At the defaults AT-101 reads 0.0112 / 0.0344 and AT-102 reads 0.0102 / 0.0041, so neither reaches the 0.05 HI alarm.
 
-Tier-1 α values for the non-ideal binaries are the geometric mean of the Tier-3 α at x = 0.1, 0.5 and 0.9 (1 atm); for `debut`/`deprop` they are the geometric mean of the DePriester α at the top and bottom temperatures of the FUG design case (VALIDATION.md VC-9). They are stored constants, not recomputed.
+Tier-1 α values for the non-ideal binaries are the geometric mean of the Tier-3 α at x = 0.1, 0.5 and 0.9 (1 atm); for `debut`/`deprop` they are the geometric mean of the DePriester α at the top and bottom temperatures of the FUG design case (VALIDATION.md VC-9). They are stored constants, not recomputed. (M7 check: with the corrected VC-9.5 temperatures (distillate dew 55.25 / 49.52 °C, bottoms bubble 112.77 / 123.84 °C) the recomputed geometric means agree with the stored values within 0.003.)
 
 Tier-1 constant properties (used for hydraulics in Tier 1, and as the initial guess elsewhere):
 
@@ -310,7 +321,7 @@ ln K = a_T1 / T_R² + a_T2 / T_R + a_T6 + a_p1 ln p + a_p2 / p² + a_p3 / p     
 
 Note: some online copies list a_p1 = −0.93159 for n-butane; that is a transcription error (it duplicates isopentane and gives K = 1.24 instead of 1.06 at 150 °F, 100 psia, where Raoult gives 1.05). Use −0.96455.
 
-Validity: 365–700 °R and 14.7–870 psia. Outside, evaluate at the clamped T and p and set `thermoOutOfRange`. K depends on T and P only (no composition dependence), which is why DePriester charts are fast; the non-ideality they capture is the pressure effect on light hydrocarbons near their critical points.
+Validity: 365–852 °R (−70 to 200 °C) and 14.7–870 psia (101.3–6000 kPa), as Seader, Henley and Roper state for the fit. Outside that range, evaluate the formula as it is (smooth extrapolation, as for Lee–Kesler in §2.2) and set `thermoOutOfRange`. **M7 correction:** v1.0 gave 700 °R and clamping. 700 °R is 115.6 °C, which is below the depropanizer bottoms (≈ 124 °C, 715 °R). A clamped T also makes K independent of T, so the bubble-point Newton has g' = 0: the M7 prototype's depropanizer bottoms bubble point ran away to 514 °C. VC-9.4 (n-hexane at 250 °F) and VC-9.5 (depropanizer bottoms) were already computed with the formula unclamped. The `c4` defaults (≈ 50–65 °C at 7 bar) lie inside both ranges, so nothing in M5 changes. K depends on T and P only (no composition dependence), which is why DePriester charts are fast; the non-ideality they capture is the pressure effect on light hydrocarbons near their critical points.
 
 #### 3.4.3 Crude
 
@@ -1449,6 +1460,12 @@ Measured quantities:
 - TI-202 measures T_cw,in + Q_C/(ṁ_cw c_p,w).
 - FT-201 measures ṁ_cw/ρ_w with ρ_w = 995 kg/m³.
 - FT-103 measures the delivered boilup (T1) or the delivered duty Q_k (T2/3).
+- **Analysers on multicomponent presets (M7).** The GC separates every component, and the three tags carry key cuts. For a binary these reduce exactly to the definitions in the table.
+  - AT-100: the feed light cut, Σ z_i over the LK and every lighter component.
+  - AT-101: the heavy cut in D, Σ x_D,i over the HK and every heavier component (`kpi.xDHeavy`).
+  - AT-102: the light cut in B, Σ x_B,i over the LK and every lighter component (`kpi.xBLight`).
+  - Each published result also carries the full sampled composition. The Products tab lists it, aged like the tag value.
+  - Design values: `debut` 0.450 / 0.0112 / 0.0102; `deprop` 0.300 / 0.0344 / 0.0041.
 
 **Analysers (AT).** A sample system plus a cyclic gas chromatograph, updated in the main layer:
 
@@ -2008,6 +2025,19 @@ y*'_j = K_LK,j x_LK,j / (K_LK,j x_LK,j + K_HK,j x_HK,j)
 
 Plot: diagonal; "equilibrium locus" through (x'_j, y*'_j) sorted by x' (it is a stage-by-stage locus, not a closed-form curve); actual operating locus (x'_j, y'_{j+1}); staircase as in §14.1 with primed values; markers x'_F, x'_D, x'_B; a q-line through (z'_F, z'_F) drawn dashed with the caption "approximate for multicomponent". A banner explains that non-key components distort the pseudo-binary. Next to it: composition profile (all components versus stage), K-value / α profile, T profile.
 
+**Builder rules (M7 readiness pass).**
+- `McCabeThieleData.pseudoBinary` is true whenever nc > 2, and the labels are the key names.
+- **Tier 1:** K_LK/K_HK = α_LK/α_HK =: α′ on every stage, so y*′ = α′x′/(1 + (α′ − 1)x′) holds exactly. The builder draws this curve (101 points), and the stage points lie on it.
+- **Tiers 2/3:** the stage locus only, with no `equilibriumBottom`. The caption gives α′ at the top and bottom stages, e.g. "α′ 2.22 (top) → 1.89 (bottom)" for the `debut` default.
+- **Not drawn for a pseudo-binary:**
+  - the CMO reference lines (empty lists; they would need key-only external flows);
+  - the Tier-1 Murphree pseudo-equilibrium curve (the Tiers 2/3 rule applies: a line through the corners);
+  - the R_min construction (`rmin` is null even when requested; the caption points to the FUG panel, §14.3).
+- The q-line is drawn clipped to the frame, with no intersection.
+- Murphree gap markers, pinch shading, the transient flag and stage taps all work on primed values.
+- Plant views: `available = false`, as for binaries (§10.9).
+- Reference values: VALIDATION.md VC-9.3 and VC-9.6.
+
 ### 14.3 FUG shortcut panel (multicomponent, M7)
 
 Recomputed every 10 s of sim time from the live column:
@@ -2025,6 +2055,29 @@ Kirkbride:  N_R/N_S = [ (z_HK/z_LK) (x_B,LK/x_D,HK)² (B/D) ]^0.206
 ```
 
 Shown next to the rigorous column: actual stages × average efficiency, actual R, actual feed stage.
+
+**Exact rules (M7 readiness pass).** VALIDATION.md VC-9 already fixed the procedure. This text states it once, for the panel and the tests alike:
+- **Keys.** The keys must be adjacent in volatility: no component may have an α between α_HK and α_LK, at stage 1 or at stage N+1. Otherwise the panel shows "keys must be adjacent" and returns `valid = false`. With adjacent keys, Underwood's equation has exactly one root in (α_HK, α_LK).
+- **α by tier.**
+  - Tier 1: the preset constants.
+  - Tiers 2/3: α_i = √(α_i,1 · α_i,N+1), where α_i,j = K_ij / K_HK,j is evaluated at T_j and P_j of stage 1 (the top tray) and stage N+1 (the reboiler). Stage 1 is used, not the drum, because a total condenser's drum is not an equilibrium stage.
+- **Feed.** z is the live feed composition (after any F07). q is the lever in Tier 1 and (3.15) in Tiers 2/3.
+- **Recoveries and R.**
+  - Live mode: r_LK = D x_D,LK/(F z_LK) and r_HK = B x_B,HK/(F z_HK) from the true product flows and compositions, with R = L₀/D.
+  - Target mode (`FugTargets`): the user's r_LK and r_HK, with either the live R or R = k R_min (k default 1.3, as in VC-9).
+- **Fenske split.** The x_D and x_B used in Underwood and Kirkbride come from the Fenske distribution (d_i, b_i above), *not* from the live products. This makes the panel a self-consistent shortcut design for the stated recoveries. N_min, N and N_R count equilibrium stages including the reboiler; a total condenser is not a stage (VALIDATION.md §0).
+- **Kirkbride.** N_R = N (N_R/N_S)/(1 + N_R/N_S) is the number of stages above the feed stage; the feed stage is the first stripping stage.
+- **Guards.**
+  - The result is valid only if 0.5 < r_LK < 1 − 10⁻⁹, 0.5 < r_HK < 1 − 10⁻⁹ and (d_LK/b_LK)(b_HK/d_HK) > 1. Otherwise `valid = false` and the panel shows "no key split to analyse". This covers start-up, F = 0 and a collapsed column.
+  - R ≤ R_min gives N = ∞ and `belowRmin = true`, with the banner "below minimum reflux: no finite number of stages".
+- **The rigorous column next to it.**
+  - N_act = Σ_j E_j^eff + 1: the trays' effective Murphree efficiencies (4.2) plus the reboiler. The `debut` default gives 32 × 0.7 + 1 = 23.4.
+  - N_R,act = Σ_{j < n_F} E_j^eff: the stages above the feed tray. The `debut` default gives 15 × 0.7 = 10.5.
+  - R_act = L₀/D.
+  - The panel states that N × E_MV is the textbook approximation; the Lewis relation (4.3) differs from it by a few % at these stripping factors.
+- **Refresh and cost.** The panel is recomputed every 10 s of sim time and whenever the targets change. One evaluation is under 0.1 ms.
+- **Views.** In plant and plantCalc views the panel is not available (`FugCalculator` returns null), because it needs model compositions. The Products tab then shows the analyser results only.
+- **Reference values.** VALIDATION.md VC-9.1/9.2 (design mode) and VC-9.7 (live mode on the preset defaults and in G13).
 
 ### 14.4 Crude diagrams
 
@@ -2074,7 +2127,7 @@ The engine computes these checks from **readings only** (instrument values and q
 | Id | Check | Residual (B-T notation) | Band | What the learner sees |
 |---|---|---|---|---|
 | C1 | **Total material balance** (all tiers) | r1 = F̄ − D̄ − B̄ − (ΔN_0 + ΔN_S)/W with F = FT-101, D = FT-104, B = FT-105 | max(2.0 kmol/h, 0.02 F̄) · max(1, 600 s/W). The level term's noise scales as 1/W (fixed end-point averages divided by W): ≈ 0.83 kmol/h at W = 600 s. Scaling the band keeps band/noise ≈ 2.4 at every window ≤ 600 s; without it, W = 300 s gave 18 % `check` and 1.2 % `fail` on a healthy column (tester) | Row "In F 100.2 · Out D + B 99.9 · Accumulating +0.1 · Unaccounted +0.2 kmol/h (band ±2.0)" |
-| C2 | **Component balance** (light component; LK for multicomponent); steady only, W ≥ 1800 s | r2 = F̄ z̄ − D̄ x̄_D − B̄ x̄_B, with z = AT-100, x_D = 1 − AT-101, x_B = AT-102 (B-T). Also D/F from meters, D̄/F̄, against D/F from analysers, (z − x_B)/(x_D − x_B) | 0.01 F̄ z̄; D/F ± 0.01 | "Benzene in 50.1, out 49.6 kmol/h; D/F: meters 0.502, analysers 0.499" |
+| C2 | **Component balance** (light component; for multicomponent the light cut, LK and lighter, read by AT-100/101/102 as in §10.5; exact for adjacent keys); steady only, W ≥ 1800 s | r2 = F̄ z̄ − D̄ x̄_D − B̄ x̄_B, with z = AT-100, x_D = 1 − AT-101, x_B = AT-102 (B-T). Also D/F from meters, D̄/F̄, against D/F from analysers, (z − x_B)/(x_D − x_B) | 0.01 F̄ z̄; D/F ± 0.01 | "Benzene in 50.1, out 49.6 kmol/h; D/F: meters 0.502, analysers 0.499" |
 | C3 | **Top vapour, Tier 1**: boilup vs reflux + distillate (CMO) | V_boil = V̄_B + (1 − q) F̄ (V_B = FT-103, q = feed lever); V_refl = L̄_0 + D̄ + ΔN_0/W (L_0 = FT-102); r3 = V_boil − V_refl | max(2.0 kmol/h, 0.015 V_refl) · max(1, 600 s/W) (same reason as C1) | Three numbers: "Vapour to the top: from boilup 150.1 · from reflux + distillate 149.8 · difference +0.3 (band ±2.3)" |
 | C3a | **Top vapour, Tiers 2/3**: condenser duty vs reflux + distillate | Q_C,cw = ρ_w FT-201 c_p,w (TI-202 − TI-201) (windowed means; ρ_w 995 kg/m³, c_p,w 4180 J/kg/K); λ_top = H_V(x_D, T_cond) − h_L(x_D, T̄_100), T_cond = T_bub(x_D, P̄_101); V_cw = Q_C,cw/λ_top; r3a = V_cw − V_refl | max(2.0 kmol/h, 0.02 V_refl) · max(1, 600 s/W) | "Condenser 1282 kW ≈ 150.3 kmol/h of vapour · reflux + distillate 149.9" |
 | C3b | **Column energy balance**, Tiers 2/3 | r3b = Q̄_R + F̄ h_F − Q_C,cw − D̄ h_D − B̄ h_B; Q_R = FT-103; h_F from the feed lever (T_F) and z = AT-100 with the simulator's own feed-enthalpy function; h_D = h_L(x_D, T̄_100); h_B = h_L(x_B, T̄_121) | 0.02 Q̄_R | "Reboiler 1301 kW + feed −12 kW = condenser 1282 kW + products 4 kW · unaccounted +3 kW (band ±26)" |
@@ -2126,7 +2179,8 @@ The math overlay (ENGINE_API.md §8) shows, for the selected item, equations fro
 | Controller | `eq.pid` (10.1) with the last e, ΔOP, OP; `eq.valve` (10.2) with OP, flow and the expected flow |
 | Instrument | `eq.instrument` (pipeline of §10.5 with the current values of v, v_m, b, I, v_meas and the quality); analysers add `eq.analyser` (sample time, publication time, age) |
 | Cross-check | `eq.check.material` (C1), `eq.check.component` (C2), `eq.check.topVapour` (C3, C3a), `eq.check.energy` (C3b), `eq.check.valve` (C4), `eq.check.level` (C5), `eq.check.trayT` (C6), `eq.check.bubble` (C7), with the readings substituted |
-| McCabe–Thiele elements | operating line equations, q-line, R_min construction (14.1), Fenske/Underwood/Gilliland (14.3) |
+| McCabe–Thiele elements | operating line equations, q-line, R_min construction (14.1); pseudo-binary: `eq.hengstebeck` (14.2) |
+| FUG panel (M7) | `eq.fug.alpha` (geometric-mean α, 14.3), `eq.fug.fenske` (N_min), `eq.fug.split` (non-key d_i/b_i), `eq.fug.underwood` (θ and R_min), `eq.fug.gilliland` (X, Y, N), `eq.fug.kirkbride` (N_R/N_S, N_R), each with the live values; the rigorous comparison (N_act, N_R,act, R_act) as a closing line |
 
 ---
 
@@ -2145,6 +2199,8 @@ The math overlay (ENGINE_API.md §8) shows, for the selected item, equations fro
 | Thermosyphon instability via index + oscillator | §8.3.3 | First-principles density waves need fine meshes and ms steps | Exact oscillation waveform |
 | Thermosyphon: steam side as a perfect buffer (FT-103 sees the mean duty); loop liquid inventory not coupled to the sump | §8.3.4 | Steam chest and condensate absorb a 5–20 s swing; energy mismatch ≤ 0.5 % | Steam-flow ripple during surging; sump-level swing from void changes |
 | DePriester K for hydrocarbons instead of an EOS | §3.4.2 | Textbook standard, fast | Composition dependence of K |
+| FUG with one geometric-mean α per component, the Fenske non-key split and Molokanov's Gilliland fit | §14.3 | The textbook shortcut; it is shown next to the rigorous column, not used by it | α variation along the column (`debut` Tier 3: α_LK 2.22 at the top, 1.89 at the bottom) |
+| Watson λ = 0 above a component's T_c | §3.3 | Only propane in the `deprop` bottoms (x ≈ 0.004) | Supercritical-component enthalpy (< 0.3 % of the reboiler balance) |
 | Crude: no light ends, constant K_W, steam as inert vapour, 2-stage strippers | §9 | Teaching fidelity; captures cut points, gaps, steam stripping, PA heat balance | Offgas, water dew point details, kerosene flash point |
 | Valves deliver F_max g(p)(1 + d): no pump curves, no line losses, inherent = installed characteristic | §10.3 | Gives a straight characteristic a learner can check; real loops behave the same in the small | Installed-characteristic distortion, pump run-out |
 | Instrument noise as OU processes with textbook magnitudes; no process-condition dependence | §10.5 | Signatures (bias, frozen, too steady, erratic, slow) are what diagnosis needs | Flashing in impulse lines, temperature effects on transmitters |
