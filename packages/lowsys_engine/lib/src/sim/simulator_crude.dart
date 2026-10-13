@@ -2,6 +2,7 @@
 // A part of simulator.dart so that it can reach the private state; the generic methods branch to these.
 part of 'simulator.dart';
 
+
 /// One lab sample of the products (PHYSICS.md 9.6; ENGINE_API.md 11.12): the plant views show the last published one.
 class _CrudeLab {
   final double time;
@@ -1155,8 +1156,7 @@ extension _SimCrude on Simulator {
     _emit(SimEventType.rebuildDone, 'Loaded preset ${cfg.presetId}');
   }
 
-  ExplainResult _crudeExplain(ExplainTarget target) =>
-      ExplainResult(title: 'Not available', groups: const [], notes: const ['Crude equation traces: see ExplainCrude.'], time: _state.time);
+  ExplainResult _crudeExplain(ExplainTarget target) => ExplainCrude(_col, _cr!.prod, _state.time).explain(target);
 
   // ---------------------------------------------------------------- scenarios
   static final Map<String, Map<String, Object?>> _crudeScenarioCache = {};
