@@ -967,7 +967,7 @@ Q_R,delivered = min(Q_R,SP , Q_max)                                             
 steam valve OP (display) = 100 · Q_R,delivered / Q_max          ("duty limited" alarm when Q_R,SP > Q_max)
 ```
 
-From M3, Q_R,SP is replaced by the steam valve's duty request Q_v = Q_max,0 g(p)(1 + d), and FC-103 positions the valve on the *measured* duty (§10.3). The delivered duty is the sub-step mean of min(Q_v, Q_max), and the "display OP" line above is superseded by the real valve position. "Duty limited" means Q_v > Q_max for 60 s (`model.dutyLimited`). On the plant, it shows as FC-103 at 100 % OP with the duty below SP (`FC-103.OPSAT`).
+From M3, Q_R,SP is replaced by the steam valve's duty request Q_v = Q_max,0 g(p)(1 + d), and FC-103 positions the valve on the *measured* duty (§10.3). The delivered duty is the sub-step mean of min(Q_v, Q_max), and the "display OP" line above is superseded by the real valve position. "Duty limited" means Q_max,0 g(p) > Q_max for 60 s (`model.dutyLimited`; the supply disturbance d is left out so that the flag does not flicker with noise at a fully open valve). Because Q_max,0 is the clean maximum at the *current* header, the flag means "the exchanger is degraded" (fouling F13, condensate backup F14). A header loss (F15) lowers Q_v and Q_max together and never raises it. Every duty shortfall, whatever its cause, shows on the plant as FC-103 at 100 % OP with the duty below SP (`FC-103.OPSAT`); that is F15's symptom.
 
 UA_R,clean is stored in the preset, chosen so that the design duty uses 60 % of Q_max (B-T: Q = 1.30 MW at T_B = 110.4 °C and T_st = 148.1 °C → UA_R,clean = 57.5 kW/K); for a new preset it is found offline from a steady-state run, like the condenser UA (§7.2). Fouling raises R_f,R; condensate backup raises f_flooded (§11).
 
@@ -1354,7 +1354,17 @@ Every transmitter runs the same pipeline on its true value v (SI) at each update
   ```
   n ← a n + σ √(1 − a²) ξ,      a = exp(−h/τ),   ξ ~ N(0, 1) from the instrument's own stream (§12.9)
   ```
-- **Typical σ of flows set by a level loop.** FT-104 and FT-105 measure flows that LC-101 and LC-102 move in response to level noise (P action: σ_OP = Kc σ_disp,LT). Their healthy σ — `typicalSigma` in the snapshot and the "typical" of the signal look — is therefore σ_typ = √(σ_disp² + (Kc_LC · σ_disp,LT · F_max/span)²). B-T: FT-104 √(0.409² + (2 × 0.423)²) = 0.94 % of span; FT-105 √(0.409² + (2 × 0.775)²) = 1.60 % (tester measured ≈ 2.4 × σ_disp for FT-104). Every other tag uses σ_disp.
+- **Typical σ of flows set by a level loop.** FT-104 and FT-105 measure flows that LC-101 and LC-102 move in response to level noise (P action: σ_OP = Kc σ_disp,LT). Their healthy σ — `typicalSigma` in the snapshot and the "typical" of the signal look — is therefore σ_typ = √(σ_disp² + (Kc_LC · σ_disp,LT · F_max/span)²). B-T: FT-104 √(0.409² + (2 × 0.423)²) = 0.94 % of span; FT-105 √(0.409² + (2 × 0.775)²) = 1.60 % (tester measured ≈ 2.4 × σ_disp for FT-104).
+- **Typical σ of process-driven tags, Tiers 2/3** (decided 2026-10-12 from the M4 validation). PT-101, TI-100, FT-201 and TI-202 read quantities that the pressure loop and the CW supply disturbance keep moving. Their transmitter noise is tiny (TI-202: 0.044 K), so against σ_disp alone a healthy Tier-2 drill read 1.2–3.8 (PT-101), 0.7–2.4 (TI-100), 2.4–8.4 (FT-201) and 3.2–14.7 (TI-202), and the signal look would call them erratic. Their σ_typ = √(σ_disp² + σ_proc²), with σ_proc built from window means of readings only (no truth leaks into the "typical"):
+
+  | Tag | σ_proc | B-T design value |
+  |---|---|---|
+  | PT-101 | σ_P = 0.0015 · SP (healthy pressure wander under PC-101) | 0.15 kPa |
+  | TI-100 | (dT_bub/dP) · σ_P, slope of the design distillate's bubble point at the design pressure (preset constant) | 0.32 K/kPa → 0.05 K |
+  | FT-201 | c_F · F̄_201, with c_F = σ_d = 0.010 when PC-101 is in MAN (supply disturbance only, §10.3), and 0.022 in AUTO/CAS (the loop adds its own movement) | AUTO, 75 m³/h: 1.65 m³/h |
+  | TI-202 | c_F · (T̄_202 − T̄_201) (water rise × relative flow σ, at constant duty) | AUTO: 0.32 K |
+
+  0.0015 and 0.022 are **[impl-tunable]**, calibrated on the B-T H9 drill configuration so that the median healthy ratio is ≈ 1. TI-202's windows still spread by a factor ≈ 4.6, more than the 0.5–2 band allows, so H9.0/H10.0 judge these four tags on 0.33–3 (VALIDATION.md). That stays well clear of the fault thresholds (≤ 0.2 frozen or plugged, ≥ 5 erratic). Every other tag uses σ_disp, or the level-loop rule above for FT-104/105.
 - **Displayed noise.** For a healthy transmitter (continuous-time value):
 
   ```
@@ -1374,7 +1384,7 @@ Every transmitter runs the same pipeline on its true value v (SI) at each update
 | FT, cooling water (magnetic) | FT-201 0–150 m³/h | 0.5 s | 0.30 | 1 s | 0.02 | 0.246 % | |
 | LT, drum (ΔP cell) | LT-101 0–100 % | 2 s | 0.50 | 5 s | 0.02 | 0.423 % | surface waves from the reflux return |
 | LT, sump (ΔP cell, boiling liquid) | LT-102 0–100 % | 2 s | 1.00 | 3 s | 0.02 | 0.775 % | boiling and vapour disengagement |
-| PT | PT-101 0–2 P_design (B-T 0–202.65 kPa abs), PT-201 steam header 0–1000 kPa g | 1 s | 0.05 | 2 s | 0.02 | 0.046 % (PT-101: 0.09 kPa) | |
+| PT | PT-101 0–2 max(P_design, SP_PC-101) (§10.7; B-T at design 0–202.65 kPa abs), PT-201 steam header 0–1000 kPa g | 1 s | 0.05 | 2 s | 0.02 | 0.046 % (PT-101: 0.09 kPa) | |
 | PDT | PDT-101 column ΔP 0–40 kPa (top vapour space to sump) | 2 s | 1.00 | 5 s | 0.02 | 0.845 % (0.34 kPa) | froth fluctuations |
 | TI, tray and sump (RTD in a thermowell) | TI-1jj, TI-1(N+1): 0–200 °C | 10 s | 0.075 (0.15 K) | 20 s | 0.01 (0.02 K) | 0.062 % (0.124 K) | froth temperature fluctuations |
 | TI, liquid line | TI-100 reflux (drum outlet), TI-201/202 CW in/out: 0–200 °C | 10 s | 0.025 | 20 s | 0.01 | 0.022 % | |
@@ -1462,12 +1472,25 @@ The DCS shows no valve fault (there is no position feedback). The only signs are
 | FC-103 | FT-103 (T1 0–300 kmol/h; T2/3 0–3000 kW) | FV-103 | reverse | AUTO (CAS when TC-101 is enabled) | 0.6 | 2.0 | 0 | yes | 0–100 | δ_c | all |
 | LC-101 | LT-101 (0–100 %) | LV-101 | direct | AUTO | 2.0 | 1800 | 0 | no | 0–100 | dt | all |
 | LC-102 | LT-102 (0–100 %) | LV-102 | direct | AUTO | 2.0 | 1800 | 0 | no | 0–100 | dt | all |
-| PC-101 | PT-101 (0–2 P_design) | PV-101 (total condenser) / PV-102 (partial) | direct | AUTO | 10 / 1.0 | 120 / 30 | 0 | no | 0–100 | dt | T2/3 |
+| PC-101 | PT-101 (0–2 max(P_design, SP), below) | PV-101 (total condenser) / PV-102 (partial) | direct | AUTO | 10, scheduled below 35 % OP (below) / 1.0 | 120 / 30 | 0 | no | 0–100 | dt | T2/3 |
 | TC-101 | TI on the chosen tray (0–200 °C) | FC-103 SP (cascade) | reverse | disabled (MAN) | 4.0 | 900 | 0 | no | 20–65 | dt | T2/3 |
 
 TC-101's Kc = 4.0 on the 200 K TI span equals v1.0's 1.0 on the old 50 K span (T_top − 10 K … T_bottom + 10 K): 30 kW per 0.5 K.
 
 **PC-101, total condenser: Kc 10, Ti 120 s** (M4 prototype; v1.0: 2 / 60 s). Even at the 50 % design point (§7.2) the CW valve is a weak handle: about 580 Pa per % OP (0.29 % of span per % OP), with an open-loop time constant of about 190 s set by the column's heat storage. With v1.0's tuning a +10 kPa SP step took 695 s to settle within ±1 kPa (VC-16.6 asks for 10 min). With 10 / 120 it settles in 297 s (+10 kPa) and 438 s (−10 kPa) without overshoot. PV-102 for the partial condenser acts directly on the vapour flow, and v1.0's 1.0 / 30 s stays **[impl-tunable]** (VC-16.6b).
+
+**PC-101 gain schedule, total condenser** (ratified 2026-10-12 from DEVIATIONS.md E47). The CW valve gets far stronger as it closes. From (7.3), dQ_C/dm_cw ∝ a/(m_cw + a)² with a = UA_eff/(2 c_p,w) (B-T 3.3 kg/s; linear valve, m_cw,max 41.5 kg/s). Relative to the 50 % design point that is ≈ 1.8× at 35 % open, ≈ 12× at 9 % and ≈ 17× at 6 %. The tuned controller limit-cycles down there: G8 at 2–3 bar with 15 °C water works at 5–7 % OP (V₁ swung between 50 and 210 kmol/h at dt = 2 s), and G9 turned down at 1 atm sits near 9 % (VALIDATION.md VC-28.8). PC-101 therefore uses
+
+```
+Kc_eff = Kc · clamp(OP/35, 0.1, 1)          OP = PC-101's own output at the previous execution
+```
+
+That keeps the B-T loop gain within ≈ 1.8–3× the design value from 35 % down to 3.5 % open. The schedule uses the controller's OP, not the valve position, as a DCS would; the two differ only through the actuator rate and valve faults (F20). In the velocity form (§10.2) a changing Kc is bumpless. Ti is unchanged. At and above 35 % OP the tuning is the plain one, so VC-16.6 is unaffected. It applies to every preset with a total condenser. With a partial condenser PC-101 drives PV-102, and (7.5) is linear in OP, so it is not scheduled.
+
+**PT-101 range and alarms follow the pressure set point** (ratified 2026-10-12 from E48). PT-101 spans 0 to 2 · max(P_design, SP), where SP is PC-101's set point. A fixed 0–2 P_design span puts G8's 3 bar off scale: the controller then saw 208 kPa for ever, closed the CW valve and the relief valve lifted. Rules:
+- The span is a function of the SP alone. It is re-derived whenever the SP changes, by any route (the `pTop` lever, `setSp`, a scenario event), and from the saved SP on restore, so one SP always gives one span. For SP ≤ P_design it is the design span.
+- It is a transmitter re-range. σ_s, σ_e and F19 biases stay in % of span, the PC-101 history is rescaled, and PC-101's Kc stays in % of span, so its Pa-gain falls as 1/span above design. That is accepted: the higher pressures also have the larger condenser ΔT. The +10 kPa SP step of VC-16.6 therefore runs on a 222.65 kPa span.
+- PT-101 `HI` / `LO` alarms sit at 1.15 / 0.85 × SP (§10.8), so a learner who moves the operating pressure does not live in alarm.
 
 Crude (M9): TC-201 top temperature → FC reflux (direct, Kc 1.0 on a 50 K span, Ti 300 s); LC-201 drum → naphtha; LC-202 sump → residue; FC-201…203 side draws; FC-204 PA duty; TC-202 COT (ideal first-order, τ = 60 s: the furnace is not modelled); FC-205…208 steam. Every FC uses the flow-loop settings of §10.4.
 
@@ -1486,14 +1509,14 @@ Each alarm has a stable id `<tag>.<type>` (or `model.<type>`), a priority (H/M/L
 | Type | Condition (on the measured PV unless stated) | Priority | On / off delay | Deadband |
 |---|---|---|---|---|
 | `HIHI` / `LOLO` | Levels > 95 % / < 5 % | H | 5 s / 10 s | 1 % |
-| `HI` / `LO` | Levels > 85 % / < 15 %; PT-101 > 1.15 / < 0.85 × P_design; flows > 90 % of span (no LO for flows); AT-101, AT-102 > 0.05 | M | 5 s / 10 s | 1 % of span |
+| `HI` / `LO` | Levels > 85 % / < 15 %; PT-101 > 1.15 / < 0.85 × the PC-101 SP (§10.7); flows > 90 % of span (no LO for flows); AT-101, AT-102 > 0.05 | M | 5 s / 10 s | 1 % of span |
 | `DEV` | Loop in AUTO/CAS and \|PV − SP\| > limit: flows 5 % of span, levels 10 %, PT-101 3 %, TC-101 2 K | M | 30 s / 10 s | clears below 80 % of the limit |
 | `OPSAT` | Loop in AUTO/CAS, OP at OPLO or OPHI, and \|e\| > 2 % | M | 60 s / 10 s | – |
 | `BAD` | Quality BAD (on a loop PV: H; display-only: M) | H/M | 0 / 10 s | – |
 | `OOR` | Quality UNCERTAIN | L | 5 s / 10 s | – |
 | `SHED` | Loop shed to MAN on BAD PV | M | 0 / – (clears when the learner acknowledges and the PV is GOOD) | – |
 | `STALE` | Analyser result older than 2 T_c | L | 0 / 0 | – |
-| `model.flood`, `model.weep`, `model.dcLimited`, `model.dutyLimited`, `model.tsUnstable`, `model.waterCondensing`, `model.drawDry` | As in v1.0: max flood % > 90, weep fraction > 0.3, any downcomer limited, Q_v > Q_max for 60 s, I_s > 1, crude conditions | M (dcLimited L) | 30 s / 30 s | – |
+| `model.flood`, `model.weep`, `model.dcLimited`, `model.dutyLimited`, `model.tsUnstable`, `model.waterCondensing`, `model.drawDry` | As in v1.0: max flood % > 90, weep fraction > 0.3, any downcomer limited, Q_max,0 g(p) > Q_max for 60 s (§8.2), I_s > 1, crude conditions | M (dcLimited L) | 30 s / 30 s | – |
 | `model.relief` | Relief valve lifting | H | 0 / 30 s | – |
 | `model.solver` | Solver fallback (developer overlay only) / fatal (H) | L/H | 0 | – |
 
@@ -1541,11 +1564,11 @@ Faults act only by changing physical parameters or adding physical flows. No fau
 | F08 Feed thermal upset | feed | T_F += s ΔT (Tier 2/3, default −40 K) or q += s Δq (Tier 1, default +0.3) | 0 |
 | F09 Loss of cooling | condenser | mode flow: m_cw,max × (1 − s); mode temperature: T_cw,in + 15 s K. B-T prototype (UA 29.9 kW/K at 50 % CW, PC-101 at 10/120): flow s = 0.5 is absorbed (the valve opens towards 100 %, P stays at SP); s = 0.6 → CW 100 % after 125 s, P → 1.070 bar(a); s = 0.7 → 72 s, 1.167 bar(a); s = 1 → relief set point 3.5 bar(a) reached after 471 s. Temperature mode: s = 0.6 → P 1.180 bar(a); s = 1 → 1.389 bar(a). Drill ranges therefore start at s = 0.6 | 0 (pump trip) / 1800 s |
 | F10 Condenser fouling | condenser | R_f = s · 1.5/UA_clean (at s = 1, UA_eff = 0.4 UA_clean) | 6 h |
-| F11 Non-condensables | overhead | ε_I = 1×10⁻⁴ s (mol inert per mol feed), §7.1. At s = 1 about 10 mol of inert per hour accumulates in a 104 mol overhead (B-T), so y_I ≈ 0.09 and f_blanket ≈ 0.27 after 1 h; extra subcooling 20 f_blanket ≈ 5 K. Opening the vent (§7.1) removes it | 0 |
+| F11 Non-condensables | overhead | ε_I = 1×10⁻⁴ s (mol inert per mol feed), §7.1. At s = 1 about 10 mol of inert per hour accumulates (B-T). It is a transient: PC-101 first holds P by opening the CW valve, but the 50 % condenser (§7.2) has only +7.9 % of reserve, which blanketing (3 y_I) plus the lower condensable partial pressure use up at y_I ≈ 0.02. The valve saturates after ≈ 17 min and P then rises. At 1 h (engine c4e1f17, matching n_I = ε_I F t, P = n R T₀/V, ΔT_sub = 20 f_blanket): P_top ≈ 139 kPa, overhead 138.7 mol (128.7 condensable + 10.0 inert), y_I ≈ 0.072, f_blanket ≈ 0.22, extra subcooling ≈ 4.3 K. (With P held at 1 atm the same inert would give y_I ≈ 0.09 and ≈ 5 K; that needs a larger condenser.) Opening the vent (§7.1) removes it | 0 |
 | F12 Reflux pump trip | reflux | L_0 ≤ (1 − s) L_0,max | 0 |
 | F13 Reboiler fouling | reboiler | R_f,R = s · 1.5/UA_R,clean | 6 h |
 | F14 Condensate backup (failed trap) | reboiler | f_flooded = 0.8 s. "Open trap bypass" action: s → 0 over 300 s | 60 s |
-| F15 Steam header pressure loss | steam | P_hdr (absolute) × (1 − 0.6 s) → lower T_st (water saturation, DIPPR-101 inverse). B-T: s = 0.5 → 3.16 bar(a), 135.4 °C, Q_max 1437 kW, which still covers the 1300 kW design duty; the duty limit starts at s ≈ 0.58. Drill ranges therefore start at s = 0.7 (2.62 bar(a), 129.0 °C, Q_max ≈ 1070 kW; s = 1: 1.81 bar(a), 117.1 °C, 384 kW) | 120 s |
+| F15 Steam header pressure loss | steam | P_hdr (absolute) × (1 − 0.6 s) → lower T_st (water saturation, DIPPR-101 inverse). B-T, with Q_max taken at T_B = 110.4 °C (the E = 1 VC-11 point where UA_R is sized, and the first step after onset): s = 0.5 → 3.16 bar(a), 135.4 °C, Q_max 1437 kW, which still covers the 1300 kW design duty; the duty limit starts at s ≈ 0.58 (engine: between 0.55 and 0.6). Drill ranges therefore start at s = 0.7 (2.62 bar(a), 129.0 °C, Q_max ≈ 1070 kW; s = 1: 1.81 bar(a), 117.1 °C, 384 kW). At the E = 0.7 default (T_B 109.6 °C) each Q_max is ≈ 50 kW higher (s = 0.5: 1490 kW). "Limited" is an onset statement: once the duty falls short, T_B falls and Q_max partly recovers (s = 0.6: 1299 kW after 15 min; s = 0.85 on the default preset ≈ 1200 kW). The plant symptom is `FC-103.OPSAT`, not `model.dutyLimited` (§8.2) | 120 s |
 | F17 Thermosyphon inlet restriction | loop | K_in += 300 s | 1800 s |
 | F18 Thermosyphon outlet restriction | loop | K_out += 40 s | 1800 s |
 | F19 Instrument calibration fault | instrument tag | `bias`: b = σ s · 10 % of span; `drift`: σ s · 10 % of span per hour; `stuck`: outputs frozen at t₀ (§10.6) | 0 |
