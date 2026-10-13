@@ -975,15 +975,15 @@ In Tier 1 the boilup lever V_B is used directly; heat-transfer limits do not app
 
 ### 8.3 Thermosyphon reboiler (M6)
 
-A vertical thermosyphon draws sump liquid down an inlet line, heats it in tubes, and returns a two-phase mixture through a riser to the column above the liquid level. Nothing pumps it: the driving force is the density difference between the liquid leg and the two-phase leg.
+A vertical thermosyphon draws sump liquid down an inlet line, heats it in tubes, and returns a two-phase mixture through a riser to the column above the liquid level. Nothing pumps it: the driving force is the density difference between the liquid leg and the two-phase leg. Tiers 2/3 only. In Tier 1 the boilup lever V_B is used as for the kettle; the loop state is kept, and it is re-initialised (§13.1 step 7) when the tier returns to 2 or 3.
 
 #### 8.3.1 Geometry and properties (B-T defaults)
 
 | Item | Symbol | Default |
 |---|---|---|
 | Tubes: number, inner diameter, length | N_t, D_i, L_t | 200, 0.0212 m, 3.0 m |
-| Heat-transfer area | A | 47.6 m² |
-| Overall clean U (steam → boiling organic) | U | 1000 W/(m²·K) |
+| Heat-transfer area: the outside area of 1" tubes. It is an input; N_t π D_i L_t would give 40.0 m² | A | 47.6 m² |
+| Overall clean U (steam → boiling organic), referred to A | U | 1000 W/(m²·K); UA_R,clean = U A = 47.6 kW/K (used by F13 and C4) |
 | Liquid surface height above bottom tubesheet | z = z_0 + (level%/100) h_sump | z_0 = 1.2 m, h_sump = 2.4 m (75 % level → z = 3.0 m = top tubesheet) |
 | Return nozzle height above bottom tubesheet | z_ret | 4.5 m (riser length L_r = z_ret − L_t = 1.5 m) |
 | Inlet line diameter, length | D_in, L_in | 0.20 m, 6.0 m |
@@ -993,53 +993,78 @@ A vertical thermosyphon draws sump liquid down an inlet line, heats it in tubes,
 | Outlet loss coefficient (bends, nozzle) | K_out | 3 |
 | Exit-quality onset of mist-flow degradation | x_c | 0.30 |
 
-Liquid properties are the sump liquid's (ρ_L, c_p,L, λ = H_V − h_L at the sump), ρ_V at P_{N+1}; dT_sat/dP = R T²/(λ P) (Clausius–Clapeyron). Flow areas: A_t = N_t π D_i²/4, A_in, A_r.
+Liquid properties are those of the sump liquid:
+- ρ_L and c_p,L (J/(kg·K)).
+- The **mass** latent heat λ = (H_V − h_L)/M̄_L (J/kg) at the sump, where M̄_L is the sump liquid's mean molar mass (kg/mol).
+- ρ_V at P_{N+1}; μ_L is the preset constant.
+
+Clausius–Clapeyron needs the **molar** latent heat: dT_sat/dP = R T_sump² / (λ M̄_L P_{N+1}) in K/Pa (B-T: 3.63×10⁻⁴ K/Pa at 383.5 K and 1 atm). v1.0 wrote R T²/(λ P) with the same λ that the loop uses per kg, which is off by M̄_L.
+
+Flow areas: A_t = N_t π D_i²/4 (0.0706 m²), A_in = π D_in²/4, A_r = π D_r²/4. g = 9.80665 m/s².
 
 #### 8.3.2 Loop model (sub-stepped)
 
-States: circulation W (kg/s), riser quality x_r, oscillator (u, v). Sub-step δ = 0.1 s (5 sub-steps per main step at dt = 0.5 s; 20 at 2.0 s). Within a main step, column conditions (sump T, composition, P, level) are frozen.
+**States:** circulation W (kg/s), riser quality x_r, exit quality x_e of the previous sub-step, the filters x̄_e, r̄_out and r̄_in, and the oscillator (u, v). All of them belong to the column state, the save data and the warm-start cache.
+
+**Sub-step:** δ = 0.1 s, equal to the control fast-layer sub-step δ_c (§10.1): 5 sub-steps per main step at dt = 0.5 s, 20 at 2.0 s. Within a main step the column conditions (sump T, composition, P, level) are frozen at their start-of-step values.
 
 ```
-Static head subcooling at the tube inlet:  ΔT_sub = (dT_sat/dP) ρ_L g z
+Static head subcooling at the tube inlet:  ΔT_sub = (dT_sat/dP) ρ_L g z                     (K)
 Mean boiling temperature:                   T_b,mean = T_sump + ΔT_sub / 2
 Effective heater flow:                      W_h = max(W (1 + u), 0.3 kg/s)
 
-Heat (3 fixed-point iterations on x_e):
-  D(x_e) = 1                                   x_e ≤ x_c
-         = max(0.35, 1 − 0.65 (x_e − x_c)/0.35) x_e > x_c          (mist-flow loss of wall wetting)
-  U_eff = D(x_e) (1 − f_flooded) / (1/U + R_f,R)          (same fouling and flooding factors as §8.2)
-  Q_max = U_eff A (T_st − T_b,mean)
-  Q     = min(Q_R,SP , Q_max)
-  x_e   = max(0, (Q − W_h c_p,L ΔT_sub) / (W_h λ))                (exit quality)
-Sensible fraction of tube length:           f_sc = min(1, W c_p,L ΔT_sub / Q)
+Heat and exit quality (exact solve). The requested duty Q_R,SP is the steam valve's request Q_v of this sub-step (§8.3.4):
+  D(x) = 1                                   x ≤ x_c
+       = max(0.35, 1 − k (x − x_c))          x > x_c,  k = 0.65/0.35           (mist-flow loss of wall wetting)
+  Q_0  = (1 − f_flooded) / (1/U + A R_f,R) · A (T_st − T_b,mean)
+         (without mist-flow loss; R_f,R in K/W and f_flooded as in §8.2)
+  H = W_h λ ,  S = W_h c_p,L ΔT_sub
+  x_e = (min(Q_R,SP, Q_0) − S) / H
+  if x_e > x_c:
+      x_SP = (Q_R,SP − S) / H
+      if Q_R,SP ≤ D(x_SP) Q_0 :  x_e = x_SP                                    (duty met despite mist flow)
+      else:                      x_e = (Q_0 (1 + k x_c) − S) / (H + k Q_0)     (on the sloped part of D)
+                                 if x_e > x_c + 0.35 :  x_e = (0.35 Q_0 − S) / H   (on the D = 0.35 floor)
+  x_e   = clamp(x_e, 0, 1)
+  Q_max = D(x_e) Q_0
+  Q     = min(Q_R,SP , Q_max , W_h (c_p,L ΔT_sub + λ))       (the last term is dry-out: all of W_h vaporised)
+Sensible fraction of tube length:           f_sc = clamp(W c_p,L ΔT_sub / Q, 0, 1)    (1 when Q = 0)
 
-Two-phase density with Zivi slip S = (ρ_L/ρ_V)^(1/3):
-  α_void(x) = 1 / (1 + ((1 − x)/x)(ρ_V/ρ_L) S)      ρ_tp(x) = α_void ρ_V + (1 − α_void) ρ_L
+Two-phase density with Zivi slip S_Z = (ρ_L/ρ_V)^(1/3):
+  α_void(x) = 1 / (1 + ((1 − x)/x)(ρ_V/ρ_L) S_Z),  α_void(0) = 0      ρ_tp(x) = α_void ρ_V + (1 − α_void) ρ_L
   boiling-zone mean ρ̄_b = average of ρ_tp(x_e (k + ½)/8), k = 0..7     (8-point midpoint, linear x profile)
 
 Riser transport (first-order lag, implicit):
   M_r = A_r L_r ρ_tp(x_r) ;   x_r ← (M_r x_r + δ W_h x_e) / (M_r + δ W_h)
 
 Driving head:
-  ΔP_drive = g [ ρ_L z − ρ_L L_t f_sc − ρ̄_b L_t (1 − f_sc) − ρ_tp(x_r) L_r ]
+  ΔP_drive = g [ ρ_L z − ρ_L L_t f_sc − ρ̄_b L_t (1 − f_sc) − ρ_tp(x_r) L_r ]          (Pa)
 
 Friction (homogeneous two-phase multiplier φ² = 1 + ½ x_e (ρ_L/ρ_V − 1) averaged over the boiling zone):
   f_D = 0.316 Re^−0.25,  Re = max(2000, |W| D_i / (A_t μ_L))
-  c_in   = (K_in + K_valve) / (2 ρ_L A_in²)
+  c_in   = (K_in + K_valve) / (2 ρ_L A_in²)                 (every c is in 1/(kg·m), so c W² is in Pa)
   c_tube = f_D L_t (f_sc + (1 − f_sc) φ²) / (D_i · 2 ρ_L A_t²)
   c_acc  = (v_h(x_e) − 1/ρ_L) / A_t²                   v_h(x) = x/ρ_V + (1 − x)/ρ_L
   c_out  = K_out v_h(x_r) / (2 A_r²)
 Momentum (implicit in W, coefficient frozen):
-  I = L_in/A_in + L_t/A_t + L_r/A_r
-  W ← (W + (δ/I) ΔP_drive) / (1 + (δ/I)(c_in + c_tube + c_acc + c_out) |W|)                   (8.3)
+  I = L_in/A_in + L_t/A_t + L_r/A_r                                               (1/m)
+  W ← (W + (δ/I) ΔP_drive) / (1 + (δ/I)(c_in + c_tube + c_acc + c_out) |W|)
+  W ← max(W, 0)                                     (reverse circulation is not modelled)                (8.3)
 ```
+
+**Why an exact solve instead of v1.0's "3 fixed-point iterations on x_e"** (M6 readiness pass):
+- On the sloped part of D the fixed-point map has slope −k Q_0/(W_h λ). That slope passes −1 at W_h ≈ 8–9 kg/s (B-T: 8.2 kg/s at 75 % level, 8.7 kg/s at 15 %).
+- Below that the iteration diverges into a period-2 jitter between sub-steps. In the prototype at 15 % level, Q alternated 1054 ↔ 1300 kW every 0.1 s. This inflated v1.0's VC-14.1 half-amplitudes and shifted the means of the oscillating rows.
+- Q_max does not increase with x_e, while the left side H x_e + S increases, so the root above is unique.
+- The result does not depend on δ: δ = 0.025 s reproduces every VC-14.1 row.
 
 #### 8.3.3 Instability index and oscillator
 
 Why not first-principles: thermosyphon surging is mainly density-wave oscillation and flow-pattern intermittency. Resolving density waves needs dozens of axial cells and millisecond steps. In prototyping, a 14-cell implicit loop model (with flashing in the riser and hydrostatic subcooling) was stable everywhere in the operating map; the implicit transport on a coarse mesh damps the delay that drives the instability. LowSYS therefore keeps the loop hydraulics physical (8.3) and adds an explicit, physically indexed instability:
 
 ```
-Filtered exit quality and loss ratios (a = δ/(τ_F + δ), τ_F = 30 s; W is the value after the momentum update):
+Filtered exit quality and loss ratios (a = δ/(τ_F + δ), τ_F = 30 s; W is the value after the momentum update;
+a = 1 on the first sub-step after initialisation):
   x̄_e   ← x̄_e   + a (x_e − x̄_e)
   r̄_out ← r̄_out + a (c_out W² / (0.5 ρ_L g z) − r̄_out)      (outlet two-phase loss vs half the static head)
   r̄_in  ← r̄_in  + a (c_in W² / (ρ_L g z) − r̄_in)          (inlet single-phase loss vs static head)
@@ -1048,7 +1073,7 @@ Instability index:
   I_s = max( x̄_e / 0.30 , r̄_out ) / (1 + 3 r̄_in)                                                (8.4)
 ```
 
-Order inside one sub-step: subcooling and T_b,mean → W_h → heat/x_e iterations → f_sc → ρ̄_b → riser update → driving head → friction coefficients → momentum update (8.3) → filters and I_s (8.4) → oscillator (8.5).
+Order inside one sub-step: subcooling and T_b,mean → W_h → heat/x_e solve → f_sc → ρ̄_b → riser update → driving head → friction coefficients → momentum update (8.3) → filters and I_s (8.4) → oscillator (8.5). The sub-step's Q is paired with the u used in W_h, i.e. the value before the oscillator update.
 
 The index encodes three practitioner rules (Kister, *Distillation Troubleshooting*, Wiley 2006, reboiler chapters): high vaporisation (above about 25–35 % for hydrocarbons) causes surging; a restrictive outlet line causes surging; adding inlet restriction stabilises the loop (at the cost of circulation). Low sump level acts through all three: lower head → lower circulation → higher x_e.
 
@@ -1061,20 +1086,41 @@ period T_osc = 2 (M_heater + M_riser) / max(W, 0.3 kg/s)          (twice the tra
 κ = (max(σ, 0) + 1/τ_s) / A_sat²                     A_sat = 0.30
 Sub-step update (exact rotation, then growth):
   [u, v] ← rotate([u, v], ω δ) · exp((σ − κ (u² + v²)) δ)
-  if √(u² + v²) < 1×10⁻³ : rescale to 1×10⁻³ (deterministic noise floor so growth can start)        (8.5)
+  r = √(u² + v²)
+  if σ > 0 and r < 1×10⁻³ :  rescale to r = 1×10⁻³; if r = 0, set [u, v] = [1×10⁻³, 0]
+                             (deterministic seed so that growth can start; no random numbers)
+  if σ ≤ 0 and r < 1×10⁻¹² : [u, v] = [0, 0]                                                       (8.5)
 ```
 
-Below I_s = 1 any oscillation decays with time constant ≈ τ_s / (1 − I_s); above it the amplitude grows over tens of seconds to a limit √(u²+v²) ≈ A_sat √(σ/(σ + 1/τ_s)). Surging therefore *develops over time* and stops when the operator raises the level, throttles the inlet or cuts duty.
+**Floor only while unstable** (M6 readiness pass). v1.0 applied the 1×10⁻³ floor at every I_s. A stable loop then carried a permanent ±0.1 % duty ripple at ≈ 9 s. That ripple moves holdups, P and x by far more than the 1×10⁻⁷ of the steady-state monitor (§13.3), so a thermosyphon column could never be "steady" (VC-14.2 step 1, warm-start caches). The floor now acts only while the loop is unstable.
 
-#### 8.3.4 Coupling to the column
+Below I_s = 1 any oscillation decays with time constant ≈ τ_s / (1 − I_s). Above it the amplitude grows at rate σ to the limit √(u²+v²) ≈ A_sat √(σ/(σ + 1/τ_s)) = A_sat √((I_s − 1)/I_s). The growth time constant τ_s/(I_s − 1) is ≈ 70 s at I_s 1.28 and ≈ 250 s at 1.08. Surging therefore *develops over minutes*, and it stops when the operator raises the level, throttles the inlet or cuts duty.
+
+#### 8.3.4 Coupling to the column and the steam valve
+
+The thermosyphon sub-steps run **inside the control fast layer** (§10.1, §12.4 step 2), one per control sub-step k, right after the valve update:
 
 ```
-Q_R,delivered(t) = Q · (1 + u)          (averaged over the sub-steps of the main step)
+Q_R,SP,k = Q_v,k = Q_max,0 g(p_k)(1 + d_k)            steam valve request (§10.3)
+Q_max,0  = UA_R,clean (T_st − T_b,mean),  UA_R,clean = U A    (clean exchanger, D = 1, start-of-step T_b,mean)
+thermosyphon sub-step k (8.3)–(8.5) → Q_k, u_k
+FT-103 (Tiers 2/3) measures Q_k                       the steam-side duty, without the (1 + u) factor
+Q_R,delivered = mean over k of Q_k (1 + u_k)          used by the sump energy balance (4.7) in step 6
 ```
 
-The column's sump energy balance (4.7) uses Q_R,delivered, so the boilup, bottom-tray ΔP, sump level and bottom temperature all oscillate. The mean energy is conserved over a cycle. The loop's own vapour generation W x_e is a diagnostic (shown in the Equipment tab), not a second boilup.
+The column's sump energy balance (4.7) uses Q_R,delivered. The boilup and every tray's vapour flow therefore oscillate, and with them the tray ΔPs, the column ΔP and, through the sump pressure, the bottom temperatures. The sump level moves only slightly, because the loop's liquid inventory is not coupled to the sump: the extra boilup over half a cycle is ≈ 8 mol, about 0.03 % of level at 15 %. The loop's own vapour generation W x_e is a diagnostic (shown in the Equipment tab), not a second boilup.
 
-Prototype map at the B-T defaults with Q_R,SP = 1300 kW (VALIDATION.md VC-14 gives the fixed-input unit test): sump level 75 % → W ≈ 16.8 kg/s, x_e ≈ 0.17, I_s ≈ 0.50 (stable); 50 % → I_s ≈ 0.74; 30 % → I_s ≈ 1.01 (marginal); 15 % → I_s ≈ 1.28 and a sustained oscillation with relative amplitude ≈ 0.14 (duty swinging about ±290 kW) and period ≈ 8.5 s. Throttling the inlet valve to 16 % open at 15 % level lowers I_s to ≈ 1.07 and the amplitude to ≈ 0.03; raising the level to 50 % removes it. An outlet restriction (K_out = 20) at 75 % level gives I_s ≈ 1.39.
+**Why FT-103 does not see the (1 + u) swing.** The steam side has a chest and condensate volume that the process-side surging works against. The shell pressure swings, and the steam valve's flow follows only weakly at periods of 5–20 s.
+- LowSYS idealises this as a perfect buffer. FT-103 and FC-103 see the mean duty, and its slow fall when mist flow limits Q_max.
+- FC-103 (Ti 2 s) therefore does not fight a 9-s oscillation. A real flow loop with a filtered PV would not fight it either.
+- The price is a small energy mismatch. The cycle mean of u is ≤ 0.005 in every VC-14.1 row, so the delivered energy and FT-103 differ by ≤ 0.5 %, inside the 2 % band of C3b (§14.6). A stable loop (u = 0) has no mismatch.
+
+**Prototype map** at the B-T defaults with Q_R,SP = 1300 kW. VALIDATION.md VC-14.1 gives the fixed-input unit test; the numbers come from the M6 readiness prototype, with the exact solve and the σ > 0 floor.
+- Sump level 75 % → W ≈ 16.8 kg/s, x_e ≈ 0.17, I_s ≈ 0.50 (stable). 50 % → I_s ≈ 0.74. I_s crosses 1 at ≈ 29.5 % level.
+- 15 % → I_s ≈ 1.28 and a sustained oscillation: relative amplitude ≈ 0.14, delivered duty swinging about ±230 kW, period ≈ 8.6 s.
+- Throttling the inlet valve to 16 % open at 15 % level lowers I_s only to ≈ 1.08. The amplitude settles at ≈ 0.08 (−42 %), so **throttling alone does not stop it**. At 8 % open the loop is stable (I_s ≈ 0.87), but mist flow limits the duty to ≈ 1090 kW.
+- Raising the level to ≥ 32 % with the inlet fully open removes the surge without losing duty. As a step from 15 to 50 %, the amplitude is below 0.01 after ≈ 220 s.
+- An outlet restriction (K_out = 20) at 75 % level gives I_s ≈ 1.42.
 
 ---
 
@@ -1205,7 +1251,7 @@ This section is the M3 contract (revised 2026-10-12, v1.1). It replaces the v1.0
 
 **Fast layer.** Sub-step δ_c = 0.1 s; n_c = round(dt/δ_c) sub-steps per main step (5 at dt = 0.5 s, 20 at 2 s, 300 at 30 s). It runs at step 2 of the main step (§12.4) and covers the interval [t, t + dt]. Everything it needs from the column (pump limits, Q_max) is frozen at the start-of-step state, as for the thermosyphon (§8.3). Order inside one sub-step:
 
-1. For every valve, in the fixed order FV-101, FV-102, FV-103, LV-101, LV-102, PV-101, PV-102: position update from the current command (§10.3), then valve flow F_k (§10.3), then the flow transmitter on that line (§10.5).
+1. For every valve, in the fixed order FV-101, FV-102, FV-103, LV-101, LV-102, PV-101, PV-102: position update from the current command (§10.3), then valve flow F_k (§10.3), then the flow transmitter on that line (§10.5). With a thermosyphon reboiler (M6), FV-103's step runs one thermosyphon sub-step (§8.3.4) between its valve flow Q_v,k and FT-103, so FT-103 measures that sub-step's Q_k.
 2. For every flow loop in tag order: ratio station (FC-102 in ratio mode, §10.2), then PID execution (§10.2) with h = δ_c. The new OP acts on the valve from the next sub-step.
 
 The flow that every column balance uses in the main step is the mean over the sub-steps:
@@ -1284,6 +1330,7 @@ flow      F_valve = F_max · g(p) · (1 + d)
 - **Steam valve FV-103, Tiers 2/3.** It delivers duty, not a molar flow:
   - F_max·g(p) becomes the duty request Q_v = Q_max,0 · g(p)(1 + d), where Q_max,0 = UA_R,clean (T_st − T_{N+1}) is the clean-exchanger maximum at the start of the step.
   - The delivered duty is Q_k = min(Q_v, Q_max), with Q_max the fouled/flooded value of (8.2) (kettle) or of §8.3 (thermosyphon, where Q_v takes the place of Q_R,SP).
+  - Thermosyphon (M6, §8.3.4): Q_max,0 = UA_R,clean (T_st − T_b,mean) with UA_R,clean = U A (B-T 47.6 kW/K; Q_max,0 ≈ 1636 kW at 50 % level, so the 1300 kW design duty sits at ≈ 79 % open). Q_k comes from the thermosyphon sub-step. FT-103 measures Q_k, and the column receives the sub-step mean of Q_k (1 + u_k).
   - Q_R,delivered = Q̄. This replaces "min(Q_R,SP, Q_max)" in (8.2). The duty limit now shows physically: FC-103 opens the valve to 100 % and the duty still falls short.
   - The v1.0 "steam valve OP (display) = 100 Q/Q_max" is no longer needed, because the valve position is real.
 - **Tier 1 FV-103** delivers boilup V_B = F_max g(p)(1 + d) with F_max = 300 kmol/h. In both tiers, the FT-103 reading is what V_B or Q_R becomes.
@@ -1363,6 +1410,8 @@ Every transmitter runs the same pipeline on its true value v (SI) at each update
   | TI-100 | (dT_bub/dP) · σ_P, slope of the design distillate's bubble point at the design pressure (preset constant) | 0.32 K/kPa → 0.05 K |
   | FT-201 | c_F · F̄_201, with c_F = σ_d = 0.010 when PC-101 is in MAN (supply disturbance only, §10.3), and 0.022 in AUTO/CAS (the loop adds its own movement) | AUTO, 75 m³/h: 1.65 m³/h |
   | TI-202 | c_F · (T̄_202 − T̄_201) (water rise × relative flow σ, at constant duty) | AUTO: 0.32 K |
+
+  F̄_201, T̄_201 and T̄_202 are means of the readings over the same 300-s window as σ_5min. SP and PC-101's mode are taken at the time of evaluation. σ_typ is re-evaluated whenever σ_5min is (each 5-s trend bin), so it changes with time. Units: σ_P in Pa (PT-101 span), TI σ in K, FT-201 σ in the meter's SI unit; the snapshot carries σ_typ in the same SI unit as `sigma5min`.
 
   0.0015 and 0.022 are **[impl-tunable]**, calibrated on the B-T H9 drill configuration so that the median healthy ratio is ≈ 1. TI-202's windows still spread by a factor ≈ 4.6, more than the 0.5–2 band allows, so H9.0/H10.0 judge these four tags on 0.33–3 (VALIDATION.md). That stays well clear of the fault thresholds (≤ 0.2 frozen or plugged, ≥ 5 erratic). Every other tag uses σ_disp, or the level-loop rule above for FT-104/105.
 - **Displayed noise.** For a healthy transmitter (continuous-time value):
@@ -1516,7 +1565,7 @@ Each alarm has a stable id `<tag>.<type>` (or `model.<type>`), a priority (H/M/L
 | `OOR` | Quality UNCERTAIN | L | 5 s / 10 s | – |
 | `SHED` | Loop shed to MAN on BAD PV | M | 0 / – (clears when the learner acknowledges and the PV is GOOD) | – |
 | `STALE` | Analyser result older than 2 T_c | L | 0 / 0 | – |
-| `model.flood`, `model.weep`, `model.dcLimited`, `model.dutyLimited`, `model.tsUnstable`, `model.waterCondensing`, `model.drawDry` | As in v1.0: max flood % > 90, weep fraction > 0.3, any downcomer limited, Q_max,0 g(p) > Q_max for 60 s (§8.2), I_s > 1, crude conditions | M (dcLimited L) | 30 s / 30 s | – |
+| `model.flood`, `model.weep`, `model.dcLimited`, `model.dutyLimited`, `model.tsUnstable`, `model.waterCondensing`, `model.drawDry` | As in v1.0: max flood % > 90, weep fraction > 0.3, any downcomer limited, Q_max,0 g(p) > Q_max for 60 s (§8.2), I_s > 1 (`tsUnstable` clears only below I_s 0.98, M6), crude conditions | M (dcLimited L) | 30 s / 30 s | – |
 | `model.relief` | Relief valve lifting | H | 0 / 30 s | – |
 | `model.solver` | Solver fallback (developer overlay only) / fatal (H) | L/H | 0 | – |
 
@@ -1528,7 +1577,7 @@ Each alarm has a stable id `<tag>.<type>` (or `model.<type>`), a priority (H/M/L
 
 ### 10.9 Plant view and model view
 
-Lever `view`: 0 = model view (default), 1 = plant view. Drills H9 and H10 use plant view; the sandbox offers it as a toggle.
+Lever `view`: 0 = model view (default), 1 = plant view, 2 = plant view with engineering calculations (M6, below). Drills H9 and H10 use plant view, and H1, H3 and H5 use view 2. The sandbox offers 0 and 1 as a toggle.
 
 - **Model view**: the snapshot carries the model's true values everywhere (as in M1) plus the instrument readings.
 - **Plant view**: the engine masks the snapshot *before* it leaves the simulator, so no UI code can leak the truth:
@@ -1541,7 +1590,15 @@ Lever `view`: 0 = model view (default), 1 = plant view. Drills H9 and H10 use pl
   - `visibleFaults` is empty (already the case in drills). The McCabe–Thiele builder returns `available = false`, and the diagram panel says "Not available on a real plant — the analysers are on the Products tab".
   - The math overlay offers only `ExplainInstrument`, `ExplainLoop` and `ExplainCheck` targets.
   - Model-only alarms (`model.*` except `model.relief`) are suppressed.
-- In both views, scenario predicates, scoring, safety and drill off-spec tests read the **unmasked** state inside the engine.
+  - The reboiler snapshot keeps only duty-side readings (FT-103, steam valve OP, header pressure); the thermosyphon fields of ENGINE_API.md §7.1 become NaN.
+- **Plant view with engineering calculations** (`view` = 2, "plantCalc", M6; drills H1, H3 and H5). This is plant view with one exception: a plant's online rating model would also compute the tray and reboiler hydraulics, so the following stay at their model values, labelled "calc" in the UI:
+  - per-stage `dp`, `jetFlood`, `dcFlood`, `frothFill`, `stability`, `weepFrac`, `flags`;
+  - `kpis.maxFloodPct`, `kpis.maxWeepFraction`;
+  - the thermosyphon fields `circulation`, `exitQuality`, `riserQuality`, `instabilityIndex`, `oscAmplitude`, `oscPeriod`, `inletLineDp`, `outletLineDp` (not `drivingHead`);
+  - the alarms `model.flood`, `model.weep`, `model.dcLimited`, `model.tsUnstable`.
+  Everything else is masked exactly as in plant view, including the sump level (the painter draws LT-102) and the feed composition (AT-100 only). The thermosyphon's static head z is not shown, because it would reveal the true sump level.
+- **Drills in model view** (H2, H4): the snapshot never carries fault parameters, i.e. UA_eff, R_f, f_flooded, the exchangers' Q_max, the overhead inert inventory n_I / y_I, K_in and K_out. Those fields are NaN while `scenario.kind == drill`. The symptoms they cause (P, valve OPs, subcooling, duty, alarms such as `model.dutyLimited`) stay visible.
+- In all views, scenario predicates, scoring, safety and drill off-spec tests read the **unmasked** state inside the engine.
 
 ---
 
@@ -1566,11 +1623,11 @@ Faults act only by changing physical parameters or adding physical flows. No fau
 | F10 Condenser fouling | condenser | R_f = s · 1.5/UA_clean (at s = 1, UA_eff = 0.4 UA_clean) | 6 h |
 | F11 Non-condensables | overhead | ε_I = 1×10⁻⁴ s (mol inert per mol feed), §7.1. At s = 1 about 10 mol of inert per hour accumulates (B-T). It is a transient: PC-101 first holds P by opening the CW valve, but the 50 % condenser (§7.2) has only +7.9 % of reserve, which blanketing (3 y_I) plus the lower condensable partial pressure use up at y_I ≈ 0.02. The valve saturates after ≈ 17 min and P then rises. At 1 h (engine c4e1f17, matching n_I = ε_I F t, P = n R T₀/V, ΔT_sub = 20 f_blanket): P_top ≈ 139 kPa, overhead 138.7 mol (128.7 condensable + 10.0 inert), y_I ≈ 0.072, f_blanket ≈ 0.22, extra subcooling ≈ 4.3 K. (With P held at 1 atm the same inert would give y_I ≈ 0.09 and ≈ 5 K; that needs a larger condenser.) Opening the vent (§7.1) removes it | 0 |
 | F12 Reflux pump trip | reflux | L_0 ≤ (1 − s) L_0,max | 0 |
-| F13 Reboiler fouling | reboiler | R_f,R = s · 1.5/UA_R,clean | 6 h |
+| F13 Reboiler fouling | reboiler | R_f,R = s · 1.5/UA_R,clean (K/W). For the thermosyphon UA_R,clean = U A, and U_eff uses A R_f,R (§8.3.2), so s = 1 again gives 0.4 UA. The kettle's design duty uses 60 % of Q_max, so it becomes duty-limited at s ≈ 0.44 | 6 h (drill H4: 5400 s, §11.9 of ENGINE_API.md) |
 | F14 Condensate backup (failed trap) | reboiler | f_flooded = 0.8 s. "Open trap bypass" action: s → 0 over 300 s | 60 s |
 | F15 Steam header pressure loss | steam | P_hdr (absolute) × (1 − 0.6 s) → lower T_st (water saturation, DIPPR-101 inverse). B-T, with Q_max taken at T_B = 110.4 °C (the E = 1 VC-11 point where UA_R is sized, and the first step after onset): s = 0.5 → 3.16 bar(a), 135.4 °C, Q_max 1437 kW, which still covers the 1300 kW design duty; the duty limit starts at s ≈ 0.58 (engine: between 0.55 and 0.6). Drill ranges therefore start at s = 0.7 (2.62 bar(a), 129.0 °C, Q_max ≈ 1070 kW; s = 1: 1.81 bar(a), 117.1 °C, 384 kW). At the E = 0.7 default (T_B 109.6 °C) each Q_max is ≈ 50 kW higher (s = 0.5: 1490 kW). "Limited" is an onset statement: once the duty falls short, T_B falls and Q_max partly recovers (s = 0.6: 1299 kW after 15 min; s = 0.85 on the default preset ≈ 1200 kW). The plant symptom is `FC-103.OPSAT`, not `model.dutyLimited` (§8.2) | 120 s |
-| F17 Thermosyphon inlet restriction | loop | K_in += 300 s | 1800 s |
-| F18 Thermosyphon outlet restriction | loop | K_out += 40 s | 1800 s |
+| F17 Thermosyphon inlet restriction | loop | K_in += 300 s. Loop-only prototype (VC-14.1 inputs, 50 % level, 1300 kW): circulation W falls 30 % at s = 0.3, 38 % at 0.5 and 49 % at 1; x_e 0.24 → 0.36 / 0.41 / 0.46. I_s *falls* (0.74 → ≈ 0.65), because inlet friction stabilises (8.4), so there is no surge. Mist flow starts to limit the duty at s ≈ 0.5 (s = 0.5: 1297 kW; 0.7: 1236 kW; 1: 1164 kW). Drill range [0.3, 0.8] | 1800 s |
+| F18 Thermosyphon outlet restriction | loop | K_out += 40 s. Same conditions: I_s 1.09 at s = 0.1, 1.33 at 0.2, 1.56 at 0.4 and 1.85 at 1. The limit amplitude is 0.09 / 0.15 / 0.18 / 0.20, with a period of 9.5 / 10.1 / 11.5 / 15.0 s. W falls 27 % / 40 % / 54 % / 70 %, and the mean duty falls to 1243 / 1096 / 844 kW from s ≈ 0.15. With the 1800-s ramp at s_f = 0.4, I_s passes 1 about 6 min after onset and the amplitude reaches 0.05 after ≈ 14 min (s_f = 0.2: 12 and 23 min). Drill range [0.2, 0.6] | 1800 s |
 | F19 Instrument calibration fault | instrument tag | `bias`: b = σ s · 10 % of span; `drift`: σ s · 10 % of span per hour; `stuck`: outputs frozen at t₀ (§10.6) | 0 |
 | F28 Transmitter hard failure | instrument tag | `signalLossLow` / `signalLossHigh` (3.6 / 21.0 mA, BAD), `plugged` (extra lag 10^(4s) − 1 s on the sensed signal), `spiking` (Poisson spikes, rate s/20 s⁻¹, 10–50 % s of span), `coated` (TI lag × (1 + 9 s)) (§10.6) | 0; `plugged` 300 s |
 | F20 Valve fault | valve id | `stuck` (position frozen at t₀) / `failOpen` (command 100 %) / `failClosed` (command 0 %); the actuator lag still applies (§10.3, §10.6) | 0 |
@@ -1738,11 +1795,14 @@ After the solve the new state is m_ij^(n+1); M_j = Σ_i m_ij (not M̂_j); x = m/
  1. Faults: update s(t) for every active fault; build the effective parameter set.
  2. Inputs: apply lever changes and scenario events; then the control fast layer (§10.1): n_c sub-steps of
     valves, flow transmitters, ratio station and flow loops over [t, t + dt], using the start-of-step pump
-    limits and Q_max → the mean flows F̄ (10.0) used by every balance of this step.
+    limits and Q_max → the mean flows F̄ (10.0) used by every balance of this step. With a thermosyphon, each
+    sub-step also runs one loop sub-step (8.3)–(8.5) between FV-103 and FT-103 (§8.3.4), with the column
+    conditions of the start of the step.
  3. Thermo (from end of previous step, cached): T_j, K̃_ij, y_j, h_j, H_j, ρ, σ, v_L.
  4. Hydraulic coefficients at state n: Bennett α_e, ΔP_j, P_j profile, φ_j, ψ filter update, e_j,
     bypass fractions f_j, L_max,j, the dumping factor (0.2 − Φ_j)/0.2, M_max; packing φ_p, ΔP, holdup factor, HETP, E.
- 5. Reboiler: kettle Q (8.2) or thermosyphon sub-steps (8.3) → Q_R,delivered.
+ 5. Reboiler: kettle Q (8.2), or for the thermosyphon the mean of Q_k (1 + u_k) over the sub-steps already run in
+    step 2 (§8.3.4) → Q_R,delivered.
  6. Vapour profile bottom-up: (4.4) Tier 1; Tiers 2/3: the overhead pressure solve (§7.4), which calls the
     sweep (4.6)/(4.7) for each trial P → P_top^(n+1), n_V^(n+1), N_cond, Q_C and the final V_j; sump-starvation factor.
  7. Side strippers (crude): hydraulic + component step for each stripper chain.
@@ -1853,7 +1913,7 @@ The seed is `SimOptions.seed`. Stream states are part of the saved state (§1.2)
 4. Temperatures: bubble point of z at each P_j.
 5. Holdups: trays from Bennett at the estimated L_j and V_j; packed segments from (6.3); drum and sump at 50 % level.
 6. Controllers: OPs set to the values that give the estimated flows; valve positions p = c = OP; PID histories e = 0, PVf = PV; filters at their inputs (ψ_j = ψ_eq, L̄_j = L_j); instrument lags v_p = v_m = v_ss = true value; noise states 0; each analyser shows the current true value as a result of age 0; no alarms.
-7. Thermosyphon: run the loop model alone for 600 s with the column frozen.
+7. Thermosyphon: run the loop model alone for 600 s with the column frozen and Q_R,SP = the duty from step 2. Start from W₀ = Q_R,SP / (0.25 λ) (B-T 14.4 kg/s), x_r = x_e = 0, u = 1×10⁻³, v = 0, and filters set from the first sub-step (§8.3.3). The same initialisation runs when the reboiler type is switched to thermosyphon (the lever needs a pause) and when the tier returns from 1 to 2 or 3.
 
 From there the dynamic model itself is the solver (pseudo-transient continuation): it is physically stable, so marching in time converges to the steady state for any physically feasible lever set. "Run to steady state" marches with dt = 2 s until the monitor (§13.3) passes, or 48 h of sim time; it reports "no steady state" if the cap is hit (e.g. an oscillating thermosyphon or a flooded column).
 
@@ -2018,7 +2078,7 @@ The engine computes these checks from **readings only** (instrument values and q
 | C3 | **Top vapour, Tier 1**: boilup vs reflux + distillate (CMO) | V_boil = V̄_B + (1 − q) F̄ (V_B = FT-103, q = feed lever); V_refl = L̄_0 + D̄ + ΔN_0/W (L_0 = FT-102); r3 = V_boil − V_refl | max(2.0 kmol/h, 0.015 V_refl) · max(1, 600 s/W) (same reason as C1) | Three numbers: "Vapour to the top: from boilup 150.1 · from reflux + distillate 149.8 · difference +0.3 (band ±2.3)" |
 | C3a | **Top vapour, Tiers 2/3**: condenser duty vs reflux + distillate | Q_C,cw = ρ_w FT-201 c_p,w (TI-202 − TI-201) (windowed means; ρ_w 995 kg/m³, c_p,w 4180 J/kg/K); λ_top = H_V(x_D, T_cond) − h_L(x_D, T̄_100), T_cond = T_bub(x_D, P̄_101); V_cw = Q_C,cw/λ_top; r3a = V_cw − V_refl | max(2.0 kmol/h, 0.02 V_refl) · max(1, 600 s/W) | "Condenser 1282 kW ≈ 150.3 kmol/h of vapour · reflux + distillate 149.9" |
 | C3b | **Column energy balance**, Tiers 2/3 | r3b = Q̄_R + F̄ h_F − Q_C,cw − D̄ h_D − B̄ h_B; Q_R = FT-103; h_F from the feed lever (T_F) and z = AT-100 with the simulator's own feed-enthalpy function; h_D = h_L(x_D, T̄_100); h_B = h_L(x_B, T̄_121) | 0.02 Q̄_R | "Reboiler 1301 kW + feed −12 kW = condenser 1282 kW + products 4 kW · unaccounted +3 kW (band ±26)" |
-| C4 | **Valve characteristic**, one per valve–meter pair: FV-101/FT-101, FV-102/FT-102, FV-103/FT-103, LV-101/FT-104, LV-102/FT-105, PV-101/FT-201 | F_exp = F_max g(OP̄); for FV-103 in Tiers 2/3, Q_exp = Q_max,0 g(OP̄) with Q_max,0 = UA_R,clean (T_st(P̄_201) − T̄_121); r4 = F̄_meas − F_exp | 0.015 F_max (10-min noise of r4 from d: ≈ 0.32 % of the flow) | On each faceplate, a small plot of flow vs OP with the straight characteristic, a band and the window-mean operating point. Panel row: "FV-102: OP 30.3 % → expects 90.9 kmol/h; meter says 100.0 (−9.1, band ±4.5)" |
+| C4 | **Valve characteristic**, one per valve–meter pair: FV-101/FT-101, FV-102/FT-102, FV-103/FT-103, LV-101/FT-104, LV-102/FT-105, PV-101/FT-201 | F_exp = F_max g(OP̄); for FV-103 in Tiers 2/3, Q_exp = Q_max,0 g(OP̄) with Q_max,0 = UA_R,clean (T_st(P̄_201) − T̄_121); thermosyphon (M6): Q_max,0 = U A (T_st(P̄_201) − T̄_121 − ΔT_sub/2), with ΔT_sub from (8.3) at the LT-102 window mean and the design dT_sat/dP and ρ_L (preset constants); r4 = F̄_meas − F_exp | 0.015 F_max (10-min noise of r4 from d: ≈ 0.32 % of the flow) | On each faceplate, a small plot of flow vs OP with the straight characteristic, a band and the window-mean operating point. Panel row: "FV-102: OP 30.3 % → expects 90.9 kmol/h; meter says 100.0 (−9.1, band ±4.5)" |
 | C5 | **Level vs integrated flows** (drum, sump) | Drum: Δ_pred = ∫(V̂ − L_0 − D) dt / N_0,1%; sump: Δ_pred = ∫(F + L_0 − V̂ − B) dt / N_S,1% (tray holdups taken constant). V̂ = V_boil (T1) or V_cw (T2/3); Δ_meas = LT_end − LT_start; r5 = Δ_meas − Δ_pred (in % level) | 1.0 % + 0.5 % per 600 s of window | A mini-trend over the window: measured level (solid) and "level predicted from the flows" (dashed, starting at the same point). The gap at the end is r5 |
 | C6 | **Tray temperatures** (T2/3), in two parts | (a) Ordering: going down the column readings must rise; flag TI k if T̄_k < T̄_above − 0.5 K or T̄_k > T̄_below + 0.5 K. (b) Change since a reference: ΔT_k = T̄_k − T_k,ref, where the reference is the 300-s mean at drill start or when the learner presses "Set reference". Flag k if \|ΔT_k − ½(ΔT_above + ΔT_below)\| > max(1.0 K, 0.5 max(\|ΔT_above\|, \|ΔT_below\|)); the end TIs use their single neighbour | (as stated) | The plant-view temperature profile: dots at instrumented trays, the reference profile as a ghost line, and a bar chart of ΔT per TI with flagged TIs in red. A lying TI is a lone bar; a real process change is a smooth wave of bars |
 | C7 | **Bubble-point consistency** (T2/3 binaries; T_bub uses the active tier's K model, so NRTL or DePriester in Tier 3); valid in transients too (the pressure term acts at once; a composition transient adds at most a few tenths of a kelvin through the analyser lag) | Top: r7a = (T̄_100 + ΔT_sub,lever) − T_bub(x_D, P̄_101). Bottom: r7b = T̄_121 − T_bub(x_B, P̄_101 + P̄DT_101) | ±1.0 K each | "Top: drum 80.1 °C + 0 K subcooling vs bubble point of the analysed distillate at the measured pressure 80.3 °C (−0.2 K)". A lying PT moves both rows by about (dT/dP)·b with the same sign (B-T near 1 atm: 0.33 K/kPa) |
@@ -2046,6 +2106,8 @@ Trends make faults visible on a phone because:
 | PT-101 bias | ok | small | ok | ok | coherent shift | fail both rows, same sign | normal |
 | TI bias, drift, spiking, stuck or coated | ok | ok | ok | ok | flagged at that TI (coated: during transients only) | fail if TI-100 or TI-121 | as mode |
 | Real feed upset (F07) | ok | ok | ok | ok | coherent wave | ok once the analysers catch up | normal |
+| Reboiler fouling or condensate backup (F13, F14), thermosyphon restriction (F17, F18) (M6) | ok | ok | FV-103 `fail` once the duty falls short with FC-103 at 100 % (the clean characteristic promises more) | ok | coherent (less boilup) | ok | normal; F18 adds a ≈ 10-s ripple to the bottom TIs, not to FT-103 (§8.3.4) |
+| LT-102 drift with a thermosyphon (H5) | `check` at 10 %/h (r ≈ 1.15 band at any window: r1 is a rate) | – | ok | `check` at the 600-s window (r ≈ 1.1 band), borderline at 1800 s (2.0), `fail` at 3600 s (r ≈ 2.5 band) | ok | ok | normal; field gauge LG-102 disagrees |
 
 ---
 
@@ -2081,6 +2143,7 @@ The math overlay (ENGINE_API.md §8) shows, for the selected item, equations fro
 | Downcomer holdup not tracked | §5.7 | Downcomer liquid level computed algebraically | Downcomer residence time (≈ seconds) |
 | Entrainment fit to Fair's chart; ψ ≤ 0.6 | §5.6 | Chart is ± factor 2; beyond 0.6 the full-tray overflow governs | Very high entrainment regime details |
 | Thermosyphon instability via index + oscillator | §8.3.3 | First-principles density waves need fine meshes and ms steps | Exact oscillation waveform |
+| Thermosyphon: steam side as a perfect buffer (FT-103 sees the mean duty); loop liquid inventory not coupled to the sump | §8.3.4 | Steam chest and condensate absorb a 5–20 s swing; energy mismatch ≤ 0.5 % | Steam-flow ripple during surging; sump-level swing from void changes |
 | DePriester K for hydrocarbons instead of an EOS | §3.4.2 | Textbook standard, fast | Composition dependence of K |
 | Crude: no light ends, constant K_W, steam as inert vapour, 2-stage strippers | §9 | Teaching fidelity; captures cut points, gaps, steam stripping, PA heat balance | Offgas, water dew point details, kerosene flash point |
 | Valves deliver F_max g(p)(1 + d): no pump curves, no line losses, inherent = installed characteristic | §10.3 | Gives a straight characteristic a learner can check; real loops behave the same in the small | Installed-characteristic distortion, pump run-out |

@@ -141,7 +141,7 @@ Ranges are hard limits; defaults are for the benzene–toluene (B-T) preset unle
 | Cooling-water flow capacity | 50–500 | 150 | m³/h / US gpm | T2, T3 | 100 % of the CW valve |
 | Steam header pressure | 1–20 | 3.5 | bar(g) / psig | T2, T3 | Sets steam condensing temperature (148 °C at 3.5 bar(g)) |
 | Reboiler type | kettle / thermosyphon | kettle (thermosyphon in scenarios that use it) | – | T2, T3 | Switch requires pause |
-| Thermosyphon inlet valve | 5–100 | 100 | % open | T2, T3 | Throttling stabilises a surging thermosyphon |
+| Thermosyphon inlet valve | 5–100 | 100 | % open | T2, T3 | Throttling damps a surging thermosyphon at the cost of circulation; at a very low sump level it is not enough on its own (PHYSICS.md §8.3.4) |
 | Antifoam injection | off / on | off | – | all | Counters the foaming fault (with delay) |
 | Overhead inert vent | 0–100 | 0 | % open | T2, T3 | Purges non-condensables |
 | TC-101 tray-temperature control | enable / disable, tray choice, SP | disabled; tray 14 when enabled | – | T2, T3 | Cascades to the reboiler duty |
@@ -214,9 +214,9 @@ Each fault has a physical model (PHYSICS.md §11 gives the equations), a severit
 | F13 | Reboiler fouling | UA_R × 1/(1 + UA_R R_f) with R_f = s · 1.5/UA_R,clean; s ramps over 6 h | Steam valve creeps open, then saturates; duty falls below SP; bottoms off-spec; ΔP falls (less vapour) | Raise steam pressure; cut feed | M4 |
 | F14 | Reboiler condensate backup (failed steam trap) | Fraction 0.8 s of tube area flooded with condensate (no condensing); ramp 60 s | Sudden duty limitation with the steam valve wide open; steam flow falls; unlike fouling, the onset is fast | Open trap bypass (s ramps back to 0 over 300 s) | M4 |
 | F15 | Steam header pressure loss | Header pressure × (1 − 0.6 s) → lower steam temperature | Duty below SP with the steam valve at 100 % (`FC-103.OPSAT`); T_B unchanged at first, then bottoms purity drops | Cut feed | M4 |
-| F16 | Thermosyphon instability (operating condition) | Instability index I_s > 1 grows a limit-cycle oscillation of loop circulation (PHYSICS.md §8.3) | Boilup, bottom-tray ΔP, sump level and bottom T oscillate (period 5–20 s); duty falls if exit quality > 0.30 | Raise sump level; throttle inlet valve; cut duty | M6 |
-| F17 | Thermosyphon inlet restriction | Inlet loss coefficient K_in + 300 s | Lower circulation; higher exit quality; duty may fall | Clear restriction | M6 |
-| F18 | Thermosyphon outlet restriction | Outlet loss coefficient K_out + 40 s | Lower circulation; surging (raises I_s strongly) | Throttle inlet (stabilise); cut duty | M6 |
+| F16 | Thermosyphon instability (operating condition) | Instability index I_s > 1 grows a limit-cycle oscillation of loop circulation (PHYSICS.md §8.3) | Boilup, tray and column ΔP and bottom T oscillate (period 5–20 s); the sump level moves only slightly, and the steam flow (FT-103) shows the mean duty only (PHYSICS.md §8.3.4); duty falls if exit quality > 0.30 | Raise sump level (the reliable fix); throttle inlet valve (damps, costs circulation; at a very low level it costs duty too); cut duty | M6 |
+| F17 | Thermosyphon inlet restriction | Inlet loss coefficient K_in + 300 s | Lower circulation; higher exit quality; inlet-line ΔP up; no surging (inlet friction stabilises); duty may fall at s ≥ 0.5 | Clear restriction | M6 |
+| F18 | Thermosyphon outlet restriction | Outlet loss coefficient K_out + 40 s | Lower circulation; outlet-line ΔP up; surging (raises I_s strongly); duty falls | Throttle inlet (stabilise); cut duty | M6 |
 | F19 | Instrument bias / drift / stuck | Additive in % of span: bias s·10 %, drift s·10 % per hour, or output frozen (no noise). PHYSICS.md §10.6 | Controller holds the wrong value; mass/energy balance mismatch; cross-checks disagree (e.g. level vs flows) | Switch loop to MAN; use redundant instrument | M3 |
 | F20 | Control valve stuck / failed | Valve position frozen, or failed open/closed (actuator lag still applies). PHYSICS.md §10.3, §10.6 | Controller output moves but flow does not | Switch to bypass (manual flow) | M3 |
 | F28 | Transmitter hard failure | Signal loss (NAMUR failure current 3.6 / 21.0 mA → BAD, reads −2.5 % / 106.25 % of span; a loop sheds to MAN or, without shedding, drives its valve to a limit), plugged impulse line (extra lag 10^(4s) − 1 s: the reading stops following the process and keeps only the small electronic noise, "too steady"), spiking (Poisson spikes of 10–50 % of span), coated thermowell (TI lag × (1 + 9 s)). PHYSICS.md §10.6 | Loop on that PV drives its valve to a limit or goes sluggish; reading disagrees with neighbours (adjacent tray TIs, mass balance, valve OP vs flow); plugged lines look "too steady" | Put loop in MAN; use redundant/inferred measurement; flag instrument for maintenance (clears) | M3 |
@@ -253,11 +253,11 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G11 | Flooding | B-T, T2, full hydraulics | Push throughput up 10 % per step | The default column runs at 63 % of flood and floods at about 160 % throughput. Find the onset (ΔP slope change, xD collapse); back off to 80–92 % flood (≈ 130–140 %) with xD ≥ 0.95 | M2 (T1), upgraded in M4 |
 | G12 | Turndown and weeping | B-T, sieve then valve trays | Cut throughput to 35 % | See weeping cost separation on sieve trays and not (yet) on valve trays | M2 |
 | G13 | Debutanizer keys and FUG | Debutanizer, T3 | Compare the FUG panel to the rigorous column | Meet 98 % LK/HK recoveries; compare N and R_min with Fenske/Underwood/Gilliland | M7 |
-| G14 | Thermosyphon tuning | B-T, T2, thermosyphon | Restore stable boilup after a low sump level causes surging | Stop the oscillation (amplitude < 2 % of boilup) without losing more than 10 % duty | M6 |
+| G14 | Thermosyphon tuning | B-T, T2, thermosyphon | Restore stable boilup after a low sump level causes surging. Start: sump held at 15 % with the inlet valve pinched to 8 % (stable, duty-limited); at t = 0 the inlet is opened fully and the loop starts to surge | Stop the oscillation (amplitude < 2 % of boilup, I_s < 1) without losing more than 10 % duty (≥ 1170 kW of the 1300 kW SP); then explain why throttling helps. Throttling alone cannot do it at 15 % level (ENGINE_API.md §11.8) | M6 |
 | G15 | Packing retrofit | B-T, T2 | Compare 20 sieve trays to 9 m of structured packing | Report ΔP ratio and capacity gain (flood % at the same load) | M8 |
 | G16 | Crude cut points and gaps | Crude, T2 | Set draws and PA to meet kero D86 95 % ≤ 235 °C and a diesel–kero gap ≥ 0 °C | Meet both specs with residue D86-equivalent IBP ≥ 340 °C | M9 |
 
-Objective predicates, hints and reference numbers for G1–G12: ENGINE_API.md §11.8.
+Objective predicates, hints and reference numbers for G1–G12 and G14: ENGINE_API.md §11.8.
 
 ### 6.2 Hidden-fault drills (10)
 
@@ -265,11 +265,11 @@ In a drill the engine injects one fault (from the drill's candidate list, chosen
 
 | ID | Drill | System | Candidate faults (one is chosen) | Key evidence the learner should find |
 |---|---|---|---|---|
-| H1 | Creeping ΔP | B-T, T2 | F05 fouling (stripping trays 12–18) vs F07 lighter feed | ΔP rise at constant rates in one section → fouling; profile shift without ΔP change → feed |
+| H1 | Creeping ΔP | B-T, T2, plant view with calculations | F05 fouling (stripping trays 12–18, or rectifying trays 2–8) vs F07 lighter feed | ΔP rise at constant rates in one section → fouling; profile shift without ΔP change → feed |
 | H2 | Pressure won't hold | B-T, T2 | F09 CW loss (partial), F10 condenser fouling, F11 non-condensables | Subcooling trend separates inerts (rises) from fouling/CW loss (falls); CW temperature/flow readings |
-| H3 | Lost separation | B-T, T2 | F04 broken tray (rectifying), F06 foaming (s 0.8–1.0), F19 reflux flow meter bias | One tray's ΔP near zero (broken tray) vs flood % high at normal load with unchanged column ΔP (foam) vs balance mismatch (meter bias: L + D ≠ V₁ from heat balance) |
+| H3 | Lost separation | B-T, T2, plant view with calculations | F04 broken tray (rectifying), F06 foaming (s 0.8–1.0), F19 reflux flow meter bias | One tray's ΔP near zero (broken tray) vs flood % high at normal load with unchanged column ΔP (foam) vs balance mismatch (meter bias: L + D ≠ V₁ from heat balance) |
 | H4 | Reboiler can't keep up | B-T, T2 | F13 fouling, F14 condensate backup, F15 steam header loss | Onset speed; steam flow vs valve position; header pressure reading |
-| H5 | Bottoms level swings | B-T, T2, thermosyphon | F19 sump level transmitter drift (true level low → surge), F17 inlet restriction, F18 outlet restriction | Thermosyphon circulation and exit quality; compare level with mass balance |
+| H5 | Bottoms level swings | B-T, T2, thermosyphon, plant view with calculations | F19 sump level transmitter drift (true level low → surge), F17 inlet restriction, F18 outlet restriction | Thermosyphon circulation and exit quality; inlet vs outlet line ΔP; compare level with mass balance and the LG-102 sight glass |
 | H6 | Off-spec overhead | Debutanizer, T3 | F07 feed upset (more nC4/iC5), F12 partial reflux loss, F20 reflux valve stuck | Feed analyser trend vs reflux flow vs valve OP–flow mismatch |
 | H7 | Packed bed underperforms | B-T packed, T2 | F21 maldistribution, F22 near-flood operation, F23 crushed packing | ΔP at constant load (crushed: up; maldistribution: flat) and bed T profile |
 | H8 | Crude product drift | Crude, T2 | F24 stripping steam loss, F25 pumparound trip, F26 COT upset | Bottom T and residue yield; overhead duty and top T; flash-zone T |
@@ -283,7 +283,9 @@ Scoring (exact formulas: ENGINE_API.md §11.4).
 - **Bonuses** (H9, H10): +10 % for putting the affected loop in MAN, or breaking the cascade, before the product goes off-spec. H9 also gives +5 % for naming the failure mode.
 - Drill hints cost 3 % each. The total is capped at 100 %.
 
-Drills must be winnable on a phone with noise on. Every candidate's evidence must clear the signal-to-noise rules of ENGINE_API.md §11.5, which VALIDATION.md §H tests with noise on.
+Drills must be winnable on a phone with noise on. Every instrument and valve candidate's evidence must clear the signal-to-noise rules of ENGINE_API.md §11.5, which VALIDATION.md §H tests with noise on; process candidates are checked by the key-evidence rows of VALIDATION.md §H.
+
+**Views in drills (M6).** A drill must not show the learner the truth that its candidates hide. H9 and H10 use plant view. H1, H3 and H5 contain instrument or feed candidates, so they use *plant view with engineering calculations*: readings everywhere, plus the computed tray hydraulics (ΔP per tray, flood %) and thermosyphon figures (circulation, exit quality, I_s) that an online rating model gives a plant engineer (PHYSICS.md §10.9). H2 and H4 use model view, with fault parameters (UA, fouling resistance, inert inventory, loss coefficients) hidden. Full drill definitions for H1–H5: ENGINE_API.md §11.9.
 
 ---
 
@@ -495,6 +497,8 @@ Readiness pass completed 2026-10-12 (excerpt: docs/milestones/M5.md).
   - Identical steady states at dt 0.5, 2 and 30 s (VC-28.1).
 
 ### M6 — Thermosyphon reboiler and hidden-fault drills
+
+Readiness pass completed 2026-10-13 (excerpt: docs/milestones/M6.md). It changed §8.3 (exact x_e solve, oscillator floor only while unstable, FT-103 on the steam side), re-derived VC-14 and added the H1–H5 definitions, G14 and the "plant view with calculations".
 
 - Engine: thermosyphon loop model with instability index and oscillator (PHYSICS.md §8.3); faults F16–F18; hidden-fault framework (seeded candidate, severity, onset and sign draw, diagnosis submission, protect/off-spec clocks, drill scoring; ENGINE_API.md §11.2–11.4). Measurement noise already exists from M3.
 - App: Equipment tab for the reboiler (loop schematic, circulation, exit quality, I_s gauge); Drill HUD and Diagnose dialog; drills H1–H5, H9, H10; scenario G14.
