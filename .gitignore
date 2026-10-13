@@ -31,3 +31,4 @@ docs/.coordinator_started
 docs/.coordinator_heartbeat
 docs/.handoff_now
 .scratch/
+app/test/failures/
