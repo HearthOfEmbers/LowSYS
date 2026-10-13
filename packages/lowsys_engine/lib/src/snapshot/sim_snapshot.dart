@@ -111,14 +111,44 @@ class StreamSnapshot {
 
   /// K, NaN in Tier 1
   final double temperature;
-  const StreamSnapshot(this.id, this.flow, this.composition, this.temperature);
+
+  /// Thermal condition q (PHYSICS.md 3.15) of the feed in Tiers 2/3 (NaN elsewhere).
+  final double q;
+  const StreamSnapshot(this.id, this.flow, this.composition, this.temperature,
+      [this.q = double.nan]);
 }
 
 @immutable
 class CondenserSnapshot {
   /// Drum liquid holdup (mol) and level (%).
   final double drumHoldup, drumLevelPct;
-  const CondenserSnapshot(this.drumHoldup, this.drumLevelPct);
+
+  /// Tiers 2/3 (PHYSICS.md 7): duty (W), clean and effective UA (W/K), CW inlet and outlet (K), CW flow (kg/s) and
+  /// CW valve opening (%), condensing temperature and reflux temperature (K), reflux subcooling (K), inert mole
+  /// fraction, condensable vapour inventory (mol), condensation / vent / relief rates (mol/s). NaN in Tier 1.
+  final double qC, uaClean, uaEff, tCwIn, tCwOut, cwFlow, cwOp;
+  final double tCond, tReflux, subcooling, inertFraction, vaporMoles;
+  final double nCond, nVent, nRelief;
+
+  /// n_V,i per component (mol); empty in Tier 1.
+  final Float64List vaporInventory;
+  const CondenserSnapshot(this.drumHoldup, this.drumLevelPct,
+      {this.qC = double.nan,
+      this.uaClean = double.nan,
+      this.uaEff = double.nan,
+      this.tCwIn = double.nan,
+      this.tCwOut = double.nan,
+      this.cwFlow = double.nan,
+      this.cwOp = double.nan,
+      this.tCond = double.nan,
+      this.tReflux = double.nan,
+      this.subcooling = double.nan,
+      this.inertFraction = double.nan,
+      this.vaporMoles = double.nan,
+      this.nCond = double.nan,
+      this.nVent = double.nan,
+      this.nRelief = double.nan,
+      required this.vaporInventory});
 }
 
 @immutable
@@ -127,7 +157,24 @@ class ReboilerSnapshot {
 
   /// Starvation factor s_sump (PHYSICS.md 8.1).
   final double starvation;
-  const ReboilerSnapshot(this.sumpHoldup, this.sumpLevelPct, this.starvation);
+
+  /// Tiers 2/3 (PHYSICS.md 8.2): delivered duty and the heat-transfer limit Q_max (W), clean and effective UA (W/K),
+  /// steam header pressure (Pa abs) and temperature (K), steam valve opening (%), sump temperature (K). NaN in Tier 1.
+  final double qDelivered, qMax, uaClean, uaEff, steamP, steamT, steamValveOp;
+  final double tSump;
+
+  /// True when the steam valve requests more than the exchanger can transfer (alarm `model.dutyLimited`).
+  final bool dutyLimited;
+  const ReboilerSnapshot(this.sumpHoldup, this.sumpLevelPct, this.starvation,
+      {this.qDelivered = double.nan,
+      this.qMax = double.nan,
+      this.uaClean = double.nan,
+      this.uaEff = double.nan,
+      this.steamP = double.nan,
+      this.steamT = double.nan,
+      this.steamValveOp = double.nan,
+      this.tSump = double.nan,
+      this.dutyLimited = false});
 }
 
 @immutable

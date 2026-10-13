@@ -40,8 +40,22 @@ class MeasurementBus {
         'stream.feed.x[0]' => feedLight,
         'stream.distillate.heavy' => 1 - xD,
         'stream.bottoms.x[0]' => xB,
-        _ => throw ArgumentError('Unknown measurement $ref'),
+        'pTop' => pTop,
+        'steamGauge' => steamGauge,
+        'refluxT' => tRefl,
+        'cwIn' => cwIn,
+        'cwOut' => cwOut,
+        'cwVol' => cwVol,
+        _ => _stage(ref),
       };
+
+  double _stage(String ref) {
+    if (ref.startsWith('stage.T[')) {
+      final j = int.parse(ref.substring(8, ref.length - 1));
+      return stageT[j];
+    }
+    throw ArgumentError('Unknown measurement $ref');
+  }
 }
 
 /// Design numbers the B-T Tier 1 control system is built from (SI, mol/s).
@@ -134,6 +148,12 @@ class ControlSystem {
   double pDesign = 101325;
   static const double rhoWater = 995.0;
   bool modelRelief = false, modelDutyLimited = false;
+
+  /// PC-101 gain schedule: Kc is scaled by OP / [pcScheduleOp] below that opening (never below [pcScheduleMin]).
+  static const double pcScheduleOp = 35.0, pcScheduleMin = 0.1;
+
+  /// F09 capacity factor on the CW flow and the mean CW mass flow (kg/s) of the last fast layer.
+  double cwScale = 1, meanCw = 0;
 
   /// Instruments of the Tier-2 set in the order of the snapshot.
   List<Instrument> get t2Instruments => [
@@ -468,6 +488,7 @@ class ControlSystem {
       ..pDesign = pDes;
     cs.trayTis.addAll(trayTis);
     cs.trayIds.addAll(d.trays);
+    cs.trayCount = d.nTrays;
     cs
       ..fv101 = fv101
       ..fv102 = fv102
@@ -530,6 +551,7 @@ class ControlSystem {
     at100.reset(bus.feedLight, t);
     at101.reset(1 - bus.xD, t);
     at102.reset(bus.xB, t);
+    if (tier2) _resetT2Instruments(bus, t);
     for (final l in loops) {
       l.initHistory(_inst[l.pvTag]!.value);
     }
@@ -605,8 +627,9 @@ class ControlSystem {
     final l = loop(tag);
     if (mode == LoopMode.iman) throw StateError('IMAN is engine-internal');
     final inst = _inst[l.pvTag]!;
-    if (mode == LoopMode.cas)
+    if (mode == LoopMode.cas && !(tag == 'FC-103' && tc101Enabled)) {
       throw StateError('$tag has no master loop in this configuration');
+    }
     if (mode == LoopMode.auto &&
         (inst.quality == Quality.bad || inst.quality == Quality.oos)) {
       throw StateError('Cannot select AUTO on a BAD PV (${l.pvTag})');
@@ -750,7 +773,7 @@ class ControlSystem {
   void runFastLayer(double dt, double t) {
     time = t;
     final nc = math.max(1, (dt / deltaC).round());
-    var s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0;
+    var s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0, sCw = 0.0;
     for (var k = 0; k < nc; k++) {
       final tk = t + k * deltaC;
       // 1. valves in the fixed order, then the transmitter on each line
@@ -769,6 +792,11 @@ class ControlSystem {
       s2 += f2;
       s3 += f3;
       s4 += f4;
+      if (tier2) {
+        final fcw = pv101.step(deltaC, pc101.op, noise) * cwScale;
+        ft201.update(deltaC, fcw / rhoWater, tk);
+        sCw += fcw;
+      }
       // 2. flow loops in tag order: ratio station, then PID
       if (ratioMode && fc102.mode != LoopMode.man) {
         if (ft104.quality == Quality.good ||
@@ -785,6 +813,7 @@ class ControlSystem {
       _pushInstrument(ft103);
       _pushInstrument(ft104);
       _pushInstrument(ft105);
+      if (tier2) _pushInstrument(ft201);
       final tr = fastTrace;
       if (tr != null) {
         tr.points.add(FastPoint(
@@ -799,6 +828,7 @@ class ControlSystem {
     meanFlows[2] = s2 / nc;
     meanFlows[3] = s3 / nc;
     meanFlows[4] = s4 / nc;
+    meanCw = sCw / nc;
   }
 
   void _executeLoop(ControlLoop l, double h, double t) {
@@ -831,6 +861,20 @@ class ControlSystem {
     for (final i in [lt101, lt102, pdt101, at100, at101, at102]) {
       _pushInstrument(i);
     }
+    if (tier2) {
+      pt101.update(dt, bus.pTop, tStart);
+      pt201.update(dt, bus.steamGauge, tStart);
+      ti100.update(dt, bus.tRefl, tStart);
+      for (var k = 0; k < trayTis.length; k++) {
+        trayTis[k].update(dt, bus.stageT[trayIds[k]], tStart);
+      }
+      tiSump.update(dt, bus.stageT[trayCount + 1], tStart);
+      ti201.update(dt, bus.cwIn, tStart);
+      ti202.update(dt, bus.cwOut, tStart);
+      for (final i in t2Instruments) {
+        if (i != ft201) _pushInstrument(i);
+      }
+    }
     // maintenance finished?
     for (final i in instruments) {
       if (i.oosUntil > 0 && t >= i.oosUntil) {
@@ -841,6 +885,11 @@ class ControlSystem {
     }
     _executeLoop(lc101, dt, t);
     _executeLoop(lc102, dt, t);
+    if (tier2) {
+      pc101.kcScale = (pv101.position / pcScheduleOp).clamp(pcScheduleMin, 1.0);
+      _executeLoop(pc101, dt, t);
+      _runTc101(dt, t);
+    }
     _pushLoops();
     alarms.update(dt, t);
     trends?.advance(t);
@@ -862,6 +911,212 @@ class ControlSystem {
         return lv102.flow;
     }
     return bus.read(i.spec.measures);
+  }
+
+  // ---------------------------------------------------------------- Tier 2 (M4)
+
+  /// Number of trays N (for the sump TI and the stage-temperature table).
+  int trayCount = 20;
+
+  static InstrumentSpec ft103Spec(bool t2) => InstrumentSpec(
+        tag: 'FT-103',
+        type: t2 ? InstrumentType.ftSteam : InstrumentType.ftLiquid,
+        measures: 'valve.flow',
+        quantity: t2 ? Quantity.energyRate : Quantity.molarFlow,
+        lo: 0,
+        hi: t2 ? 3.0e6 : 300 * _kmolh,
+        tauM: 0.5,
+        sigmaS: 0.50,
+        tauS: 1,
+        sigmaE: 0.02,
+        resolution: t2 ? 100 : 0.1 * _kmolh,
+      );
+
+  void _setHidden(bool hide) {
+    for (final i in t2Instruments) {
+      i.hidden = hide;
+    }
+    pv101.hidden = hide;
+    pc101.hidden = hide;
+    tc101.hidden = hide;
+  }
+
+  /// Applies the tier-dependent spans and visibility without touching any state (restore from a saved state).
+  void applyTier(bool t2) {
+    tier2 = t2;
+    _setHidden(!t2);
+    ft103.applySpec(ft103Spec(t2));
+    fc103.lo = 0;
+    fc103.hi = ft103.spec.hi;
+    fc103.spLo = 0;
+    fc103.spHi = ft103.spec.hi;
+    fv103.fMax = t2 ? math.max(fv103.fMax, 1.0) : 300 * _kmolh;
+  }
+
+  /// Tier 1 -> Tier 2 (PHYSICS.md 13.5): the Tier-2 objects appear at their true values; FT-103 changes quantity and
+  /// FV-103's position is re-initialised so that the delivered duty [duty] (W) is continuous.
+  void enterTier2(MeasurementBus bus, double t,
+      {required double duty, required double qMax0}) {
+    tier2 = true;
+    _setHidden(false);
+    ft103.retarget(ft103Spec(true), duty, t);
+    fc103.lo = 0;
+    fc103.hi = ft103.spec.hi;
+    fc103.spLo = 0;
+    fc103.spHi = ft103.spec.hi;
+    fv103.fMax = math.max(qMax0, 1.0);
+    fv103.init(100 * duty / fv103.fMax);
+    fc103.op = fv103.position;
+    fc103.sp = duty;
+    fc103.initHistory(ft103.value);
+    _resetT2Instruments(bus, t);
+    pc101.sp = bus.pTop;
+    pc101.op = pv101.position;
+    pc101.mode = LoopMode.auto;
+    pc101.requestedMode = LoopMode.auto;
+    pc101.initHistory(pt101.value);
+    tc101Enabled = false;
+    tc101.mode = LoopMode.iman;
+    tc101.requestedMode = LoopMode.auto;
+    tc101.op = 100 * duty / fc103.hi;
+    tc101.sp = instrument(tc101.pvTag).value;
+    tc101.initHistory(instrument(tc101.pvTag).value);
+    if (fc103.mode == LoopMode.cas) fc103.mode = LoopMode.auto;
+  }
+
+  void _resetT2Instruments(MeasurementBus bus, double t) {
+    pt101.reset(bus.pTop, t);
+    pt201.reset(bus.steamGauge, t);
+    ti100.reset(bus.tRefl, t);
+    for (var k = 0; k < trayTis.length; k++) {
+      trayTis[k].reset(bus.stageT[trayIds[k]], t);
+    }
+    tiSump.reset(bus.stageT[trayCount + 1], t);
+    ti201.reset(bus.cwIn, t);
+    ti202.reset(bus.cwOut, t);
+    ft201.reset(bus.cwVol, t);
+  }
+
+  /// Tier 2 -> Tier 1 (PHYSICS.md 13.5): FT-103 reads the boilup [boilup] (mol/s) again, FV-103 delivers it.
+  void enterTier1(double t, {required double boilup}) {
+    tier2 = false;
+    tc101Enabled = false;
+    _setHidden(true);
+    ft103.retarget(ft103Spec(false), boilup, t);
+    fc103.lo = 0;
+    fc103.hi = ft103.spec.hi;
+    fc103.spLo = 0;
+    fc103.spHi = ft103.spec.hi;
+    fv103.fMax = 300 * _kmolh;
+    fv103.init(100 * boilup / fv103.fMax);
+    fc103.op = fv103.position;
+    fc103.sp = boilup;
+    fc103.initHistory(ft103.value);
+    if (fc103.mode == LoopMode.cas) fc103.mode = LoopMode.auto;
+    tc101.mode = LoopMode.iman;
+  }
+
+  /// Lever `tc101Enable` (PHYSICS.md 10.7, VC-16.3): TC-101 becomes the master of FC-103, bumpless in both directions.
+  void setTc101Enable(bool on) {
+    if (!tier2 || on == tc101Enabled) return;
+    tc101Enabled = on;
+    final ti = instrument(tc101.pvTag);
+    if (on) {
+      tc101.op = 100 * (fc103.sp - fc103.lo) / (fc103.hi - fc103.lo);
+      tc101.trackPv(ti.value);
+      tc101.initHistory(ti.value);
+      tc101.mode = tc101.requestedMode == LoopMode.man
+          ? LoopMode.man
+          : LoopMode.auto;
+      tc101.requestedMode = tc101.mode;
+      if (fc103.mode == LoopMode.auto) {
+        fc103.mode = LoopMode.cas;
+        fc103.requestedMode = LoopMode.cas;
+      }
+    } else {
+      if (tc101.mode != LoopMode.iman) tc101.requestedMode = tc101.mode;
+      tc101.mode = LoopMode.iman;
+      if (fc103.mode == LoopMode.cas) {
+        fc103.mode = LoopMode.auto;
+        fc103.requestedMode = LoopMode.auto;
+        fc103.spTracked = false;
+      }
+    }
+  }
+
+  /// Lever `tc101Tray`: only instrumented trays are offered.
+  void setTc101Tray(int j) {
+    if (!trayIds.contains(j)) {
+      throw ArgumentError('TC-101 can only use an instrumented tray $trayIds');
+    }
+    tc101.pvTag = 'TI-${100 + j}';
+    final ti = instrument(tc101.pvTag);
+    tc101.trackPv(ti.value);
+    tc101.initHistory(ti.value);
+    tc101.spTracked = false;
+  }
+
+  int get tc101Tray => int.parse(tc101.pvTag.substring(3)) - 100;
+
+  /// PT-101 is ranged 0 to 2 x the larger of the design pressure and the set point (docs/DEVIATIONS.md E45), so
+  /// that the 3 bar of G8 stays on scale; the PC-101 history is rescaled with it.
+  void setPtSpan() {
+    final double hiNew = 2 * math.max(pDesign, pc101.sp);
+    final cur = pt101.spec;
+    if ((hiNew - cur.hi).abs() < 1.0) return;
+    pt101.applySpec(InstrumentSpec(
+      tag: cur.tag,
+      type: cur.type,
+      measures: cur.measures,
+      quantity: cur.quantity,
+      lo: cur.lo,
+      hi: hiNew,
+      tauM: cur.tauM,
+      sigmaS: cur.sigmaS,
+      tauS: cur.tauS,
+      sigmaE: cur.sigmaE,
+      resolution: cur.resolution,
+    ));
+    pc101.rescaleSpan(pc101.lo, hiNew);
+  }
+
+  /// TC-101 in the main layer: the master runs in AUTO and cascades to FC-103; otherwise it follows (IMAN).
+  void _runTc101(double dt, double t) {
+    final ti = instrument(tc101.pvTag);
+    final span = fc103.hi - fc103.lo;
+    if (tc101Enabled && fc103.mode == LoopMode.cas) {
+      if (tc101.mode == LoopMode.iman) {
+        tc101.mode = tc101.requestedMode == LoopMode.man
+            ? LoopMode.man
+            : LoopMode.auto;
+        tc101.op = 100 * (fc103.sp - fc103.lo) / span;
+        tc101.trackPv(ti.value);
+        tc101.initHistory(ti.value);
+      }
+      _executeLoop(tc101, dt, t);
+      fc103.setSpCascade(fc103.lo + tc101.op / 100 * span);
+    } else {
+      if (tc101.mode != LoopMode.iman) {
+        tc101.requestedMode = tc101.mode;
+        tc101.mode = LoopMode.iman;
+      }
+      tc101.op = (100 * (fc103.sp - fc103.lo) / span)
+          .clamp(tc101.params.opLo, tc101.params.opHi)
+          .toDouble();
+      tc101.trackPv(ti.value);
+      tc101.lastError = 0;
+    }
+  }
+
+  /// CAS-slave `delta` rule (ENGINE_API.md 11.1): a set-point step on a slave bumps the master's OP by the
+  /// equivalent percentage of the slave span; the master trims from there.
+  bool bumpCasSlave(LoopTag tag, double delta) {
+    final l = loop(tag);
+    if (tag != 'FC-103' || l.mode != LoopMode.cas || !tier2) return false;
+    final span = l.hi - l.lo;
+    tc101.setOp(tc101.op + 100 * delta / span);
+    l.setSpCascade(l.lo + tc101.op / 100 * span);
+    return true;
   }
 
   // ---------------------------------------------------------------- alarms
@@ -895,23 +1150,45 @@ class ControlSystem {
     }
     for (final ft in [ft101, ft102, ft103, ft104, ft105]) {
       final t = ft.spec.tag;
-      final lim = ft.spec.lo + 0.90 * (ft.spec.hi - ft.spec.lo);
-      add('$t.HI', AlarmPriority.medium, 5, 10, '$t flow high',
-          (a) => above(ft, lim, 0.01 * (ft.spec.hi - ft.spec.lo), a));
+      add(
+          '$t.HI',
+          AlarmPriority.medium,
+          5,
+          10,
+          '$t flow high',
+          (a) => above(ft, ft.spec.lo + 0.90 * (ft.spec.hi - ft.spec.lo),
+              0.01 * (ft.spec.hi - ft.spec.lo), a));
     }
+    add('PT-101.HI', AlarmPriority.medium, 5, 10, 'PT-101 pressure high',
+        (a) =>
+            !pt101.hidden &&
+            above(pt101, 1.15 * math.max(pc101.sp, 1.0),
+                0.01 * pt101.span, a));
+    add('PT-101.LO', AlarmPriority.medium, 5, 10, 'PT-101 pressure low',
+        (a) =>
+            !pt101.hidden &&
+            below(pt101, 0.85 * math.max(pc101.sp, 1.0),
+                0.01 * pt101.span, a));
+    add('model.relief', AlarmPriority.high, 0, 30, 'Relief valve lifting',
+        (a) => tier2 && modelRelief);
+    add('model.dutyLimited', AlarmPriority.medium, 60, 30,
+        'Reboiler duty limited by heat transfer', (a) => tier2 && modelDutyLimited);
     for (final at in [at101, at102]) {
       final t = at.spec.tag;
       add('$t.HI', AlarmPriority.medium, 5, 10, '$t impurity high',
           (a) => above(at, 0.05, 0.001, a));
     }
     for (final l in loops) {
-      final inst = _inst[l.pvTag]!;
-      final limitPct = l.fastLayer ? 5.0 : 10.0;
+      final limitPct = l.tag == 'PC-101'
+          ? 3.0
+          : l.tag == 'TC-101'
+              ? 1.0
+              : (l.fastLayer ? 5.0 : 10.0);
       add('${l.tag}.DEV', AlarmPriority.medium, 30, 10, '${l.tag} deviation',
           (a) {
         if (l.hidden) return false;
         if (l.mode != LoopMode.auto && l.mode != LoopMode.cas) return false;
-        final dev = (l.pct(inst.value) - l.pct(l.sp)).abs();
+        final dev = (l.pct(_inst[l.pvTag]!.value) - l.pct(l.sp)).abs();
         return a ? dev > 0.8 * limitPct : dev > limitPct;
       });
       add('${l.tag}.OPSAT', AlarmPriority.medium, 60, 10,
@@ -928,7 +1205,9 @@ class ControlSystem {
           0,
           0,
           '${l.tag} shed to MAN (bad PV)',
-          (a) => !l.hidden && (l.shed || (a && inst.quality == Quality.bad)),
+          (a) =>
+              !l.hidden &&
+              (l.shed || (a && _inst[l.pvTag]!.quality == Quality.bad)),
           ack: true);
     }
     for (final i in instruments) {
@@ -979,9 +1258,13 @@ class ControlSystem {
         'ratioMode': ratioMode,
         'ratio': ratio,
         'lastGoodRatioSp': _lastGoodRatioSp,
-        'loops': [for (final l in loops) l.toJson()],
-        'valves': [for (final v in valves) v.toJson()],
-        'instruments': [for (final i in instruments) i.toJson()],
+        'tier2': tier2,
+        'tc101Enabled': tc101Enabled,
+        'tc101Pv': tc101.pvTag,
+        'cwScale': cwScale,
+        'loops': {for (final l in loops) l.tag: l.toJson()},
+        'valves': {for (final v in valves) v.id: v.toJson()},
+        'instruments': {for (final i in instruments) i.spec.tag: i.toJson()},
         'alarms': alarms.toJson(),
         'trends': includeTrends ? trends?.toJson() : null,
         'meanFlows': meanFlows.toList(),
@@ -998,18 +1281,28 @@ class ControlSystem {
     ratioMode = j['ratioMode']! as bool;
     ratio = (j['ratio']! as num).toDouble();
     _lastGoodRatioSp = (j['lastGoodRatioSp']! as num).toDouble();
-    final ls = j['loops']! as List<Object?>;
-    for (var i = 0; i < loops.length; i++) {
-      loops[i].loadJson(ls[i]! as Map<String, Object?>);
+    applyTier((j['tier2'] as bool?) ?? false);
+    tc101Enabled = (j['tc101Enabled'] as bool?) ?? false;
+    final pv = j['tc101Pv'] as String?;
+    if (pv != null && _inst.containsKey(pv)) tc101.pvTag = pv;
+    cwScale = (j['cwScale'] as num?)?.toDouble() ?? 1.0;
+    // keyed by tag: the instrumented trays change with the tray count (PHYSICS.md 10.5)
+    final ls = j['loops']! as Map<String, Object?>;
+    for (final l in loops) {
+      final m = ls[l.tag];
+      if (m != null) l.loadJson(m as Map<String, Object?>);
     }
-    final vs = j['valves']! as List<Object?>;
-    for (var i = 0; i < valves.length; i++) {
-      valves[i].loadJson(vs[i]! as Map<String, Object?>);
+    final vs = j['valves']! as Map<String, Object?>;
+    for (final v in valves) {
+      final m = vs[v.id];
+      if (m != null) v.loadJson(m as Map<String, Object?>);
     }
-    final ins = j['instruments']! as List<Object?>;
-    for (var i = 0; i < instruments.length; i++) {
-      instruments[i].loadJson(ins[i]! as Map<String, Object?>);
+    final ins = j['instruments']! as Map<String, Object?>;
+    for (final i in instruments) {
+      final m = ins[i.spec.tag];
+      if (m != null) i.loadJson(m as Map<String, Object?>);
     }
+    if (tier2) setPtSpan();
     alarms.loadJson(j['alarms']! as Map<String, Object?>);
     final tr = j['trends'];
     if (tr != null && trends != null)

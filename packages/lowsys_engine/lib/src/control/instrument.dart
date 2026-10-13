@@ -238,6 +238,13 @@ class Instrument {
     reset(v, t);
   }
 
+  /// Replaces the span and noise data without touching the state (state restore after a tier switch).
+  void applySpec(InstrumentSpec s) {
+    spec = s;
+    _ns = OuNoise(s.sigmaS / 100 * (s.hi - s.lo), s.tauS);
+    typicalPct = null;
+  }
+
   void reseed(int newSeed) {
     seed = newSeed;
     _rngS = Rng.stream(seed, 'inst:${spec.tag}:s');

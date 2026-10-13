@@ -56,7 +56,8 @@ class HydraulicSolver {
   final TrayGeometry geom;
   final TrayGeometryDerived d;
   TrayType trayType;
-  final double pTop;
+  /// Top pressure (Pa); the Tier-2 stepper updates it every step.
+  double pTop;
   final bool entrainment, weeping, downcomerLimit;
 
   // Outputs (index = stage; trays 1..N used)
@@ -93,6 +94,9 @@ class HydraulicSolver {
       hDc,
       dcFrac,
       mwL,
+      rhoLs,
+      rhoVs,
+      sigmas,
       mwVin,
       mwVout,
       lWeir;
@@ -145,6 +149,9 @@ class HydraulicSolver {
     hDc = f();
     dcFrac = f();
     mwL = f();
+    rhoLs = f()..fillRange(0, n, thermo.rhoL);
+    rhoVs = f()..fillRange(0, n, thermo.rhoV);
+    sigmas = f()..fillRange(0, n, thermo.sigma);
     mwVin = f();
     mwVout = f();
     lWeir = f();
@@ -170,13 +177,13 @@ class HydraulicSolver {
     final c = TrayCorrelations.bennettC(geom.weirHeight);
     final valve = trayType == TrayType.valve;
     final dh = valve ? 0.040 : geom.holeDiameter;
-    final sigma = thermo.sigma;
-    final sq = math.sqrt(rhoV / (rhoL - rhoV));
     pressure[1] = pTop;
     pressureDropTotal = 0;
     for (var j = 1; j <= N; j++) {
       final sB = ep.brokenS[j];
       final vl = s.vLiq[j];
+      final rhoL = rhoLs[j], rhoV = rhoVs[j], sigma = sigmas[j];
+      final sq = math.sqrt(rhoV / (rhoL - rhoV));
       var mwl = 0.0, mwvIn = 0.0, mwvOut = 0.0;
       for (var i = 0; i < nc; i++) {
         mwl += s.x[j * nc + i] * thermo.mw[i];
