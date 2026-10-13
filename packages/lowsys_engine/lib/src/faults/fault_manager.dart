@@ -36,7 +36,10 @@ class FaultManager {
 
   FaultId inject(FaultSpec spec) {
     final t0 = spec.type;
-    if (t0 == FaultType.tsInletRestriction || t0 == FaultType.tsOutletRestriction) {
+    if (t0 == FaultType.tsInletRestriction ||
+        t0 == FaultType.tsOutletRestriction ||
+        t0 == FaultType.packingMaldistribution ||
+        t0 == FaultType.packingCrush) {
       validator?.call(spec);
     }
     if (t0 == FaultType.instrument ||
@@ -277,6 +280,12 @@ class FaultManager {
           ep.kInAdd += 300 * s;
         case FaultType.tsOutletRestriction:
           ep.kOutAdd += 40 * s;
+        case FaultType.packingMaldistribution:
+          final b = (loc.bed ?? 1) - 1;
+          if (b >= 0 && b < ep.bedMal.length) ep.bedMal[b] = math.max(ep.bedMal[b], (0.6 * s).clamp(0.0, 0.95));
+        case FaultType.packingCrush:
+          final b = (loc.bed ?? 1) - 1;
+          if (b >= 0 && b < ep.bedCrush.length) ep.bedCrush[b] = math.max(ep.bedCrush[b], s);
         default:
           break;
       }

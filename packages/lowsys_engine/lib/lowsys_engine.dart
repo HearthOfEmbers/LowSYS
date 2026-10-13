@@ -17,6 +17,8 @@ export 'src/explain/explain_m7.dart' show ExplainM7;
 export 'src/faults/fault_manager.dart';
 export 'src/faults/fault_spec.dart';
 export 'src/math/banded_solver.dart';
+export 'src/data/packings_json.dart' show PackingData;
+export 'src/model/packed_hydraulics.dart' show PackedHydraulics, Maldistribution;
 export 'src/model/tray_hydraulics.dart'
     show TrayCorrelations, TrayGeometryDerived;
 export 'src/model/column_state.dart' show StepDebug;

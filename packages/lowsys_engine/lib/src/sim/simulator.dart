@@ -16,11 +16,13 @@ import '../core/ids.dart';
 import '../core/quantity.dart';
 import '../faults/fault_effects.dart';
 import '../faults/fault_manager.dart';
+import '../faults/fault_spec.dart';
 import '../explain/explain_engine.dart';
 import '../explain/explain_types.dart';
 import '../model/thermosyphon.dart';
 import '../model/tray_hydraulics.dart';
 import '../model/column_state.dart';
+import '../model/packed_model.dart';
 import '../scenario/drill.dart';
 import '../scenario/scenario_def.dart';
 import '../scenario/scenario_runner.dart';
@@ -300,6 +302,7 @@ class Simulator {
           cwMaxFlow: config.condenser.cwMaxFlow,
           dutyDesign: _dutyLever,
           nTrays: N,
+          nBeds: config.beds.length,
           tc101Tray: config.control.tc101Tray,
           trays: config.control.trayList(N),
           partial: _isPartial(config),
@@ -322,28 +325,49 @@ class Simulator {
 
     _state = ColumnState(N, nc);
     _debug = StepDebug(nc);
-    final sec = config.traySection;
+    final secGeom = config.hydraulicsGeometry;
     final stageGeom = _stageGeometries(config);
     _ep = EffectiveParams(N + 2, nc);
     _faults = carry?.faults ??
         FaultManager(
-            systemFactor: sec.geometry.systemFactor,
-            phiDcBase: sec.geometry.downcomerAeration);
+            systemFactor: secGeom.systemFactor,
+            phiDcBase: secGeom.downcomerAeration);
     _faults.onChange = _noteChange;
     _faults.componentIds = config.components;
-    _faults.validator = (spec) => _control.validateFault(spec);
+    _faults.validator = (spec) {
+      if (spec.type == FaultType.packingMaldistribution || spec.type == FaultType.packingCrush) {
+        final b = spec.location.bed;
+        if (b == null || b < 1 || b > config.beds.length) {
+          throw ConfigException('The column has no packed bed ${b ?? '?'} (it has ${config.beds.length})');
+        }
+        return;
+      }
+      _control.validateFault(spec);
+    };
     _hyd = HydraulicSolver(
       nTrays: N,
       nc: nc,
       thermo: _thermo,
-      geom: sec.geometry,
+      geom: secGeom,
       stageGeometry: stageGeom,
-      trayType: sec.type,
+      trayType: config.hydraulicsTrayType,
       pTop: config.condenser.pTopDesign,
       entrainment: options.entrainment,
       weeping: options.weeping,
       downcomerLimit: options.downcomerLimit,
     );
+    if (config.hasPacked) {
+      final kk = config.effectiveKeys;
+      _hyd.pk = PackedModel(
+          beds: config.beds,
+          n: N + 2,
+          nc: nc,
+          alpha1: _thermo.alpha,
+          mw: _thermo.mw,
+          lk: kk.lk,
+          hk: kk.hk,
+          mu: config.liquidViscosity);
+    }
     _stepper = Stepper(
       hyd: _hyd,
       ep: _ep,
@@ -378,7 +402,7 @@ class Simulator {
   /// Range of a flow or duty lever (PHYSICS.md 2.3 "Lever ranges"): the B-T value [bt] (kmol/h, or W when [kmolh] is
   /// false) for `bt`, else 2 x the preset's default.
   static double _rangeMax(ColumnConfig c, String lever, double bt, {bool kmolh = true}) {
-    if (c.presetId == 'bt' || c.presetId == 'bt_custom_alpha' || !Presets.ids.contains(c.presetId)) return bt;
+    if (c.presetId == 'bt' || c.presetId == 'bt_custom_alpha' || c.presetId == 'bt_packed' || !Presets.ids.contains(c.presetId)) return bt;
     final d = Presets.byId(c.presetId).initialLevers[lever];
     if (d == null || d <= 0) return bt;
     return kmolh ? 2 * d / _kmolh : 2 * d;
@@ -390,7 +414,7 @@ class Simulator {
 
   /// Tray geometry of every stage 0..N+1 (stages outside tray sections get the first section's).
   static List<TrayGeometry> _stageGeometries(ColumnConfig c) {
-    final first = c.traySection.geometry;
+    final first = c.hydraulicsGeometry;
     final out = List<TrayGeometry>.filled(c.trayCount + 2, first);
     var stage = 1;
     for (final s in c.sections) {
@@ -414,6 +438,7 @@ class Simulator {
       ..drumLevelPct = _stepper.drumLevelPct
       ..sumpLevelPct = _stepper.sumpLevelPct
       ..columnDp = 0
+      ..bedDp = Float64List(_config.beds.length)
       ..lk = _config.effectiveKeys.lk
       ..hk = _config.effectiveKeys.hk
       ..setCuts(_inputs.z, _state.x, 0, (_state.nTrays + 1) * _state.nc, _state.nc);
@@ -770,7 +795,8 @@ class Simulator {
           max: N.toDouble(),
           defaultValue: inp.feedStage.toDouble(),
           group: 'feed',
-          integer: true),
+          integer: true,
+          options: _config.hasPacked ? _config.feedableStages : null),
       LeverSpec(
           id: 'refluxFlow',
           label: 'Reflux flow L0',
@@ -970,6 +996,7 @@ class Simulator {
           defaultValue: 100,
           tiers: {ThermoTier.t2, ThermoTier.t3},
           group: 'bottom'),
+      if (!_config.hasPacked)
       LeverSpec(
           id: 'nTrays',
           label: 'Number of trays N',
@@ -980,6 +1007,7 @@ class Simulator {
           requiresPause: true,
           group: 'column',
           integer: true),
+      if (_config.hasTrays)
       LeverSpec(
           id: 'murphree',
           label: 'Murphree efficiency E',
@@ -1007,8 +1035,9 @@ class Simulator {
           defaultValue: 0,
           group: 'advanced',
           integer: true),
-      const LeverSpec(
-          id: 'trayType.0',
+      if (_config.hasTrays)
+      LeverSpec(
+          id: 'trayType.${_config.traySectionIndex}',
           label: 'Tray type (0 sieve, 1 valve)',
           quantity: Quantity.dimensionless,
           min: 0,
@@ -1017,6 +1046,18 @@ class Simulator {
           requiresPause: true,
           group: 'advanced',
           integer: true),
+      if (_config.internalsTemplates.isNotEmpty)
+        LeverSpec(
+            id: 'internals',
+            label: 'Internals (0 trays, 1 packing, 2 mixed)',
+            quantity: Quantity.dimensionless,
+            min: 0,
+            max: _config.internalsTemplates.map((t) => t.id).reduce(math.max).toDouble(),
+            defaultValue: _config.internals.toDouble(),
+            requiresPause: true,
+            group: 'advanced',
+            integer: true,
+            options: [for (final t in _config.internalsTemplates) t.id]),
       const LeverSpec(
           id: 'antifoam',
           label: 'Antifoam injection',
@@ -1123,6 +1164,7 @@ class Simulator {
     }
     if (id.startsWith('bypass.'))
       return _control.valve(id.substring(7)).bypassTarget;
+    if (id.startsWith('trayType.')) return _hyd.trayType == TrayType.valve ? 1 : 0;
     switch (id) {
       case 'feedFlow':
         return _control.fc101.sp;
@@ -1180,8 +1222,8 @@ class Simulator {
         return _thermo.alpha[0] / _thermo.alpha[1];
       case 'hydraulics':
         return _stepper.full ? 1 : 0;
-      case 'trayType.0':
-        return _hyd.trayType == TrayType.valve ? 1 : 0;
+      case 'internals':
+        return _config.internals.toDouble();
       case 'antifoam':
         return _faults.antifoam ? 1 : 0;
       case 'distillateValve':
@@ -1249,6 +1291,9 @@ class Simulator {
       case 'feedQ':
         inp.feedQ = v;
       case 'feedStage':
+        if (_config.hasPacked && !_config.feedableStages.contains(v.round())) {
+          throw RangeError('Feed stage ${v.round()} is inside a packed bed (offered: ${_config.feedableStages})');
+        }
         inp.feedStage = v.round();
         _feedPhi = inp.feedStage / _config.trayCount;
       case 'refluxFlow':
@@ -1311,7 +1356,12 @@ class Simulator {
       case 'hydraulics':
         setHydraulicsMode(
             v >= 0.5 ? HydraulicsMode.full : HydraulicsMode.ideal);
+      case 'internals':
+        _rebuildInternals(v.round());
+        return;
       case 'trayType.0':
+      case 'trayType.1':
+      case 'trayType.2':
         _hyd.trayType = v >= 0.5 ? TrayType.valve : TrayType.sieve;
         _config = _config.copyWith(
             sections: [for (final s in _config.sections) s is TraySection ? s.copyWith(type: _hyd.trayType) : s]);
@@ -1693,6 +1743,28 @@ class Simulator {
           return _stepper.full && j >= 1 && j <= st.nTrays ? _hyd.weepW[j] : 0.0;
         case 'jetFlood':
           return _stepper.full && j >= 1 && j <= st.nTrays ? _hyd.phi[j] : 0.0;
+        case 'packFlood':
+          return _hyd.pk != null && j >= 1 && j <= st.nTrays && _hyd.pk!.bedOf[j] >= 0
+              ? (_stepper.full ? _hyd.pk!.phi[j] : 0.0)
+              : double.nan;
+        case 'hetp':
+          return _hyd.pk != null && j >= 1 && j <= st.nTrays && _hyd.pk!.bedOf[j] >= 0 ? _hyd.pk!.hetp[j] : double.nan;
+      }
+      return null;
+    }
+    if (path.startsWith('bed[')) {
+      final close = path.indexOf(']');
+      final pkm = _hyd.pk;
+      final b = int.parse(path.substring(4, close)) - 1;
+      final field = path.substring(close + 2);
+      if (pkm == null || b < 0 || b >= pkm.beds.length) return double.nan;
+      switch (field) {
+        case 'dp':
+          return _stepper.full ? pkm.bedDp[b] : 0.0;
+        case 'maxFlood':
+          return _stepper.full ? pkm.bedMaxPhi[b] : 0.0;
+        case 'nTheoretical':
+          return pkm.bedNth[b];
       }
       return null;
     }
@@ -2146,6 +2218,14 @@ class Simulator {
     return out;
   }
 
+  /// Lever `internals` (PHYSICS.md 13.4): rebuild from the template's sections; the liquid composition is remapped by
+  /// fractional height, holdups are re-initialised at the current flows.
+  void _rebuildInternals(int id) {
+    if (id == _config.internals) return;
+    final cur = _configWithCurrentLevers().withInternals(id);
+    rebuild(cur, keepHoldups: false);
+  }
+
   void _rebuildTrays(int trays) {
     final cur = _configWithCurrentLevers();
     final oldN = cur.trayCount;
@@ -2156,9 +2236,10 @@ class Simulator {
 
   /// Applies a new configuration, remapping the liquid profile when the tray count changes
   /// (PHYSICS.md 13.4). Drum, sump and controllers keep their state.
-  void rebuild(ColumnConfig newConfig) {
+  void rebuild(ColumnConfig newConfig, {bool keepHoldups = true}) {
     final old = _state;
     final carry = _Carry(
+      keepHoldups: keepHoldups,
       oldN: old.nTrays,
       oldNc: old.nc,
       x: Float64List.fromList(old.x),
@@ -2187,7 +2268,7 @@ class Simulator {
         final i0 = u.floor().clamp(1, c.oldN);
         final i1 = math.min(i0 + 1, c.oldN);
         final w = u - i0;
-        var mTot = c.holdup[i0] * (1 - w) + c.holdup[i1] * w;
+        var mTot = c.keepHoldups ? c.holdup[i0] * (1 - w) + c.holdup[i1] * w : s.holdup[jn];
         var sx = 0.0;
         for (var i = 0; i < nc; i++) {
           final xi = c.x[i0 * nc + i] * (1 - w) + c.x[i1 * nc + i] * w;
@@ -2228,6 +2309,16 @@ class Simulator {
   }
 
   // ---------------------------------------------------------------- outputs
+
+  List<int> _sectionEnds() {
+    final out = <int>[];
+    var e = 0;
+    for (final s in _config.sections) {
+      e += s.stageCount;
+      out.add(e);
+    }
+    return out;
+  }
 
   /// Immutable copy of the current state (allocates; call once per frame).
   SimSnapshot snapshot() {
@@ -2282,6 +2373,25 @@ class Simulator {
         maxWeep = math.max(maxWeep, weepFrac[j]);
       }
     }
+    final pkm = _hyd.pk;
+    final packHoldup = Float64List(n)..fillRange(0, n, nan);
+    final wetFrac = Float64List(n)..fillRange(0, n, nan);
+    final hetpA = Float64List(n)..fillRange(0, n, nan);
+    final packFloodA = Float64List(n)..fillRange(0, n, nan);
+    if (pkm != null) {
+      for (var j = 1; j <= N; j++) {
+        if (pkm.bedOf[j] < 0) continue;
+        packHoldup[j] = pkm.hL[j];
+        wetFrac[j] = pkm.wetFrac[j];
+        hetpA[j] = pkm.hetp[j];
+        packFloodA[j] = full ? pkm.phi[j] : 0.0;
+        // equivalent clear-liquid depth over the cross-section
+        final aT = pkm.beds[pkm.bedOf[j]].section.area;
+        hcl[j] = s.holdup[j] * s.vLiq[j] / aT;
+        froth[j] = hcl[j];
+        if (full) maxFlood = math.max(maxFlood, pkm.phi[j]);
+      }
+    }
     final stages = StageArrays(
       n: n,
       nc: nc,
@@ -2306,8 +2416,10 @@ class Simulator {
       stability: copyOrZero(h.stab),
       weepFrac: weepFrac,
       efficiency: Float64List.fromList(s.eff),
-      hetp: Float64List(n)..fillRange(0, n, nan),
-      packFlood: Float64List(n)..fillRange(0, n, nan),
+      hetp: hetpA,
+      packFlood: packFloodA,
+      packHoldup: packHoldup,
+      wetFrac: wetFrac,
       flags: flags,
     );
     // Report the flows the solver used in the last completed step, so that integrating the
@@ -2415,12 +2527,35 @@ class Simulator {
       feedStages: fl,
       kinds: [
         StageKind.drum,
-        for (var j = 1; j <= N; j++) StageKind.tray,
+        for (var j = 1; j <= N; j++) pkm != null && pkm.bedOf[j] >= 0 ? StageKind.packed : StageKind.tray,
         StageKind.sump
       ],
-      names: ['Drum', for (var j = 1; j <= N; j++) 'Tray $j', 'Sump'],
-      sectionEnds: [N],
+      names: [
+        'Drum',
+        for (var j = 1; j <= N; j++) pkm != null && pkm.bedOf[j] >= 0 ? 'Segment $j' : 'Tray $j',
+        'Sump'
+      ],
+      sectionEnds: _sectionEnds(),
     );
+    final bedSnaps = <PackedBedSnapshot>[];
+    if (pkm != null) {
+      for (var b = 0; b < pkm.beds.length; b++) {
+        final bl = pkm.beds[b];
+        final pdtVal = plant ? _control.instrument('PDT-${102 + b}').readingAt(s.time).value : pkm.bedDp[b];
+        bedSnaps.add(PackedBedSnapshot(
+            bed: bl.index,
+            firstStage: bl.first,
+            lastStage: bl.last,
+            packingId: bl.section.packingId,
+            height: bl.section.bedHeight,
+            diameter: bl.section.diameter,
+            dp: full ? (plant && !calc ? pdtVal : pkm.bedDp[b]) : 0.0,
+            maxFlood: plant && !calc ? nan : (full ? pkm.bedMaxPhi[b] : 0.0),
+            nTheoretical: plant ? nan : pkm.bedNth[b],
+            eMal: plant || drill ? nan : pkm.bedEMal[b],
+            maldistribution: plant || drill ? nan : pkm.bedF[b]));
+      }
+    }
     final instr = [for (final i in _control.visibleInstruments) i.readingAt(s.time)];
     InstrumentReading rd(String tag) => instr.firstWhere((r) => r.tag == tag);
     var stagesOut = stages;
@@ -2511,8 +2646,10 @@ class Simulator {
         stability: calc ? stages.stability : nanArr(n),
         weepFrac: calc ? stages.weepFrac : nanArr(n),
         efficiency: nanArr(n),
-        hetp: nanArr(n),
-        packFlood: nanArr(n),
+        hetp: calc ? stages.hetp : nanArr(n),
+        packFlood: calc ? stages.packFlood : nanArr(n),
+        packHoldup: stages.packHoldup,
+        wetFrac: stages.wetFrac,
         flags: stages.flags,
       );
       final at0 = rd('AT-100').value,
@@ -2633,6 +2770,7 @@ class Simulator {
           v.fMax * k, v.expectedFlow(loop.op) * k, v.bypassActive ? v.bypassPos : -1));
     }
     return SimSnapshot(
+      beds: bedSnaps,
       serial: ++_serial,
       time: s.time,
       tier: _tier,
@@ -2918,8 +3056,10 @@ class _Carry {
   final Map<String, Object?> control;
   final double feedAct, refluxAct, boilupAct;
   final FaultManager faults;
+  final bool keepHoldups;
   _Carry({
     required this.faults,
+    required this.keepHoldups,
     required this.oldN,
     required this.oldNc,
     required this.x,

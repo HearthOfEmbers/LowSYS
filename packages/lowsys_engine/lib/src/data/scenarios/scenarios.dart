@@ -656,3 +656,58 @@ const String g13Json = r'''
   "debrief": "At R = {kpi.refluxRatio:0.00} the column recovers {kpi.recoveryLK:0.0000} of the n-butane and {kpi.recoveryHK:0.0000} of the isopentane.\n\nThe FUG shortcut is a design estimate: it uses one mean relative volatility per component. The Tier-3 column's alpha falls from about 2.2 at the top to 1.9 at the bottom, so it needs a little more reflux than the shortcut asks for. The shortcut's N is the number of equilibrium stages; the real column has 32 trays at E = 0.7, i.e. 32 x 0.7 + 1 = 23.4 effective stages."
 }
 ''';
+
+const String g15Json = r'''
+{
+  "id": "G15_packing_retrofit",
+  "kind": "guided",
+  "title": "Packing retrofit",
+  "milestone": 8,
+  "topic": "packing",
+  "preset": "bt",
+  "overrides": {"tier": "t1", "hydraulics": "full"},
+  "start": "steady",
+  "noise": false,
+  "levers": {
+    "set": {},
+    "lock": ["nTrays", "feedStage", "murphree", "tier", "hydraulics"],
+    "show": ["internals", "feedFlow", "refluxFlow", "boilup"]
+  },
+  "timeLimit": 14400,
+  "parTime": 3600,
+  "briefing": "The 20 sieve trays of the benzene-toluene column are due for replacement. Compare them with 9 m of structured packing in the same shell.\n\nFirst note the column pressure drop and the max flood % of the trays (KPI strip). Then pause, set Advanced > Internals to 'Structured packing, 2 x 4.5 m', resume and wait for steady state. Compare the pressure drops, the flood % of the two beds, and the separation.",
+  "objectives": [
+    {"id": "o1", "text": "Report the column pressure drop with the 20 sieve trays (kPa).",
+     "answer": {"type": "number", "correct": 14490, "tolerance": 0.05, "toleranceKind": "rel", "quantity": "pressureDelta"}},
+    {"id": "o2", "text": "Switch to structured packing (Advanced > Internals) and reach steady state.", "after": "o1",
+     "when": {"all": [{"metric": "lever.internals", "op": "==", "value": 1},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o3", "text": "Report the pressure-drop ratio, trays / packing.", "after": "o2",
+     "answer": {"type": "number", "correct": 10.3, "tolerance": 0.10, "toleranceKind": "rel"}},
+    {"id": "o4", "text": "At the same L/V, how much more throughput can the packed column take before its max flood % reaches the trays' 63 %?", "after": "o3",
+     "answer": {"type": "choice",
+                "options": ["only about 6 %: the lower bed, with twice the liquid of the upper one, sets the limit",
+                            "about 30 %: packing always has more capacity than trays",
+                            "about 2x: the pressure drop is ten times lower",
+                            "none: it is already above 63 %"],
+                "correct": 0}},
+    {"id": "o5", "text": "Why did x_D rise from 0.978 to 0.994 at the same reflux and boilup?", "after": "o4",
+     "answer": {"type": "choice",
+                "options": ["9 m of packing holds 18 theoretical stages (HETP 0.5 m); 20 trays at E = 0.7 give about 14",
+                            "the lower pressure drop raises alpha",
+                            "packing holds more liquid",
+                            "the packing stops the entrainment, which was the main loss"],
+                "correct": 0}}
+  ],
+  "hints": [
+    {"after": 0, "text": "The KPI strip shows the column pressure drop and the max flood %. Note both for the trays."},
+    {"when": {"metric": "objective[o1].met", "op": "==", "value": true}, "text": "Pause, set Levers > Advanced > Internals to 'Structured packing, 2 x 4.5 m', resume at 300x and wait for steady state."},
+    {"when": {"metric": "objective[o2].met", "op": "==", "value": true}, "text": "Divide the two pressure drops. Then look at the flood % of each bed: which one is the limit, and how much liquid does it carry compared with the other?"}
+  ],
+  "events": [],
+  "scoring": {"objectives": 0.6, "time": 0.2, "safety": 0.1, "quality": 0.1,
+              "qualitySpec": {"metric": "kpi.xD", "op": ">=", "value": 0.99}},
+  "debrief": "In this shell the packing wins on pressure drop (about 10x lower) and on stages (18 against about 14). Its capacity gain is small, about 6 %. Trays at 0.9 m spacing are already roomy, and the lower bed carries L/V = 1.33, which Robbins' liquid term penalises; the upper bed alone would gain about 29 %. In vacuum service the pressure-drop saving is what pays for a retrofit: 13 kPa is most of the pressure of a column at 0.2 bar."
+}
+''';

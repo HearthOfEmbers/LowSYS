@@ -9,7 +9,7 @@ import '../faults/fault_spec.dart';
 export '../control/instrument.dart'
     show Quality, InstrumentType, InstrumentReading;
 
-enum StageKind { drum, tray, sump }
+enum StageKind { drum, tray, packed, sump }
 
 enum StreamId { feed, reflux, distillate, bottoms, vaporProduct, boilup }
 
@@ -73,6 +73,10 @@ class StageArrays {
       weepFrac,
       efficiency;
   final Float64List hetp, packFlood;
+
+  /// M8: liquid holdup h_L (volume fraction) and Onda wetted fraction a_w/a per packed segment (NaN on trays); kept in
+  /// plant views for the column animation.
+  final Float64List packHoldup, wetFrac;
   final Uint8List flags;
 
   const StageArrays({
@@ -101,12 +105,47 @@ class StageArrays {
     required this.efficiency,
     required this.hetp,
     required this.packFlood,
+    required this.packHoldup,
+    required this.wetFrac,
     required this.flags,
   });
 
   double xAt(int stage, int comp) => x[stage * nc + comp];
   double yAt(int stage, int comp) => y[stage * nc + comp];
   double yStarAt(int stage, int comp) => yStar[stage * nc + comp];
+}
+
+/// One packed bed (ENGINE_API.md 7.1, M8). Fault parameters ([eMal], [maldistribution]) are NaN in drills and plant views.
+@immutable
+class PackedBedSnapshot {
+  /// 1-based from the top, as in F21/F23 locations and PDT-(101 + bed).
+  final int bed;
+  final int firstStage, lastStage;
+  final String packingId;
+  final double height, diameter;
+
+  /// Pa, sum of the segments' dP (plant view: the PDT reading).
+  final double dp;
+
+  /// Max phi_p over the bed (fraction); NaN in plant view, kept in plantCalc.
+  final double maxFlood;
+
+  /// n_th = sum min(1, H_k/HETP_k); NaN in plant views.
+  final double nTheoretical;
+  final double eMal, maldistribution;
+  const PackedBedSnapshot({
+    required this.bed,
+    required this.firstStage,
+    required this.lastStage,
+    required this.packingId,
+    required this.height,
+    required this.diameter,
+    required this.dp,
+    required this.maxFlood,
+    required this.nTheoretical,
+    required this.eMal,
+    required this.maldistribution,
+  });
 }
 
 @immutable
@@ -485,6 +524,9 @@ class SimSnapshot {
   /// Tiers 2/3: the column energy balance (null in Tier 1; NaN terms in plant view).
   final EnergySnapshot? energy;
 
+  /// M8: one entry per packed bed, top to bottom (empty for an all-tray column).
+  final List<PackedBedSnapshot> beds;
+
   const SimSnapshot({
     required this.serial,
     required this.time,
@@ -512,6 +554,7 @@ class SimSnapshot {
     this.crossChecks = const [],
     this.fieldChecks = const [],
     this.energy,
+    this.beds = const [],
     this.scenario,
   });
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../core/ids.dart';
 import '../data/presets/bt.dart';
+import '../data/presets/bt_packed.dart';
 import '../data/presets/mw.dart';
 import '../data/presets/ew.dart';
 import '../data/presets/ac.dart';
@@ -13,6 +14,7 @@ import 'column_config.dart';
 /// Shipped column presets (ENGINE_API.md 4.1). M1: `bt` and `bt_custom_alpha`.
 abstract final class Presets {
   static const String bt = 'bt';
+  static const String btPacked = 'bt_packed';
   static const String btCustomAlpha = 'bt_custom_alpha';
   static const String mw = 'mw';
   static const String ew = 'ew';
@@ -21,11 +23,12 @@ abstract final class Presets {
   static const String debut = 'debut';
   static const String deprop = 'deprop';
 
-  static const List<PresetId> ids = [bt, btCustomAlpha, mw, ew, ac, c4, debut, deprop];
+  static const List<PresetId> ids = [bt, btCustomAlpha, mw, ew, ac, c4, debut, deprop, btPacked];
 
   static final Map<PresetId, String> _json = {
     bt: btPresetJson,
     btCustomAlpha: btCustomAlphaPresetJson,
+    btPacked: btPackedPresetJson,
     mw: mwPresetJson,
     ew: ewPresetJson,
     ac: acPresetJson,

@@ -20,6 +20,15 @@ const String btPresetJson = r'''
   "control": {"loops": "default"},
   "hydraulics": "ideal",
   "murphree": 0.7,
+  "internals": 0,
+  "internalsTemplates": [
+    {"id": 0, "label": "20 sieve trays", "feedStage": 10, "temperatureTrays": [1, 4, 7, 10, 12, 14, 17, 20],
+     "sections": [{"kind": "trays", "trays": 20, "type": "sieve", "geometry": {"diameter": 1.2, "traySpacing": 0.9, "downcomerFraction": 0.12, "weirHeight": 0.05, "apronClearance": 0.038, "holeFraction": 0.10, "holeDiameter": 0.0127, "orificeCoeff": 0.73, "downcomerAeration": 0.5, "systemFactor": 1.0}}]},
+    {"id": 1, "label": "Structured packing, 2 x 4.5 m", "feedStage": 10, "temperatureTrays": [1, 3, 5, 7, 9, 10, 12, 14, 16, 18],
+     "sections": [{"kind": "packed", "bedHeight": 4.5, "packingId": "struct250", "diameter": 1.2, "designLiquidFlux": 1.9}, {"kind": "packed", "bedHeight": 4.5, "packingId": "struct250", "diameter": 1.2, "designLiquidFlux": 4.0}]},
+    {"id": 2, "label": "Mixed: packed top, trays below", "feedStage": 10, "temperatureTrays": [1, 3, 5, 7, 9, 10, 12, 14, 17, 20],
+     "sections": [{"kind": "packed", "bedHeight": 4.5, "packingId": "struct250", "diameter": 1.2, "designLiquidFlux": 1.9}, {"kind": "trays", "trays": 11, "type": "sieve", "geometry": {"diameter": 1.2, "traySpacing": 0.9, "downcomerFraction": 0.12, "weirHeight": 0.05, "apronClearance": 0.038, "holeFraction": 0.10, "holeDiameter": 0.0127, "orificeCoeff": 0.73, "downcomerAeration": 0.5, "systemFactor": 1.0}}]}
+  ],
   "initialLevers": {"feedFlow": 27.77777777777778, "refluxFlow": 27.77777777777778, "boilup": 41.666666666666664, "reboilerDuty": 1301477.0}
 }
 ''';

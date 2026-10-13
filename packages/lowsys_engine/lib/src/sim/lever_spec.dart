@@ -26,6 +26,10 @@ class LeverSpec {
   /// True for levers that only take integer values (feed tray, number of trays, mode switches).
   final bool integer;
 
+  /// Allowed integer values when they are not a whole range (M8: `feedStage` offers trays and bed tops, `internals`
+  /// the template ids); null: every integer in [min, max].
+  final List<int>? options;
+
   const LeverSpec({
     required this.id,
     required this.label,
@@ -38,5 +42,6 @@ class LeverSpec {
     this.requiresPause = false,
     required this.group,
     this.integer = false,
+    this.options,
   });
 }

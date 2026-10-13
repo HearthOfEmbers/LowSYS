@@ -140,7 +140,8 @@ class EventDef {
 class CandidateDef {
   final String id;
   final double weight;
-  final FaultType faultType;
+  /// Null for a candidate without a fault (M8: an operating condition, e.g. H7 `near_flood`).
+  final FaultType? faultType;
   final FaultLocation location;
   final Map<String, Object?> params;
   final double severityLo, severityHi, ramp;
@@ -364,14 +365,15 @@ class ScenarioDef {
   }
 
   static CandidateDef _candidate(Map<String, Object?> c) {
-    final f = c['fault']! as Map<String, Object?>;
+    final f = (c['fault'] as Map<String, Object?>?) ?? const <String, Object?>{};
+    final noFault = c['fault'] == null;
     final sr = f['severityRange'] as List<Object?>?;
     final sv = (f['severity'] as num?)?.toDouble();
     final ans = c['answer']! as Map<String, Object?>;
     return CandidateDef(
       id: c['id']! as String,
       weight: (c['weight'] as num?)?.toDouble() ?? 1,
-      faultType: FaultType.values.firstWhere((e) => e.name == f['type']),
+      faultType: noFault ? null : FaultType.values.firstWhere((e) => e.name == f['type']),
       location: f['location'] == null
           ? const FaultLocation.whole()
           : FaultLocation.fromJson(f['location']! as Map<String, Object?>),
@@ -400,7 +402,7 @@ class ScenarioDef {
   ColumnConfig buildConfig() => Presets.byId(preset).applyOverrides(overrides);
 
   static final RegExp _leverPattern = RegExp(
-      r'^(feedFlow|feedZ\.\w+|feedQ|feedT|feedVaporFraction|feedStage|refluxFlow|refluxRatio|refluxMode|refluxSubcooling|boilup|reboilerDuty|pTop|condenserType|drumLevelSp|sumpLevelSp|distillateValve|bottomsValve|nTrays|murphree|trayType\.\w+|hydraulics|cwInletT|cwMaxFlow|steamHeaderP|reboilerType|tsInletValve|antifoam|inertVent|tc101Enable|tc101Tray|tc101Sp|tier|noise|crudeRate|cot|topTSp|drawRate\.\w+|paDuty|steam\.\w+|drumTSp|view|badPvShed|bypass\.[\w-]+|feedFlowOp|refluxOp|boilupOp|alpha)$');
+      r'^(feedFlow|feedZ\.\w+|feedQ|feedT|feedVaporFraction|feedStage|refluxFlow|refluxRatio|refluxMode|refluxSubcooling|boilup|reboilerDuty|pTop|condenserType|drumLevelSp|sumpLevelSp|distillateValve|bottomsValve|nTrays|murphree|trayType\.\w+|hydraulics|cwInletT|cwMaxFlow|steamHeaderP|reboilerType|tsInletValve|antifoam|inertVent|tc101Enable|tc101Tray|tc101Sp|tier|noise|crudeRate|cot|topTSp|drawRate\.\w+|paDuty|steam\.\w+|drumTSp|view|badPvShed|bypass\.[\w-]+|feedFlowOp|refluxOp|boilupOp|alpha|internals)$');
   static final RegExp _loopPattern = RegExp(r'^(FC|LC|PC|TC)-\d+$');
   static const Set<String> _instrumentKinds = {
     'bias',
@@ -420,11 +422,11 @@ class ScenarioDef {
   /// Diagnosis vocabulary (ENGINE_API.md 11.2, with the M6 additions).
   static const Set<String> diagnosisCategories = {
     'cooling', 'fouling', 'inerts', 'foaming', 'trayDamage', 'instrument', 'valve', 'feedUpset', 'steam',
-    'thermosyphon', 'maldistribution', 'none', 'restriction', 'condensate', 'pump',
+    'thermosyphon', 'maldistribution', 'none', 'restriction', 'condensate', 'pump', 'packingDamage', 'flooding',
   };
   static const Set<String> diagnosisLocations = {
     'condenser', 'reboiler', 'rectifying', 'stripping', 'feed', 'instrument:*', 'valve:*', 'packedBed', 'column',
-    'steamSupply', 'tsInletLine', 'tsOutletLine', 'refluxPump',
+    'steamSupply', 'tsInletLine', 'tsOutletLine', 'refluxPump', 'bed:*',
   };
 
   /// True when [path] is a valid template variable of this scenario.
@@ -532,6 +534,7 @@ class ScenarioDef {
       }
       for (final c in candidates) {
         final kind = c.params['kind'];
+        if (c.faultType == null) continue;
         if (c.faultType == FaultType.instrument ||
             c.faultType == FaultType.transmitter) {
           if (kind is! String || !_instrumentKinds.contains(kind))
@@ -566,7 +569,7 @@ class ScenarioDef {
     if (!const {'model', 'plant', 'plantCalc'}.contains(view)) p.add('unknown view "$view"');
     // F17 and F18 act on the thermosyphon loop only (ENGINE_API.md 9)
     const tsFaults = {'tsInletRestriction', 'tsOutletRestriction'};
-    final usesTs = candidates.any((c) => tsFaults.contains(c.faultType.name)) ||
+    final usesTs = candidates.any((c) => tsFaults.contains(c.faultType?.name)) ||
         events.any((e) =>
             e.action == 'injectFault' &&
             e.data['fault'] is Map &&
@@ -575,8 +578,12 @@ class ScenarioDef {
       final lev = (leverSet['reboilerType'] ?? 0) >= 0.5;
       if (!lev) p.add('F17/F18 need a thermosyphon reboiler (levers.set reboilerType 1)');
     }
-    // templates
+    // templates (M8: a drill with a no-fault candidate must not use {fault.*} in its drill-level or that candidate's debrief)
+    final hasNoFault = candidates.any((c) => c.faultType == null);
     for (final text in [debrief, ...candidates.map((c) => c.debrief)]) {
+      if (hasNoFault && (text == debrief || candidates.any((c) => c.faultType == null && c.debrief == text))) {
+        if (text.contains('{fault.')) p.add('a debrief that applies to a no-fault candidate uses {fault.*}');
+      }
       for (final m in _templatePattern.allMatches(text)) {
         final v = m.group(1)!;
         if (!_validTemplateVar(v)) p.add('unknown template variable "{$v}"');

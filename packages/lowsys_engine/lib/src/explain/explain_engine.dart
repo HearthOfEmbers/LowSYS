@@ -10,6 +10,7 @@ import '../snapshot/sim_snapshot.dart';
 import '../thermo/tier1_constant_alpha.dart';
 import '../thermo/tier2_raoult.dart';
 import 'explain_m7.dart';
+import 'explain_packed.dart';
 import 'explain_t2.dart';
 import 'explain_types.dart';
 
@@ -261,6 +262,8 @@ class ExplainEngine {
     ]));
 
     // --- equilibrium and Murphree (3.1, 4.2)
+    final pkm = hyd.pk;
+    final packed = pkm != null && pkm.bedOf[j] >= 0;
     final tier2 = t2 != null && snapshot.tier != ThermoTier.t1;
     final t2Lines = tier2 ? ExplainT2(snapshot, t2!, lk: config.effectiveKeys.lk).stageLines(j) : const <EquationLine>[];
     groups.add(EquationGroup('Equilibrium and efficiency', [
@@ -275,7 +278,7 @@ class ExplainEngine {
         value: ys,
         note: 'Constant relative volatility; no temperature in Tier 1.',
       ),
-      EquationLine(
+      if (!packed) EquationLine(
         id: 'eq.murphree',
         physicsRef: 'PHYSICS.md (4.2)',
         texSymbolic: r'y_j = y_{j+1} + E_j\,(y^*_j - y_{j+1})',
@@ -296,6 +299,22 @@ class ExplainEngine {
         quantity: Quantity.molarFlow,
       ),
     ]));
+
+    if (packed) {
+      groups.add(packedGroup(j));
+      return ExplainResult(
+          title: 'Segment $j (bed ${pkm.bedOf[j] + 1}, $section)',
+          groups: groups,
+          notes: [
+            if (tier2)
+              'Tier 2: ideal vapour-liquid equilibrium (Raoult) with enthalpy balances on every segment.'
+            else
+              _noteCmo,
+            'Packed segments are equilibrium stages whose efficiency comes from the HETP; the Robbins and Kister-Gill correlations were fitted mainly to random packings and are used for structured packing too.',
+            if (!full) 'Hydraulics are ideal: no pressure drop, wetting or loading modifier (phi_p = 0, HETP = HETP_ref).',
+          ],
+          time: snapshot.time);
+    }
 
     // --- hydraulics
     final hl = <EquationLine>[];

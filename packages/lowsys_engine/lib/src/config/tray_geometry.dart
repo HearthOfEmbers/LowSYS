@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:meta/meta.dart';
 
 import '../core/ids.dart';
+import '../data/packings_json.dart';
 
 /// Tray geometry (PHYSICS.md 5.1). Defaults are the benzene-toluene preset.
 @immutable
@@ -113,6 +114,7 @@ sealed class SectionConfig {
   static SectionConfig fromJson(Map<String, Object?> j) {
     final kind = j['kind'] as String? ?? 'trays';
     if (kind == 'trays') return TraySection.fromJson(j);
+    if (kind == 'packed') return PackedSection.fromJson(j);
     throw ConfigException(
         'Section kind "$kind" is not available in this build');
   }
@@ -150,5 +152,50 @@ class TraySection extends SectionConfig {
         'trays': trays,
         'type': type.name,
         'geometry': geometry.toJson()
+      };
+}
+
+/// A packed bed (PHYSICS.md 6.1, 6.2; M8). [designLiquidFlux] is L'_des of (6.5) in kg/m2/s; null: no wetting modifier.
+class PackedSection extends SectionConfig {
+  final double bedHeight;
+  final String packingId;
+  final double diameter;
+  final double? designLiquidFlux;
+  const PackedSection(
+      {required this.bedHeight,
+      required this.packingId,
+      this.diameter = 1.2,
+      this.designLiquidFlux});
+
+  factory PackedSection.fromJson(Map<String, Object?> j) => PackedSection(
+        bedHeight: (j['bedHeight']! as num).toDouble(),
+        packingId: j['packingId']! as String,
+        diameter: (j['diameter'] as num?)?.toDouble() ?? 1.2,
+        designLiquidFlux: (j['designLiquidFlux'] as num?)?.toDouble(),
+      );
+
+  PackingData get packing => PackingData.byId(packingId);
+
+  /// n_seg = max(1, round(H_bed / HETP_ref)) (PHYSICS.md 6.1).
+  @override
+  int get stageCount => math.max(1, (bedHeight / (PackingData.tryById(packingId)?.hetpRef ?? bedHeight)).round());
+
+  /// Cross-section A_T (m2).
+  double get area => math.pi * diameter * diameter / 4;
+
+  PackedSection copyWith({double? bedHeight, String? packingId, double? diameter, double? designLiquidFlux}) =>
+      PackedSection(
+          bedHeight: bedHeight ?? this.bedHeight,
+          packingId: packingId ?? this.packingId,
+          diameter: diameter ?? this.diameter,
+          designLiquidFlux: designLiquidFlux ?? this.designLiquidFlux);
+
+  @override
+  Map<String, Object?> toJson() => {
+        'kind': 'packed',
+        'bedHeight': bedHeight,
+        'packingId': packingId,
+        'diameter': diameter,
+        if (designLiquidFlux != null) 'designLiquidFlux': designLiquidFlux,
       };
 }

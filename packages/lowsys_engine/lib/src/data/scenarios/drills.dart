@@ -448,3 +448,61 @@ const String h6Json = r'''
   "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
 }
 ''';
+
+/// Drill H7 (ENGINE_API.md 11.11, M8).
+const String h7Json = r'''
+{
+  "id": "H7_packed_bed", "kind": "drill", "title": "Packed bed underperforms", "milestone": 8, "topic": "packing",
+  "preset": "bt_packed",
+  "overrides": {"tier": "t2", "hydraulics": "full",
+    "sections": [{"kind": "packed", "bedHeight": 4.5, "packingId": "struct250", "diameter": 1.0, "designLiquidFlux": 1.9},
+                 {"kind": "packed", "bedHeight": 4.5, "packingId": "struct250", "diameter": 1.0, "designLiquidFlux": 4.0}]},
+  "start": "steady", "noise": true, "view": "plantCalc", "badPvShed": true,
+  "levers": {"set": {"cwInletT": 288.15},
+             "lock": ["internals", "feedStage", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType", "tier", "cwInletT"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "This benzene–toluene column runs on two 4.5 m beds of structured packing in a 1.0 m shell. Operations says the beds are not doing what the vendor promised. The cooling water is at 15 °C this winter, so at 45 minutes planning will raise the throughput by 25 % (feed, reflux and reboiler duty together). Watch both beds and find out what limits them: a plugged distributor, crushed packing, or the new rate itself?",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "maldist_upper", "weight": 1,
+     "fault": {"type": "packingMaldistribution", "location": {"bed": 1}, "severityRange": [0.5, 0.8], "ramp": 900},
+     "answer": {"category": "maldistribution", "location": "bed:1"},
+     "debrief": "**The upper bed's distributor partly plugged** from {fault.onset:time} ({fault.magnitude}). PDT-102 hardly moved: the same liquid and vapour still pass through the bed. But each side of the bed now runs at the wrong L/V, so the bed works like fewer stages. Its temperature profile (TI-101 to TI-109) flattened, and x_D fell, all before planning raised the rates. A plugged distributor needs a shutdown; until then, more reflux buys back part of the separation."},
+    {"id": "maldist_lower", "weight": 1,
+     "fault": {"type": "packingMaldistribution", "location": {"bed": 2}, "severityRange": [0.5, 0.8], "ramp": 900},
+     "answer": {"category": "maldistribution", "location": "bed:2"},
+     "debrief": "**The lower bed's distributor partly plugged** from {fault.onset:time} ({fault.magnitude}). PDT-103 stayed flat, while the lower bed's temperature profile (TI-110 to TI-118) flattened and AT-102 rose: benzene slipped into the bottoms. The feed distributor sits on top of this bed, so the feed itself was spread unevenly. A plugged distributor needs a shutdown; until then, more boilup buys back part of the separation."},
+    {"id": "crushed_upper", "weight": 1,
+     "fault": {"type": "packingCrush", "location": {"bed": 1}, "severityRange": [0.3, 0.5], "ramp": 0},
+     "answer": {"category": "packingDamage", "location": "bed:1"},
+     "debrief": "**Packing in the upper bed was crushed** at {fault.onset:time}: the bed settled shorter and denser ({fault.magnitude}). At constant rates PDT-102 stepped up by 45–80 %, and the calculated flood % rose with it, while the separation hardly changed. When planning raised the rates, this bed reached flood first. Cut the rates, and replace the packing at the next shutdown."},
+    {"id": "crushed_lower", "weight": 1,
+     "fault": {"type": "packingCrush", "location": {"bed": 2}, "severityRange": [0.3, 0.5], "ramp": 0},
+     "answer": {"category": "packingDamage", "location": "bed:2"},
+     "debrief": "**Packing in the lower bed was crushed** at {fault.onset:time} ({fault.magnitude}). At constant rates PDT-103 rose by 55–110 % and the bed's calculated flood % went from 79 % to 88–94 %. The planning increase then pushed it past flood: holdup built up, ΔP kept climbing and the bottoms went off-spec. Cut the rates, and replace the packing at the next shutdown."},
+    {"id": "near_flood", "weight": 2, "fault": null,
+     "answer": {"category": "flooding", "location": "bed:2"},
+     "debrief": "**Nothing was broken.** Both beds were healthy until planning's +25 % at 45 min. That took the lower bed from 79 % to about 97 % of flood. PDT-103 rose 1.8× for 1.25× the load (the square law alone gives 1.56×), liquid built up in the bed and its HETP grew by about a quarter, so benzene slipped into the bottoms. The lower bed carries twice the liquid of the upper one, so it floods first. Bring the rates back to about 110 %, where the lower bed sits near 86 % of flood."}
+  ],
+  "events": [
+    {"id": "planning", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 6.94444,
+     "text": "Planning: throughput +25 %: feed +25 kmol/h, reflux +25 kmol/h, duty +325 kW."},
+    {"at": 2700, "action": "setSp", "tag": "FC-102", "delta": 6.94444},
+    {"at": 2700, "action": "setSp", "tag": "FC-103", "delta": 325000}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.003},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.004}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1200, "cost": 0.03, "text": "Compare each bed's ΔP with the load. At constant rates a healthy bed's ΔP does not move."},
+    {"after": 2400, "cost": 0.03, "text": "Look at the temperatures inside each bed. A bed that works spreads its temperature change over its whole height."},
+    {"after": 3600, "cost": 0.03, "text": "Near flood, a bed's ΔP grows much faster than the square of the load, and its calculated flood % heads for 100. A damaged bed showed its change before the rates moved."}
+  ],
+  "diagnosis": {"categories": ["maldistribution", "packingDamage", "flooding", "instrument", "none"],
+                "locations": ["bed:*", "instrument:PDT-102", "instrument:PDT-103"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "First cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+''';

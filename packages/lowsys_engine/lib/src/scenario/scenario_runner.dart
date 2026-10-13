@@ -95,6 +95,13 @@ class SimulatorHost implements ScenarioHost {
         ? sim.control.instrument(tag)
         : null;
     final sg = sign < 0 ? '−' : '+';
+    if (c.faultType == FaultType.packingMaldistribution) {
+      final f = 0.6 * severity;
+      return 'f = ${f.toStringAsFixed(2)} (${(50 * (1 + f)).toStringAsFixed(0)} % of the liquid on one side)';
+    }
+    if (c.faultType == FaultType.packingCrush) {
+      return '+${(150 * severity).toStringAsFixed(0)} % packing factor, ${(15 * severity).toStringAsFixed(1)} % shorter bed';
+    }
     if (c.faultType == FaultType.coolingLoss && c.params['mode'] == 'temperature') {
       return (15 * severity).toStringAsFixed(1); // K of CW inlet temperature rise (PHYSICS.md 11)
     }
@@ -226,8 +233,8 @@ class ScenarioRunner {
       final c = d.candidate;
       final params = Map<String, Object?>.from(c.params);
       if (params['sign'] == 'random') params['sign'] = d.sign;
-      _drillFault = host.injectFault(FaultSpec(
-        type: c.faultType,
+      if (c.faultType != null) _drillFault = host.injectFault(FaultSpec(
+        type: c.faultType!,
         location: c.location,
         severity: d.severity,
         onset: t0 + d.onset,

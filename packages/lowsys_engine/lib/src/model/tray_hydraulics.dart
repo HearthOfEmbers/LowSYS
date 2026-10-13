@@ -7,6 +7,7 @@ import '../core/ids.dart';
 import '../faults/fault_effects.dart';
 import '../thermo/tier1_constant_alpha.dart';
 import 'column_state.dart';
+import 'packed_model.dart';
 
 /// Derived tray geometry (PHYSICS.md 5.1).
 class TrayGeometryDerived {
@@ -59,6 +60,11 @@ class HydraulicSolver {
   /// Geometry of the tray section each stage belongs to (index = stage; M7 close-out: several tray sections).
   late final List<TrayGeometry> geomAt;
   late final List<TrayGeometryDerived> dAt;
+
+  /// Packed sections (M8); null for an all-tray column. In full hydraulics [update] refreshes it, and its segments
+  /// are skipped by the tray loops (their dP enters [pressure] here).
+  PackedModel? pk;
+  bool tier2Props = false;
   TrayType trayType;
   /// Top pressure (Pa); the Tier-2 stepper updates it every step.
   double pTop;
@@ -183,7 +189,16 @@ class HydraulicSolver {
     final valve = trayType == TrayType.valve;
     pressure[1] = pTop;
     pressureDropTotal = 0;
+    final pkm = pk;
+    pkm?.update(s, ep, rhoLs, rhoVs, sigmas, tier2: tier2Props, ideal: false);
     for (var j = 1; j <= N; j++) {
+      if (pkm != null && pkm.bedOf[j] >= 0) {
+        // packed segment: dP from Robbins (6.1); the tray quantities stay zero
+        dp[j] = pkm.dp[j];
+        pressure[j + 1] = pressure[j] + dp[j];
+        pressureDropTotal += dp[j];
+        continue;
+      }
       final geom = geomAt[j], d = dAt[j];
       final aA = d.aA;
       final c = TrayCorrelations.bennettC(geom.weirHeight);
@@ -301,6 +316,7 @@ class HydraulicSolver {
     }
     // second pass: downcomer backup (5.10, 5.11) needs the receiving tray's normal clear-liquid height
     for (var j = 1; j <= N; j++) {
+      if (pkm != null && pkm.bedOf[j] >= 0) continue;
       final geom = geomAt[j], d = dAt[j];
       final vlj = s.vLiq[j];
       double hn;
@@ -333,6 +349,16 @@ class HydraulicSolver {
   void finishEntrainment(ColumnState s, double dt) {
     final N = nTrays;
     for (var j = 1; j <= N; j++) {
+      if (pk != null && pk!.bedOf[j] >= 0) {
+        // packed segment: carry-over above phi 1.05 (6.3), like (5.9)
+        var ec = pk!.carry[j];
+        final cap = 0.3 * s.holdup[j] / dt;
+        if (ec > cap) ec = cap;
+        entrain[j] = ec;
+        weepFlow[j] = 0;
+        flags[j] = pk!.phi[j] >= 1 ? 16 : 0;
+        continue;
+      }
       double e = 0;
       if (entrainment) {
         final p = math.min(s.psi[j], 0.6);
