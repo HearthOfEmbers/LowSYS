@@ -72,6 +72,72 @@ void main() {
     expect(jsonEncode(copy.saveState()), equals(jsonEncode(sim.saveState())));
   });
 
+  // M4 validation: both Tier-2 rows fail at c4e1f17 (DEVIATIONS.md "M4
+  // validation" V1, V2): full hydraulics restores a different T / y profile,
+  // and a PC-101 SP away from the design pressure shifts PT-101 after
+  // restore by 7.8e-4 × (SP − P_design) Pa in the first step.
+  test(
+      'VC-20.4 Tier 2 (M4), ideal hydraulics: save/restore with noise and the PC-101 SP moved off the design pressure',
+      () {
+    final sim = newSim(
+        Presets.byId(Presets.bt)
+            .copyWith(tier: ThermoTier.t2, hydraulics: HydraulicsMode.ideal),
+        options: const SimOptions(seed: 9));
+    runSteady(sim);
+    sim.setLever('noise', 1);
+    sim.control.setSp('PC-101', 96000);
+    sim.advance(900);
+    final saved = jsonEncode(sim.saveState());
+    final copy = Simulator.restore(jsonDecode(saved) as Map<String, Object?>);
+    sim.advance(600);
+    copy.advance(600);
+    expect(copy.snapshot().kpis.pTop, sim.snapshot().kpis.pTop);
+    expect(jsonEncode(copy.saveState()), equals(jsonEncode(sim.saveState())));
+  });
+
+  test(
+      'VC-20.4 Tier 2 (M4), full hydraulics: save/restore mid-transient with noise, TC-101 cascade, non-condensables building up and a ramping steam-header loss',
+      () {
+    final sim = newSim(
+        Presets.byId(Presets.bt)
+            .copyWith(tier: ThermoTier.t2, hydraulics: HydraulicsMode.full),
+        options: const SimOptions(seed: 9));
+    sim.setLever('tc101Enable', 1);
+    runSteady(sim);
+    sim.setLever('noise', 1);
+    sim.setLever('view', 1);
+    sim.faults.inject(FaultSpec(
+        type: FaultType.nonCondensables,
+        location: FaultLocation.equipment('condenser'),
+        severity: 0.6,
+        onset: sim.time,
+        ramp: 0));
+    sim.faults.inject(FaultSpec(
+        type: FaultType.steamHeaderLoss,
+        location: FaultLocation.equipment('reboiler'),
+        severity: 0.8,
+        onset: sim.time + 600,
+        ramp: 600));
+    sim.setLever('pTop', 106000);
+    sim.advance(900);
+    final saved = jsonEncode(sim.saveState());
+    final copy = Simulator.restore(jsonDecode(saved) as Map<String, Object?>);
+    List<Object?> stateT(Simulator s) =>
+        ((s.saveState()['dynamic']! as Map)['state']! as Map)['T']! as List;
+    final tA = stateT(sim), tB = stateT(copy);
+    for (var j = 0; j < tA.length; j++) {
+      expect(tB[j], tA[j], reason: 'state T[$j] right after restore');
+    }
+    sim.advance(1800);
+    copy.advance(1800);
+    expect(jsonEncode(copy.saveState()), equals(jsonEncode(sim.saveState())));
+    final a = copy.snapshot(), b = sim.snapshot();
+    expect(a.kpis.pTop, b.kpis.pTop);
+    expect(a.condenser!.inertFraction, b.condenser!.inertFraction);
+    expect(a.condenser!.inertFraction, greaterThan(0));
+    expect(a.reboiler.steamT, b.reboiler.steamT);
+  });
+
   group('VC-20.5 noise-on reproducibility and stream independence', () {
     List<double> ft102Series(int seed, {void Function(Simulator)? extra}) {
       final sim = steadyT1(noise: true, seed: seed);

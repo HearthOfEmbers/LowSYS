@@ -3,6 +3,8 @@
 // independent MESH reference where the doc is inconsistent), VC-27.3 limits.
 library;
 
+import 'dart:math' as math;
+
 import 'package:lowsys_engine/lowsys_engine.dart';
 import 'package:test/test.dart';
 
@@ -18,16 +20,18 @@ Tier2Result _refBt(
     int feed = 10,
     double p = ref.atm,
     double e = 1.0}) {
-  final col = Tier2Column(
-      sys: ref.bt,
-      nTrays: 20,
-      feedTray: feed,
-      f: 100 * kmolh,
-      z: 0.5,
-      l0: l0 * kmolh,
-      d: d * kmolh,
-      p: p,
-      e: e);
+  Tier2Result solve(double dd, List<double> g) => solveTier2(
+      Tier2Column(
+          sys: ref.bt,
+          nTrays: 20,
+          feedTray: feed,
+          f: 100 * kmolh,
+          z: 0.5,
+          l0: l0 * kmolh,
+          d: dd * kmolh,
+          p: p,
+          e: e),
+      xGuess: g);
   final g = solveNewton(CmoColumn(
           alpha: 2.5,
           nTrays: 20,
@@ -36,10 +40,30 @@ Tier2Result _refBt(
           z: 0.5,
           q: 1,
           l0: l0,
-          vB: l0 + d - 9,
+          vB: l0 + 50 - 9,
           e: e))
       .x;
-  return solveTier2(col, xGuess: g);
+  // Continuation in D from D = F z: the CMO guess alone does not converge
+  // far from it (at D 55 the Newton stalled on xD 0.9964, xB 1e-12, which
+  // breaks the light-component balance, xD ≤ 50/55).
+  var r = solve(50, g);
+  final steps = ((d - 50).abs() / 0.5).ceil();
+  for (var k = 1; k <= steps; k++) {
+    r = solve(50 + (d - 50) * k / steps, r.x);
+  }
+  expect(r.maxResidual, lessThan(1e-8), reason: 'MESH reference converged');
+  return r;
+}
+
+/// CW inlet temperature at which the default condenser (UA 29.9 kW/K,
+/// 41.54 kg/s at 100 %) needs 50 % CW for the reference Q_C at the reference
+/// T_D: the §7.2 design rule, standing in for the "perfect condenser" the
+/// VC-11 / VC-27.2 references assume (P held exactly). With the default
+/// 30 °C CW the condenser cannot hold P for L0 150 (1707 kW > 1391 kW,
+/// VC-27.3) or at 0.5 bar(a).
+double _cwInletFor(Tier2Result r) {
+  const ua = 29900.0, mHalf = 0.5 * 41.54, cp = 4180.0;
+  return r.t[0] - r.qC * (1 + ua / (2 * mHalf * cp)) / ua;
 }
 
 void main() {
@@ -90,14 +114,24 @@ void main() {
         'VC-18.3 non-CMO: operating locus deviates > 0.002 from the dashed CMO line in the rectifying section',
         () {
       final mt = McCabeThieleBuilder().build(p.s, thermoOf(sim.config));
-      var maxDev = 0.0;
-      for (var j = 0; j < 10; j++) {
+      double dev(List<Point2> line, Point2 pt) {
+        final a = line[0], b = line[1];
+        return (pt.y - (a.y + (b.y - a.y) * (pt.x - a.x) / (b.x - a.x))).abs();
+      }
+
+      var maxDev = 0.0, maxDevS = 0.0;
+      for (var j = 0; j < mt.operatingLocus.length; j++) {
         final pt = mt.operatingLocus[j];
-        final a = mt.cmoRectifying[0], b = mt.cmoRectifying[1];
-        final yLine = a.y + (b.y - a.y) * (pt.x - a.x) / (b.x - a.x);
-        maxDev = [maxDev, (pt.y - yLine).abs()].reduce((x, y) => x > y ? x : y);
+        if (j < 10) {
+          maxDev = math.max(maxDev, dev(mt.cmoRectifying, pt));
+        } else {
+          maxDevS = math.max(maxDevS, dev(mt.cmoStripping, pt));
+        }
       }
       expect(maxDev, greaterThan(0.002));
+      // [P] max 0.0064 rectifying, 0.0025 stripping
+      expect(maxDev, closeTo(0.0064, 0.001), reason: 'rectifying');
+      expect(maxDevS, closeTo(0.0025, 0.001), reason: 'stripping');
       expect(mt.equilibriumBottom, isNotNull);
     });
     test(
@@ -123,19 +157,29 @@ void main() {
   });
 
   group('VC-11 further references', () {
-    for (final (name, l0, ft, d, xD, xB, qR, _) in vc11Further) {
+    for (final (name, l0, ft, d, xD, xB, qR, qC) in vc11Further) {
       test(name, () {
         final r = _refBt(l0: l0, d: d, feed: ft);
-        final sim = vc11Sim(
-            duty: r.qR / 1000,
-            l0: l0,
-            overrides: {'murphree': 1.0, 'feeds[0].stage': ft});
-        final p = runSteady(sim);
-        expect(p.dKmolh, closeTo(d, 0.01));
-        expect(p.xD, closeTo(xD, 5e-5));
-        expect(p.xB, closeTo(xB, 5e-5));
+        expect(r.xD, closeTo(xD, 5e-5), reason: 'reference xD vs doc');
+        expect(r.xB, closeTo(xB, 5e-5), reason: 'reference xB vs doc');
         expect(r.qR / 1000, closeTo(qR, 0.002 * qR),
             reason: 'reference duty vs doc');
+        if (!qC.isNaN) {
+          expect(r.qC / 1000, closeTo(qC, 0.002 * qC),
+              reason: 'reference Q_C vs doc');
+        }
+        final sim = vc11Sim(duty: r.qR / 1000, l0: l0, overrides: {
+          'murphree': 1.0,
+          'feeds[0].stage': ft,
+          'condenser.cwInletT': _cwInletFor(r)
+        });
+        final p = runSteady(sim);
+        expect((p.s.kpis.pTop - 101325).abs(), lessThan(1),
+            reason: 'P held at 1 atm');
+        expect(p.dKmolh, closeTo(d, 0.01), reason: 'D at the reference duty');
+        expect(p.xD, closeTo(xD, 5e-5));
+        expect(p.xB, closeTo(xB, 5e-5));
+        expect(tC(p.s, 21), closeTo(r.t[21] - 273.15, 0.02), reason: 'T_B');
       });
     }
   });
@@ -189,20 +233,28 @@ void main() {
   group(
       'VC-27.2 pressure sweep at L0 100, D 50 (E 0.7): engine vs the independent MESH reference',
       () {
-    // The doc's T columns are 1–2.3 K below the Raoult bubble points of its
-    // own x columns, and its 1-atm x_D conflicts with VC-8.9; the reference
-    // values are asserted tightly and the doc's loosely (reported).
-    for (final (pBar, qRdoc, xDdoc, xBdoc, _, _, alDoc) in vc272) {
+    // Table re-pinned 2026-10-12 (perfect condenser): asserted at the doc's
+    // tolerances (Q_R ± 0.3 %, x ± 2e-4, T ± 0.05 K, α ± 0.002) and against
+    // this suite's MESH reference. The condenser is set to need 50 % CW at
+    // each pressure so PC-101 holds P (the default 30 °C CW cannot at
+    // 0.5 bar, VC-27.3).
+    for (final (pBar, qRdoc, xDdoc, xBdoc, tDdoc, tBdoc, alDoc) in vc272) {
       test('P = $pBar bar(a)', () {
         final r = _refBt(p: pBar * 1e5, e: 0.7);
+        expect(r.qR / kw, closeTo(qRdoc, 0.003 * qRdoc),
+            reason: 'reference Q_R vs doc');
+        expect(r.xD, closeTo(xDdoc, 2e-4), reason: 'reference xD vs doc');
+        expect(r.xB, closeTo(xBdoc, 2e-4), reason: 'reference xB vs doc');
         final sim = newSim(btT2(overrides: {
           'reboiler.steamHeaderPressure': 1101325.0,
-          'condenser.cwInletT': 288.15
+          'condenser.cwInletT': _cwInletFor(r)
         }));
         sim.setLever('pTop', pBar * 1e5);
         sim.setLever('reboilerDuty', r.qR);
         sim.setLever('refluxFlow', 100 * kmolh);
         final p = runSteady(sim);
+        expect((p.s.kpis.pTop - pBar * 1e5).abs(), lessThan(1),
+            reason: 'P held');
         expect(p.dKmolh, closeTo(50, 0.05), reason: 'D at the reference duty');
         expect(p.xD, closeTo(r.xD, 2e-4), reason: 'xD vs reference');
         expect(p.xB, closeTo(r.xB, 2e-4), reason: 'xB vs reference');
@@ -210,12 +262,14 @@ void main() {
             reason: 'T_D vs reference');
         expect(tC(p.s, 21), closeTo(r.t[21] - 273.15, 0.05),
             reason: 'T_B vs reference');
-        expect(p.s.kpis.qr / kw, closeTo(qRdoc, 0.006 * qRdoc),
-            reason: 'Q_R vs doc (±0.6 %)');
-        expect(p.xD, closeTo(xDdoc, 0.003), reason: 'xD vs doc (loose)');
-        expect(p.xB, closeTo(xBdoc, 0.003), reason: 'xB vs doc (loose)');
-        expect(ref.bt.alpha(p.s.stages.t[10]), closeTo(alDoc, 0.015),
-            reason: 'α feed tray vs doc (loose)');
+        expect(p.s.kpis.qr / kw, closeTo(qRdoc, 0.003 * qRdoc),
+            reason: 'Q_R vs doc');
+        expect(p.xD, closeTo(xDdoc, 2e-4), reason: 'xD vs doc');
+        expect(p.xB, closeTo(xBdoc, 2e-4), reason: 'xB vs doc');
+        expect(tC(p.s, 0), closeTo(tDdoc, 0.05), reason: 'T_D vs doc');
+        expect(tC(p.s, 21), closeTo(tBdoc, 0.05), reason: 'T_B vs doc');
+        expect(ref.bt.alpha(p.s.stages.t[10]), closeTo(alDoc, 0.002),
+            reason: 'α feed tray vs doc');
       });
     }
     test(
@@ -252,11 +306,15 @@ void main() {
           isTrue);
     });
     test(
-        'condenser at 0.5 bar(a) cannot condense even with CW at 15 °C; 0.7 bar can',
+        'condenser at 0.5 bar(a) cannot condense even with CW at 15 °C; 0.7 bar can; 0.5 bar with CW at the 5 °C lever minimum can (max ≈ 1487 kW > ≈ 1330 kW; OPEN_ITEMS)',
         () {
-      for (final (pBar, ok) in [(0.5, false), (0.7, true)]) {
+      for (final (pBar, tCw, ok) in [
+        (0.5, 288.15, false),
+        (0.7, 288.15, true),
+        (0.5, 278.15, true)
+      ]) {
         final sim = newSim(btT2(overrides: {
-          'condenser.cwInletT': 288.15,
+          'condenser.cwInletT': tCw,
           'reboiler.steamHeaderPressure': 1101325.0
         }));
         final r = _refBt(p: pBar * 1e5, e: 0.7);
@@ -267,7 +325,7 @@ void main() {
         final held = (s.kpis.pTop - pBar * 1e5).abs() < 2000;
         expect(held, ok,
             reason:
-                'P held at $pBar bar: ${s.kpis.pTop}; CW OP ${loopOf(s, 'PC-101').op}');
+                'P held at $pBar bar, CW ${tCw - 273.15} °C: ${s.kpis.pTop}; CW OP ${loopOf(s, 'PC-101').op}');
       }
     });
   });
