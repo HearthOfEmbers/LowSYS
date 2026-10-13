@@ -192,11 +192,12 @@ void main() {
       r.safe.expectSafe(r.sim);
       expect(r.tO3 - r.tSwitch, lessThan(3600), reason: 'o3 latches without steady');
     });
-    test('every objective within the 48-h limit',
-        skip: 'fails at fb33c07: o5 at 55.81 h (o1 26.28 h, o5 29.1 h after hint 3), '
-            'both waits on the steady monitor; reported in OPEN_ITEMS.md, M5 validation, '
-            'item 1 (owner decision on the limit or on `steady` in o1/o5)', () {
-      expect(r.tO5, lessThan(r.sim.scenario!.def.timeLimit));
+    test('every objective within half the time limit (ce171db: limit 432 000 s, par 216 000; hint path bound 216 000 s)',
+        () {
+      final lim = r.sim.scenario!.def.timeLimit;
+      expect(lim, 432000);
+      expect(r.sim.scenario!.def.parTime, 216000);
+      expect(r.tO5, lessThan(lim / 2));
     });
   });
 
@@ -224,13 +225,17 @@ void main() {
       expect(ops.last, closeTo(9, 2), reason: 'VC-28.8: CW valve near 9 % open');
       checkHint3(r.sim);
     });
-    test('VC-28.8 as written: P within ±2 kPa of SP during the whole hour',
-        skip: 'fails at fb33c07 (−8.0 kPa at 92 s after the hint-3 step, '
-            'from the 38 % duty cut at 53 % CW); reported in OPEN_ITEMS.md, '
-            'M5 validation, for the physics lead before any retuning', () {
+    test('VC-28.8 as restated (ce171db): peak |P − SP| ≤ 12 kPa; within ±2 kPa from 10 min on; CW 6–15 %; no safety events',
+        () {
       for (final e in dev) {
+        expect(e.abs(), lessThanOrEqualTo(12000));
+      }
+      for (final e in dev.sublist(600)) {
         expect(e.abs(), lessThanOrEqualTo(2000));
       }
+      expect(amp(dev.sublist(2400)), lessThanOrEqualTo(amp(dev.sublist(0, 1200))));
+      expect(ops.last, inInclusiveRange(6, 15));
+      r.safe.expectSafe(r.sim);
     });
   });
 }
