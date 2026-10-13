@@ -627,7 +627,7 @@ Rulings on the open items of "M7 validation" (2eff06f) and "M7 app" / "M7 app 2"
 1. **M7-S1 (C3a / C5 drum).** The validator is right: C3a carries ΔN_0/W, and 54f9b41's "no drum-level term" was wrong. Two rulings:
    - **Bias fixed in the check:** λ_top = H_V(x_D, **T_dew**(x_D, P̄_101)) − h_L(x_D, T̄_100) (PHYSICS.md §14.6, C3a row). The top vapour leaves tray 1 at its dew point; T_bub read V_cw 1.9 % high on `debut` (r/band 0.95 healthy). C5 (drum) uses V_cw, so it follows. Unchanged for near-pure binaries; B-T rows keep their values within tolerance.
    - **Rate-step transient accepted, not masked:** new §14.6 bullet "Rate steps". C3a / C5 (drum) may sit at `check` / `fail` for up to about an hour after the +8 % planning event on a healthy column. Hints and debriefs never promise them green after a rate change; the F20 debrief (ENGINE_API.md §11.10) and the §14.6 fault-table row are reworded. VALIDATION.md H6: healthy row asserts C3a and C5 (drum) not `fail` from event + 60 min and `ok` at 2 h; F20 keeps "not `fail` from + 60 min, `ok` or `check` at 2 h", C5 recorded only.
-2. **M7-S2 (F07 D transient).** Physical: the feed is saturated at its own bubble point, so the heavier feed enters hotter than the feed tray and flashes ≈ 4 kmol/h of extra vapour until the trays heat up. Row now: D within 1 kmol/h of the **healthy run** at 2 h (the coder's reading confirmed), and until the planning event at most 4.5 kmol/h above its start (peak recorded). Below F12's ≥ 5 kmol/h, so the candidates stay apart.
+2. **M7-S2 (F07 D transient).** Physical: the heavier feed moves the column profile (V₁ ≈ +0.6 kmol/h, and LC-101 draws down a drum level that rose ≈ 0.7 %). Mechanism reworded under M7-S5, "Spec rulings M7-S4/M8"; the first text's feed flash was refuted. Row now: D within 1 kmol/h of the **healthy run** at 2 h (the coder's reading confirmed), and until the planning event at most 4.5 kmol/h above its start (peak recorded). Below F12's ≥ 5 kmol/h, so the candidates stay apart.
 3. **M7-S3 (F12).** Brackets replaced: af6864e, 0.75-m trays, noise off, at 2 h: D 62.4, true xDHeavy 0.22 (AT-101 over-range 0.10). Thresholds unchanged. The B-T test in `m4_energy_faults_test.dart` uses **s = 0.8** (cap 0.2 × 300 = 60 kmol/h, 0.6 × B-T's design reflux 100); the spec's F12 rule is unchanged.
 4. **`deprop` tray design.** Two tray sections: trays 1–10 at D_c 0.55 m, trays 11–28 (feed tray and below) at **0.85 m**, the rest B-T geometry. Jet flood ∝ 1/A, so the stripping section drops from 121–165 % to ≈ 50–70 % while the top keeps its 59 % and does not weep. VC-9.6 (b) band is now 45–85 % per section (`debut`'s 83 % stripping is accepted, the normal design range; `debut` keeps a single 0.75 m). If 0.85 m fails (b), the coder may pick 0.80–0.95 m (smallest that passes) and record it. With (b) passing, the sandbox loads `debut` and `deprop` with Full hydraulics like every other preset (SCOPE.md §4.2); drills and guided scenarios stay `ideal`. PHYSICS.md §2.3, VALIDATION.md VC-9.6, M7.md, OPEN_ITEMS.md.
 5. **PC-101 open-loop gains.** Not needed. The §10.7 rule is a design aid; VC-16.6d is the acceptance. Measure a gain only if VC-16.6d fails and a retune is needed.
@@ -818,3 +818,72 @@ Engine side of M9 (docs/milestones/M9.md). `test/m9_*` reproduces VC-15.1-15.3 (
 6. **Tests.** `app/test/m9_ui_test.dart` (render, Products tab, panels, taps to the math overlay, every control tab, faults, G16 / H8, plant-view lab note, layouts at 360 x 800, 800 x 360 and 900 x 700). The full app suite passes (39 tests).
 7. **Screenshots** (docs/screenshots/m9/, 1440 x 900 at 0.5 and 0.4): the Brass crude flowsheet with the Products tab, and the same screen in Blueprint.
 8. Not done: golden image tests of the flowsheet; the Android emulator run; phone-specific art for the flowsheet (the portrait layout shows the same drawing in the 40 % column slot, at small type).
+
+## Spec rulings M7-S4/M8 (2026-10-13)
+
+Rulings on the open items of "M7 close-out validation" and "M8 validation" (15ba03a) and on "M8 checkpoint" (f1fbc23). Evidence:
+- a scratch copy of the engine at e2b6e63, used for full-hydraulics `deprop` runs with overridden decks and PC-101 tuning (seed 3, cold start, `runToSteadyState` 400 000 s; not committed);
+- `tools/prototypes/m7/deprop_trays.dart`, PHYSICS.md §5.1–5.8 at the `deprop` design flows (pure Dart). It reproduces the engine: valve Φ_min 0.916, jet 66 / 64 %, ΔP 10.52 kPa; sieve f_h 0.05 Φ_min 0.638 against the engine's 0.642.
+
+1. **M7-S4: `deprop` gets valve decks on both sections. D_c stays 0.55 / 0.85 m and the rest of the geometry is unchanged** (B-T valve data f_v 0.14, r_min 0.25, ΔP_lift 190 Pa, C_v 0.65; TS 0.9 m, f_d 0.12, h_w 0.05 m).
+   - **Why it never converged: PC-101, not the trays.** With PC-101 at Ti 120 s even a weep-free valve column cycles: P ± 0.6 kPa, CW 46–54 %, period ≈ 1100 s, D 30.53–30.83 kmol/h, and it does not reach steady in 400 000 s. With Ti 400 s (item 3), the present sieve column reaches steady at 21 900 s and still weeps 74 % (Φ_min 0.341). The two items are coupled.
+   - **Why it weeps.** Φ = √(h_dry/h_cl). At 17 bar ρ_V is 37–41 kg/m³, so the 0.85-m sieve deck has a dry drop of 24–43 Pa (h_dry 5–10 mm) against h_cl 44–51 mm.
+   - **Layouts** (prototype at the design load; engine values in brackets):
+
+     | Trays 1–10 / 11–28 | Jet max top / stripping | Φ_min stripping (weeping) | ΔP | Verdict |
+     |---|---|---|---|---|
+     | sieve 0.55 / 0.85, f_h 0.10 (now) | 66 / 64 % | 0.32 (78 %) [0.341, 74 %] | 7.0 kPa | fails weeping |
+     | sieve, stripping f_h 0.05 | 66 / 86 % | 0.64 (20 %) [0.642, 19.7 %; no steady even at Ti 400] | 8.8 kPa | fails both |
+     | sieve, stripping f_h 0.045, h_w 25 mm | 66 / 88 % | 0.86 (0) | 8.3 kPa | jet above 85 %; weeps 11 % at 80 % load |
+     | sieve, stripping 0.70 m, f_h 0.06, h_w 25 mm | 66 / 118 % | 0.96 (0) | 8.8 kPa | floods |
+     | **valve 0.55 / 0.85** | **66 / 64 %** [66.3 / 64.2] | **0.916 (0)** [0.916] | **10.5 kPa** [10.52] | **ruled**; no weeping down to ≈ 75 % of the design vapour load |
+     | valve 0.55 / 0.75 | 66 / 82 % [82.4] | 0.939 (0) | 10.3 kPa | passes and has more turndown (no weeping at 60 %), but sits 3 points from the band edge and changes the holdups |
+
+   - **The other levers.** Weir height lowers h_cl (25 mm: −30 %), but alone it does not reach Φ 0.75. Hole diameter enters only ΔP_σ = 4σ/d_h (≈ 1 Pa), so it does nothing for weeping in this model. Tray spacing enters only jet flood, M_max and the downcomer. The engine has single-pass trays only, and f_d moves A_a and L_w only a little.
+   - **Valves are the natural deck for high-pressure light ends.** Between closed and fully open they balance at ΔP_dry = ΔP_lift. The engine takes one deck type per column (the `trayType` lever sets every section), so both sections are valve. Above the feed, Φ is 1.17 against 0.91 on sieve.
+   - **Engine check** (valve, Ti 400 s): steady at 37 200 s. Jet flood 58.6–66.3 % (1–10) and 45.1–64.2 % (11–28), Φ_min 1.173 / 0.916, downcomer ≤ 31.5 %, ΔP 10.52 kPa, D 30.676 kmol/h, r_LK / r_HK 0.9893 / 0.9562. `ideal` is identical for sieve and valve: D 30.780, 0.9906 / 0.9534, so VC-9.6 (a) is unchanged.
+   - **VC-9.6 (b) alarm rule.** "No downcomer-backup or flooding alarm" means none active at the end of the run. An alarm that latched during the cold start and has returned to normal does not count; the validator's `model.flood` note was this case.
+   - The close-out ruling 4's "0.80–0.95 m" clause is superseded. The sandbox loads `deprop` with Full hydraulics, as it does `debut`.
+   - **The validator's D-cycle question.** The 5-kmol/h cycle at f_h 0.05–0.06 was PC-101 (Ti 120 s) amplified by the weeping. With Ti 400 s it shrinks to D 30.60–30.83 but still does not converge (Φ_min 0.64, weeping 20 %). Φ stays above 0.2 on every tray, so it is not tray dumping. What remains is a weep-law coupling at partial weeping. No preset default runs there, so it is recorded, not fixed.
+   - Edits: PHYSICS.md §2.3 (table note and M7 geometry bullet), VALIDATION.md VC-9.6 geometry note, M7.md, OPEN_ITEMS.md.
+2. **M7-S5 (F07 wording).** The validator's refutation stands, and close-out ruling 2's mechanism sentence is replaced. New wording: the heavier feed moves the column profile; it is not a feed flash. The feed stays 3.5–4.7 K below its tray and, as it gets heavier, condenses slightly more vapour (−3.4 → −4.8 kmol/h). The D peak (+1.64 kmol/h at 16.5 min) is V₁ ≈ +0.6 kmol/h plus LC-101 drawing down a drum level that rose ≈ 0.7 %. Numbers and thresholds are unchanged. Edits: VALIDATION.md §H H6 F07 row and M7.md (the peak reference is now the 0.75-m value).
+3. **M7-C2 (PC-101 `deprop`): Kc 120 stays, Ti becomes 400 s through a new `condenser.pcTi`** (default 120 s; only `deprop` changes). Edits: PHYSICS.md §10.7 (table row and the new paragraph "`deprop` PC-101 Ti 400 s"), ENGINE_API.md §4, VALIDATION.md VC-16.6d.
+   - **Measured process.** Open loop (`ideal`, MAN, CW OP ± 2 % at the 49.7 % point), P_top moves at 2.05 Pa/s per % OP (k′ = 5.95 × 10⁻⁵ % span/s per % OP) for ≈ 20 min. It peaks at −2.53 kPa per % OP at 24 min (0.073 % span per % OP), then recovers to ≈ −0.45 kPa per % OP by 53 min. Over the loop's time scale this is an integrator.
+   - **Why Ti, not Kc.** With the proportional term on the PV, ζ = ½ √(Kc k′ Ti): 0.46 at Kc 120 / Ti 120. Lowering Kc lowers ζ: Kc 40 cycled the CW valve over its full range in full hydraulics, and the sieve column diverged. So the ±50 % Kc retune cannot work. New rule: Kc k′ Ti ≥ 2.8 (ζ ≥ 0.84).
+   - **Grid** (`ideal`, noise off, VC-16.6d metric; full = the valve column from cold):
+
+     | Kc / Ti | ±10 kPa: ±2 kPa / ±1 kPa | Overshoot, decay | Noise on: OP σ, P σ | Full hydraulics |
+     |---|---|---|---|---|
+     | 120 / 120 (now) | — / 1720 s, −10 not in 30 min | 28.5 % 0.65; 44.8 % 0.85 | 6.5 %, 0.82 kPa | cycles, no steady |
+     | 120 / 300 | 460 / 1520 s | 9.2 %, 0.56 | | steady 65 100 s |
+     | **120 / 400** | **565 / 1590 s; 545 / 1705 s** | **0, 0** | **5.6 %, 0.69 kPa** | **steady 37 200 s** |
+     | 150 / 360 | 510 / 1450 s | 1.8 %, 0 | | steady 29 100 s |
+     | 90 / 400 | 590 / 1760 s; −10: 1665 s / not in 30 min | 3.8–5.9 %, 0 | | steady 72 060 s |
+     | 250 / 300 | ±1 kPa in 520–530 s | ≤ 2.7 %, 0 | 35 %, 11.8 kPa (valve saturates) | valve steady; sieve diverged |
+     | 300 / 300 | ±1 kPa in 530–535 s | 0.5–1.8 %, decay 0.53 on a 0.5 % overshoot | | diverged |
+
+   - **Why 120 / 400.** It is the best damped, keeps today's noise behaviour, and converges every full-hydraulics run (sieve and valve). Its +50 kPa step overshoots 1.4 % with CW 22–63 % (Ti 120: 37 %, CW 11–100 %), and it is quiet over 6 h.
+   - **The ±1 kPa-in-10-min band is not reachable** by any usable tuning. The slow process mode sets the tail, and 1 kPa is 0.03 % of the 0–34.5 bar PT-101 span, below its 1.6-kPa noise. VC-16.6d (b) for `deprop` is now ±2 kPa within 10 min, with the ±1 kPa time recorded; (d) records k′ (± 20 %) and checks Kc k′ Ti ≥ 2.8; new (e) is VC-9.6 (b) converging. `debut` (Kc 30 / Ti 120) passes and is unchanged.
+4. **M8 coder deviations: all ratified.**
+   - **Holdup-factor lag (checkpoint item 1): ratified at τ_f = 10 s; the validator's optional 5 s is not taken.** The monotone bound τ_f ≥ dt (1 + gain), at gain ≈ 3.3 (φ_p 1.13), is 2.2 s at the 0.5-s step but 8.6 s at the 2-s fast-forward step that `runToSteadyState` and the 300× scenarios use. 5 s would bring back the period-2 alternation there. Edit: PHYSICS.md §6.3, new paragraph "Lag on the holdup factor of (6.4)".
+   - **φ_p, G′_fl and E_mal every step (item 2): ratified (M8-S1).** Edits: §6.3 and §6.6 now say "every step".
+   - **Dry-segment factor (item 3): ratified (M8-S1).** h_L/0.005 is a volume fraction (0.5 % holdup), not the tray's 5 mm. Edit: §6.1.
+   - **Carry-over details (item 4): ratified and written into §6.3.** The details are factor 2.2, into the segment above or the drum, cap 0.3 M/dt, φ_p capped at 2 in (6.3). The PDT start at the true ΔP (item 8) is ratified too.
+   - **G15 (item 5): ratified.** o1 uses `pressureDelta`; o2 is `lever.internals` == 1 ∧ `kpi.xD` ≥ 0.993 ∧ `kpi.columnDp` ≤ 1500 Pa, hold 300 s; the hint says to wait until x_D has settled (about 50 minutes). M8-S2: o5 now reads "from 0.978 to about 0.994". Edits: ENGINE_API.md §11.8 G15 row, M8.md and VALIDATION.md VC-13.6 (o2 at 3150–3180 s).
+   - Items 6, 7, 9 and 10: noted, no spec change.
+
+**Coder actions**
+- `deprop` preset: `"type": "valve"` in both tray sections, geometry unchanged.
+- Add `condenser.pcTi` (JSON `pcTi`, default 120 s; `deprop` 400) as PC-101's Ti on PV-101. PV-102 keeps 30 s.
+- Sandbox: load `deprop` with Full hydraulics, as for `debut`. This reverts "M7 close-out (coder)" item 5 and "M8 app" item 6; update `m7_ui_test`.
+- `m7_hydraulics_test`, `deprop`: steady reached; report jet flood and Φ_min per section and ΔP (reference in VC-9.6).
+- Re-run the `deprop` `ideal` tests. VC-9.6 (a) is unchanged, since valve decks do not act in `ideal`.
+- G15 o5 text "to about 0.994". `PackedModel.tauFactor` stays 10 s.
+
+**Validator actions**
+- VC-9.6 (b) `deprop` on valve decks: un-skip the weeping check and use the active-at-end alarm rule. Reference: steady ≈ 37 000 s; jet 58.6–66.3 / 45.1–64.2 %; Φ_min 1.173 / 0.916; ΔP 10.52 kPa.
+- VC-16.6d `deprop` at Kc 120 / Ti 400 s: (a)–(e) as amended; un-skip the M7-C2 test.
+  - (b): ±2 kPa within 600 s (reference 565 / 545 s); record the ±1 kPa time.
+  - (d): k′ = 5.95 × 10⁻⁵ % span/s per % OP ± 20 %, and Kc k′ Ti ≥ 2.8.
+- H6 F07: row text only, numbers unchanged.
+- M8: no new check. The §6 text now matches the engine (τ_f 10 s, every-step refresh, h_L volume fraction).
