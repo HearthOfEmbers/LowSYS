@@ -124,6 +124,16 @@ class Component {
   const Component({/* all fields */});
 }
 
+// M9 (PHYSICS.md §9.1). Built by `Assay.pseudoComponents()` from the TBP table; never typed in by hand.
+@immutable
+class PseudoInfo {
+  final double tLo, tHi;              // K, the cut range (TBP spread of §9.6 step 2)
+  final double sg, kw, volFrac;       // volFrac: share of the crude (vol, 15.6 °C)
+  final double cpVA, cpVB;            // J/mol/K, J/mol/K²: Fallon–Watson vapour Cp (9.2)
+}
+// Crude enthalpies (PHYSICS.md (9.1)–(9.2)) use the T_b reference for every pseudo-component and for water (vaporOnly).
+// `CrudeThermo.hL/hV` implement them; the §3.3 functions are not called for `crude`.
+
 class ComponentDb {
   static ComponentDb load();                 // parses components_json.dart
   Component operator [](ComponentId id);
@@ -174,7 +184,7 @@ abstract class ConstantAlphaThermo implements ThermoModel {
 }
 ```
 
-Implementations: `Tier1ConstantAlpha`, `Tier2Raoult`, `Tier3Nrtl` (binary and general n-component formula), `Tier3DePriester`, `CrudeThermo` (Tier 2 with steam handling: `bubbleT` takes the steam fraction through `setSteamFraction(j, yw)` before the call **[impl: or an extra parameter]**). From M4, Tier 1 also offers `displayBubbleT()` backed by a Tier-2 model, labelled "ideal" in the UI.
+Implementations: `Tier1ConstantAlpha`, `Tier2Raoult`, `Tier3Nrtl` (binary and general n-component formula), `Tier3DePriester`, `CrudeThermo` (Tier 2 with steam handling: `bubbleT` takes the steam fraction through `setSteamFraction(j, yw)` before the call **[impl: or an extra parameter]**; M9: yw is the filtered, capped ỹ_w of PHYSICS.md §9.3, kept in the column state, and the enthalpies are (9.1)–(9.2) with the T_b reference). From M4, Tier 1 also offers `displayBubbleT()` backed by a Tier-2 model, labelled "ideal" in the UI.
 
 ---
 
@@ -311,6 +321,74 @@ New lever `cwOP`: CW valve OP (%), effective when PC-101 does not manipulate the
 
 `bt_packed` (M8) is the `bt` JSON with `internals` = 1 (its `sections` are the two struct250 beds, feed stage 10), `"hydraulics": "full"`, display name "Benzene–toluene, packed (2 × 4.5 m structured)", and `bt`'s templates. In Tiers 2/3 its feed is `FeedVaporFraction(0)`. Everything else, including utilities and loops, is `bt`'s (PHYSICS.md §2.3, M8 rules).
 
+**`crude` (M9; PHYSICS.md §9).** The four lists that v1.0 only named are defined here. Stages are 1-based main-column numbers.
+
+```dart
+@immutable class SideDrawConfig {             // one per product; the product leaves the stripper's bottom
+  final String product;                        // 'kero' | 'diesel' | 'ago'
+  final int drawStage, returnStage, stripper;  // 8/7/0, 15/14/1, 21/20/2
+  final String productLoop, levelLoop;         // 'FC-311'…'FC-313', 'LC-311'…'LC-313'
+}
+@immutable class StripperConfig {             // PHYSICS.md §9.4
+  final int stages;                            // must be 2
+  final double diameter;                       // 1.0 m (top-stage weir tray)
+  final double bootVolume;                     // 1.0 m³ = 100 % level of the bottom stage
+  final double levelSp, levelTau;              // 0.5, 60 s: S_d = P + V_s1 + (M_SP − M)/levelTau
+  final String steamPoint;                     // 'ss1' | 'ss2' | 'ss3'
+}
+@immutable class PumparoundConfig {           // PHYSICS.md §9.5
+  final int drawStage, returnStage;            // 16, 14
+  final double circulation;                    // m³/s at 15.6 °C (120 m³/h = 0.0333333)
+  final double tReturnMin;                     // 393.15 K, cooler limit of (9.3)
+}
+@immutable class SteamConfig {                // PHYSICS.md §9.3
+  final String point;                          // 'bottom' (into stage 30) | 'ss1' | 'ss2' | 'ss3' (below the bottom stage)
+  final double temperature;                    // 473.15 K
+  final String loop;                           // 'FC-321' … 'FC-324'
+}
+@immutable class CrudeUnitConfig {            // ColumnConfig.crude (null for every other preset)
+  final Assay assay;                           // TBP table + cut points + K_W (PHYSICS.md §9.1)
+  final double drumDp;                         // 20 000 Pa: drum = P_top − drumDp (§9.7)
+  final double qcMax;                          // 15e6 W: model.condenserLimited above it (§9.7)
+  final double furnaceTau;                     // 60 s: TC-320 first order
+  final double tbpTrim;                        // 0.01: TBP 0/100 % read at 1 % / 99 % (§9.6)
+  final double steamFilterTau, steamFracMax;   // 30 s, 0.98 (§9.3)
+}
+```
+
+`crude` JSON (abbreviated; SI):
+
+```json
+{
+  "presetId": "crude", "displayName": "Crude unit (20 000 bbl/d, light crude)", "tier": "t2", "hydraulics": "full", "murphree": 1.0,
+  "components": ["PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "water"],
+  "sections": [{"kind": "trays", "trays": 26, "type": "valve", "geometry": {"diameter": 3.2, "traySpacing": 0.75, "downcomerFraction": 0.12, "weirHeight": 0.05}},
+               {"kind": "trays", "trays": 4,  "type": "valve", "geometry": {"diameter": 1.7, "traySpacing": 0.75, "downcomerFraction": 0.12, "weirHeight": 0.05}}],
+  "feeds": [{"stage": 26, "flow": 0.146767, "z": "assay", "thermal": {"t": 618.15}}],
+  "condenser": {"type": "total", "pTopDesign": 160000},
+  "sideDraws": [{"product": "kero", "drawStage": 8, "returnStage": 7, "stripper": 0},
+                {"product": "diesel", "drawStage": 15, "returnStage": 14, "stripper": 1},
+                {"product": "ago", "drawStage": 21, "returnStage": 20, "stripper": 2}],
+  "strippers": [{"stages": 2, "diameter": 1.0, "bootVolume": 1.0, "steamPoint": "ss1"}, {"stages": 2, "diameter": 1.0, "bootVolume": 1.0, "steamPoint": "ss2"},
+                {"stages": 2, "diameter": 1.0, "bootVolume": 1.0, "steamPoint": "ss3"}],
+  "pumparounds": [{"drawStage": 16, "returnStage": 14, "circulation": 0.0333333, "tReturnMin": 393.15}],
+  "steam": [{"point": "bottom", "temperature": 473.15}, {"point": "ss1", "temperature": 473.15},
+            {"point": "ss2", "temperature": 473.15}, {"point": "ss3", "temperature": 473.15}],
+  "crude": {"drumDp": 20000, "qcMax": 15000000, "furnaceTau": 60, "tbpTrim": 0.01, "steamFilterTau": 30, "steamFracMax": 0.98},
+  "initialLevers": {"crudeRate": 0.0368056, "cot": 618.15, "pTop": 160000, "topTSp": 398.15, "drawRate.kero": 0.00430625,
+                    "drawRate.diesel": 0.00614653, "drawRate.ago": 0.00195069, "paDuty": 5000000, "steam.bottom": 0.555556,
+                    "steam.ss1": 0.0833333, "steam.ss2": 0.0833333, "steam.ss3": 0.0833333, "drumTSp": 318.15}
+}
+```
+
+- **Feed.** `"z": "assay"` is the mole-fraction vector of PHYSICS.md §9.1. The feed flow is set by the `crudeRate` lever (m³/s at 15.6 °C) as `crudeRate / Σ z_i v_i` (528.36 kmol/h at 132.5 m³/h). Its thermal state is the COT, which TC-320 sets.
+- **`validate()` for `crude`.**
+  - Tier `t2` only; `murphree` 1.0.
+  - Every draw stage is in 2–29 with returnStage = drawStage − 1.
+  - The pumparound's returnStage < drawStage; each stripper has `stages` == 2.
+  - Exactly one `bottom` steam point.
+  - The section stage counts sum to 30, and the feed is on stage 26.
+
 ---
 
 ## 5. Internal state (not public)
@@ -427,6 +505,22 @@ M3 additions:
 M8 additions:
 - `internals`: 0 trays, 1 packed, 2 mixed (template ids of §4). `requiresPause`, group `advanced`. Offered only when `internalsTemplates` is not empty. The rebuild follows PHYSICS.md §13.4.
 - `murphree` is offered only when the column has a tray section, and it acts on trays only. `nTrays` is not offered when the column has a packed section, and `trayType.<section>` exists only for tray sections. `feedStage` offers trays and bed tops only (PHYSICS.md §6.1).
+
+M9 additions (`crude`, group `crude`; SCOPE.md §4.4 as revised; SI values). `crude` offers only these, plus `noise`, `view`, `badPvShed`, `bypass.*`, the OP levers of its loops, and `hydraulics`. It offers no `murphree`, `nTrays`, `feedStage`, `internals`, `refluxFlow`, `boilup`, `feedZ.*` or `tier`.
+
+| Lever | SI unit | Range | Default | Loop |
+|---|---|---|---|---|
+| `crudeRate` | m³/s at 15.6 °C | 0.009167–0.073611 (33–265 m³/h) | 0.0368056 (132.5 m³/h) | feed (ideal flow) |
+| `cot` | K | 603.15–663.15 (330–390 °C) | **618.15 (345 °C)** (v1.0 360) | TC-320 SP |
+| `pTop` | Pa | 1.0–2.5 bar | 1.6 bar | PC-330 (ideal) |
+| `topTSp` | K | 363.15–433.15 | 398.15 | TC-301 SP (→ FC-301) |
+| `drawRate.kero` / `.diesel` / `.ago` | m³/s at 15.6 °C (product) | 0 – 25 / 30 / 15 % of the current `crudeRate`. A value above the maximum after a crude-rate cut is kept, not clamped | 11.7 / 16.7 / 5.3 % of 132.5 m³/h | FC-311 / 312 / 313 SP |
+| `paDuty` | W | 0–10 MW (v1.0 0–15) | **5 MW** (v1.0 6) | FC-314 SP |
+| `steam.bottom` | kg/s | 0–1.3889 (5000 kg/h) | 0.555556 (2000 kg/h) | FC-321 SP |
+| `steam.ss1` / `.ss2` / `.ss3` | kg/s | 0–0.27778 (1000 kg/h) | 0.0833333 (300 kg/h) | FC-322 / 323 / 324 SP |
+| `drumTSp` | K | 303.15–333.15 | 318.15 | TC-330 (ideal) |
+
+OP levers: `refluxOp` (FC-301), `drawOp.<product>` (FC-311…313), `paOp` (FC-314, the cooler-bypass position), `steamOp.<point>` (FC-321…324). Binding follows the table below.
 
 **Lever-to-loop binding** (M3). Each loop-bound lever edits the SP while its loop is in AUTO and the OP lever while it is in MAN; in CAS the SP lever is read-only and shows the cascade SP.
 
@@ -760,7 +854,30 @@ class FugCalculator { FugResult compute(SimSnapshot s, KeyComponents keys, {FugT
 //   Float64List d, b, xD, xB, dToB                // Fenske split (mol/s; mole fractions)
 //   double nActual, nRActual, rActual             // rigorous: Σ E_j^eff + 1, Σ_{j<nF} E_j^eff, L0/D
 // FugCalculator.compute returns null in plant and plantCalc views. The panel refreshes every 10 s of sim time.
-class CrudeProductData { /* TBP & D86 curves per product, gaps, yields; PHYSICS.md §9.6 */ }
+// M9 (PHYSICS.md §9). Products in the order naphtha, kero, diesel, ago, residue (CrudeProduct enum).
+@immutable
+class CrudeProductKpis {                 // SimSnapshot.kpi.crude; true model values (masked in drills as other model KPIs)
+  final Float64List yieldVolPct;         // 5 products, vol % of crude at 15.6 °C (Σ = 100 within 1e-4 at steady state)
+  final Float64List productFlow;         // m³/s at 15.6 °C
+  final Float64List d86p5, d86p50, d86p95;   // K; 4 products (naphtha–AGO), §9.6 with the 1 % trim
+  final double gapKeroNaphtha, gapDieselKero, gapAgoDiesel;   // K (D86 5 % heavy − 95 % light)
+  final double residueTbp5;              // K
+  final double overflashVolPct;          // stage 25 → 26 liquid, vol % of crude (§9.2)
+  final double topT, flashZoneT, bottomT, cot;   // K: stage 1, stage 26, stage 30, true COT (F26 moves it, TI-320 does not)
+  final double qc, qcMax, qPa, qPaMax, paReturnT, paCirculation;   // W, W, W, W, K, m³/s
+  final double waterDewMargin;           // K, stage 1 (§9.3)
+  final List<bool> drawDry;              // per side product: FC-31x cut by its stripper level (§9.4)
+  final bool condenserLimited, paDutyLimited;
+}
+@immutable
+class StripperSnapshot { final Float64List t, l, v; final double levelPct, draw, product, vaporReturn, steam; }  // SimSnapshot.strippers
+class CrudeProductData {                 // Products tab (SCOPE.md §3.2); built on demand, ≤ 1 ms
+  final List<List<Offset>> tbp;          // 6 curves (feed + 5 products): (vol %, K), 0–100 % in 2 % steps (1 % trim at the ends)
+  final List<List<Offset>> d86;          // 4 curves: (vol %, K) at 0, 5, 10, 30, 50, 70, 90, 95, 100 %
+  final List<GapBar> gaps;               // 3 bars: (light, heavy, D86 95 % light, D86 5 % heavy, gap K; green ≥ 0, red < 0)
+  final Float64List idealYieldVolPct;    // VC-15.3 yields at the current draw levers' cut points
+  final Float64List idealCutT;           // K: TBP cut points implied by the current cumulative yields (V⁻¹ of §9.1)
+}
 ```
 
 **T-x-y (M5, PHYSICS.md §14.4b).** Binaries only (`nc == 2`); multicomponent presets hide the tab.
@@ -886,6 +1003,14 @@ enum FaultType { trayDamage, trayFouling, foaming, feedComposition, feedThermal,
 //   F23: {"type": "packingCrush",           "location": {"bed": 2}}
 //        A bed index the column does not have is a ConfigException. F22 is not injectable (an operating condition).
 //        {fault.magnitude} in debriefs: F21 "f = 0.30 (65 % of the liquid on one side)"; F23 "+45 % packing factor, 4.5 % shorter bed".
+// M9 location forms (crude only; anything else is a ConfigException). PHYSICS.md §11 rows F24–F26:
+//   F24: {"type": "strippingSteamLoss", "location": {"steam": "bottom"|"ss1"|"ss2"|"ss3"}}
+//        delivered steam × (1 − s), FC-32x saturates. {fault.magnitude}: "steam −85 % (300 of 2000 kg/h left)"
+//   F25: {"type": "pumparoundTrip", "location": {"equipment": "pumparound"}}
+//        circulation × (1 − s); duty by (9.3). {fault.magnitude}: "PA circulation at 15 % (18 m³/h)"
+//   F26: {"type": "cotUpset", "location": {"equipment": "furnace"}, "params": {"dT": -15}}
+//        true COT = TC-320 SP + s·dT; TI-320 keeps reading the SP. {fault.magnitude}: "COT −12 K"
+//   F27 is not injectable (an operating condition, PHYSICS.md §9.4).
 
 @immutable
 class FaultSpec {
@@ -1089,6 +1214,7 @@ An objective counts for scoring if it is achieved when the scenario finishes. Ev
 - `kpi.<field>`: always the **true** model value, also in plant view. Fields: xD, xB, d, b, refluxRatio, boilup, qc, qr, columnDp, maxFloodPct, maxWeepFraction (M2, DEVIATIONS.md E23), drumLevelPct, sumpLevelPct, pTop, recoveryLK, recoveryHK, xDHeavy, xBLight (M7), balanceResidual.
 - `stage[<j>].<t|p|x|holdup|weepFrac|jetFlood>` (x = light component); M8 adds `packFlood` and `hetp` (NaN on trays)
 - `bed[<b>].<dp|maxFlood|nTheoretical>` (M8; true values; Pa, fraction, stages)
+- `crude.<field>` (M9; true values, SI): `yield.<naphtha|kero|diesel|ago|residue>` (vol %), `d86p5|d86p50|d86p95.<naphtha|kero|diesel|ago>` (K), `gap.<keroNaphtha|dieselKero|agoDiesel>` (K), `residueTbp5` (K), `overflash` (vol %), `topT`, `flashZoneT`, `bottomT`, `cot` (K), `qc`, `qPa` (W), `drawDry.<kero|diesel|ago>` (0/1). Predicates in K, like every temperature: G16's 235 °C is 508.15.
 - `reboiler.<circulation|exitQuality|instabilityIndex|oscAmplitude|oscPeriod|inletValve>` (M6; true values; units kg/s, –, –, –, s, % open; NaN with a kettle). M3's `reboiler.<qr|steamValveOp>` below is unchanged
 - `loop[<tag>].<pv|sp|op|mode>` (pv is the reading)
 - `instrument[<tag>].<value|quality>`
@@ -1167,6 +1293,7 @@ The M2 runner implements `at`, `setLever`, `setLoopMode` (with `tag`), `injectFa
 - Locations `"instrument:*"` and `"valve:*"` expand to every instrument tag and valve id visible in the drill, in tag order.
 - M6 vocabulary. Categories add `restriction` (F17/F18) and `condensate` (F14). Locations add `column` (whole column, F06), `steamSupply` (F15), `tsInletLine` and `tsOutletLine` (F17/F18). The UI shows them as "Restriction", "Condensate / steam trap", "Whole column", "Steam supply", "Reboiler inlet line" and "Reboiler outlet line".
 - M8 vocabulary. Categories add `packingDamage` ("Packing damage (crushed)") and `flooding` ("Flooding (operating limit)"); `maldistribution` is already listed. Locations add `"bed:*"`, which expands to `bed:1`, `bed:2`, … for every packed bed ("Upper bed (PDT-102)", "Lower bed (PDT-103)"; a third bed would be "Bed 3 (PDT-104)").
+- M9 vocabulary. Categories add `steamLoss` ("Stripping steam loss"), `pumparound` ("Pumparound") and `furnace` ("Furnace / COT"). Locations add `steam:*`, which expands to `steam:bottom`, `steam:ss1`, `steam:ss2`, `steam:ss3` ("Bottom stripping steam (FC-321)", "Kero stripper steam (FC-322)", …), and `pumparound` and `furnace`.
 - `modes` lists the failure-mode choices offered when the category is `instrument`: `bias`, `drift`, `stuck`, `signalLoss`, `plugged`, `spiking`, `coated`. An empty list hides the mode question.
 - The `Diagnosis` object is `{category, location, mode?}`.
 
@@ -1508,6 +1635,14 @@ All of these are Tier 1 B-T with ideal hydraulics unless stated, `noise: false`,
 | G15 Packing retrofit (M8) | `bt` in **Tier 1** with overrides hydraulics full (sieve trays, the VC-12.3 geometry); model view, noise off. `steady` start at the B-T defaults (L₀ 100, V_B 150 kmol/h). Locked: `nTrays`, `feedStage`, `murphree`, `tier`, `hydraulics`; `internals` stays free. Time limit 14 400 s, par 3600 (estimates; VALIDATION.md VC-13.6 asks for the settling time) | o1 number "Column ΔP with the 20 sieve trays" = 14.49 kPa ± 5 % rel (quantity pressure); o2 (after o1) lever.internals == 1 ∧ steady, hold 300; o3 (after o2) number "ΔP ratio, trays / packing" = 10.3 ± 10 % rel; o4 (after o3) choice "At the same L/V, how much more throughput can the packed column take before its max flood % reaches the trays' 63 %?" → "only about 6 %: the lower bed, with twice the liquid of the upper one, sets the limit" (others: "about 30 %: packing always has more capacity than trays", "about 2×: the ΔP is ten times lower", "none: it is already above 63 %"); o5 (after o4) choice "Why did x_D rise from 0.978 to 0.994 at the same reflux and boilup?" → "9 m of packing holds 18 theoretical stages (HETP 0.5 m); 20 trays at E = 0.7 give about 14" (others: "the lower ΔP raises α", "packing holds more liquid", "the packing stops the entrainment, which was the main loss"). All latch | (1) at 0: "The KPI strip shows the column ΔP and the max flood %. Note both for the trays." (2) after o1: "Pause, set Levers → Advanced → Internals to 'Structured packing, 2 × 4.5 m', resume at 300× and wait for steady state." (3) after o2: "Divide the two ΔPs. Then look at the flood % of each bed: which one is the limit, and how much liquid does it carry compared with the other?" | Trays [P] (VC-12.3, Tier 1 full): ΔP 14.49 kPa, max flood 62.9 % (tray 20, jet), x_D 0.97826. Packed [I] (VC-13.5): ΔP 1406 Pa (upper bed 587.4, lower 818.6), max flood 59.38 % (segment 18; upper bed 48.82 %), x_D 0.99383, x_B 0.00617, D 50.000 kmol/h; ratio 10.31; capacity gain 0.629/0.5938 − 1 = 5.9 % (upper bed alone 28.9 %) |
 
 **G15 debrief (M8)** must contain: "In this shell the packing wins on pressure drop (about 10× lower) and on stages (18 against about 14). Its capacity gain is small, about 6 %. Trays at 0.9 m spacing are already roomy, and the lower bed carries L/V = 1.33, which Robbins' liquid term penalises; the upper bed alone would gain about 29 %. In vacuum service the ΔP saving is what pays for a retrofit: 13 kPa is most of the pressure of a column at 0.2 bar."
+
+**G16 Crude cut points and gaps (M9).**
+
+| Id | Start | Objectives (predicates in shorthand) | Hints (essentials) | Reference numbers |
+|---|---|---|---|---|
+| G16 Crude cut points and gaps (M9) | `crude` in Tier 2 at the defaults (COT 345 °C, PA 5 MW), full hydraulics, model view, noise off, `steady` start. Locked: `crudeRate`, `pTop`, `topTSp`, `drumTSp`, `hydraulics`, `noise`, `view`. Free: the three draws, `paDuty`, `cot` and the four steam levers. Time limit 21 600 s, par 7200 s (estimates: the prototype settles 2–3.5 h after a move; the engine records its own) | o1 crude.d86p95.kero ≤ 508.15 ∧ crude.gap.dieselKero ≥ 0 ∧ crude.residueTbp5 ≥ 628.15 ∧ steady, hold 600 s. The residue term replaces v1.0's undefined "residue D86-equivalent IBP ≥ 340 °C": residues have no D86 (PHYSICS.md §9.6), and TBP 5 % ≥ 355 °C guards the same thing, the residue's front end. Cutting the bottom steam to 1000 kg/h fails it (351.1 °C).<br>o2 (after o1) choice "What opened the diesel–kero gap?" → "more liquid flowing between the kero and diesel draws (less PA duty), or more diesel stripping steam". Others: "a smaller kero draw", "more bottom steam", "a lower top temperature".<br>o3 (after o2) choice "What does a lower PA duty cost?" → "more condenser duty and more flood at the top: heat that the PA recovered at ≈ 265 °C now leaves through the cooling water". Others: "nothing, the heat balance is unchanged", "a colder flash zone", "less kerosene". All latch | (1) at 0: "Open the Products tab. The kero D86 95 % and the diesel–kero gap bar both fail at the start."<br>(2) after 1800 s: "Draws move cut points: a smaller kero draw lowers the kero's 95 % point. A gap needs fractionation: liquid flowing down between the two draws, or steam stripping the lighter tail."<br>(3) after 3600 s: "The pumparound takes heat out below the kero draw, so less PA duty sends more reflux down past it. Diesel stripper steam lifts the diesel's 5 % point." | [P] (VALIDATION.md VC-15.6).<br>Start: kero D86 95 % 238.2 °C, D–K −9.0 K, residue TBP 5 % 358.8 °C.<br>PA 3 MW: 231.1, +6.5, 358.4; Q_C 8.95 → 10.81 MW, max flood 59.3 → 65.7 %.<br>SS2 steam 1000 kg/h: 232.3, +12.6 (Q_C 9.72 MW).<br>Kero 10.7 % with diesel 17.7 %: 231.0, −7.1, which fails. |
+
+**G16 debrief (M9)** must contain: "Draw rates set cut points; fractionation and stripping set gaps. Moving 1 % of the crude from kero to diesel brought the kero's 95 % point under 235 °C. It left the diesel–kero overlap almost where it was: −7 K against −9 K at the start. What opened the gap was liquid flowing between the draws or steam in the diesel stripper. With the PA cut from 5 to 3 MW, the condenser duty rose by about a fifth and the top trays loaded up. Refiners pay that price when product quality matters more than the heat the pumparound recovers at about 265 °C."
 
 Every guided scenario's JSON carries these objectives verbatim. Its hints must, followed literally, complete it (SCOPE.md M3 acceptance; VC-26.4 plays G1–G6 automatically by applying the hint values).
 
@@ -1891,6 +2026,73 @@ Notes:
 
 ---
 
+### 11.12 Drill H8 "Crude product drift" (M9)
+
+Frame:
+- `crude` in Tier 2 (locked) at the defaults (COT 345 °C, PA 5 MW), full hydraulics, `plantCalc` view, noise on, all loops in AUTO.
+- `plantCalc` keeps the calculated Q_C (CW side), the yields (from the product FTs), the overflash (calculated from the stage-25 liquid) and the flood %. It hides the true COT and the model D86. In both plant views the Products tab shows the **lab** result for each product: sampled every 1800 s, published 900 s later, noise-free. This is like the analysers of PHYSICS.md §10.5.
+- One draw from three process candidates. Each has clear evidence at the bottom of its range (VALIDATION.md §H, H8 "Separation" row):
+
+| Candidate | Stage-30 T | Flash zone | Q_C | Top T |
+|---|---|---|---|---|
+| Steam loss (F24) | up 8–15 K | up 1.5–1.8 K | down 18–28 % | dips 1.5–3 K |
+| PA trip (F25) | within ≈ 1 K | within ≈ 1 K | up 14–53 % | peak +4.6 to +13 K, returned by TC-301 in 20–30 min |
+| Low COT (F26) | down 7.5–13 K | down 8–14 K | down 6–9 % | dips ≈ 2 K; TI-320 unchanged |
+
+- Every number comes from the M9 prototype (PHYSICS.md §11, VALIDATION.md VC-15.5).
+
+```json
+{
+  "id": "H8_crude_drift", "kind": "drill", "title": "Crude product drift", "milestone": 9, "topic": "crude",
+  "preset": "crude",
+  "overrides": {"tier": "t2", "hydraulics": "full"},
+  "start": "steady", "noise": true, "view": "plantCalc", "badPvShed": true,
+  "levers": {"lock": ["tier", "hydraulics", "noise", "view", "badPvShed"]},
+  "loops": {"TC-301": {"mode": "auto"}, "FC-301": {"mode": "cas"}, "LC-301": {"mode": "auto"}, "LC-302": {"mode": "auto"},
+            "FC-311": {"mode": "auto"}, "FC-312": {"mode": "auto"}, "FC-313": {"mode": "auto"}, "FC-314": {"mode": "auto"},
+            "TC-320": {"mode": "auto"}, "FC-321": {"mode": "auto"}, "FC-322": {"mode": "auto"}, "FC-323": {"mode": "auto"}, "FC-324": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "The crude unit runs steady at 20 000 bbl/d. The lab says the products have started to drift, and the shift log is empty. Find the cause: a stripping-steam problem, the pumparound, or the furnace?",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "steam_loss", "weight": 1,
+     "fault": {"type": "strippingSteamLoss", "location": {"steam": "bottom"}, "severityRange": [0.7, 1.0], "ramp": 60},
+     "answer": {"category": "steamLoss", "location": "steam:bottom"},
+     "debrief": "**The bottom stripping steam failed** at {fault.onset:time} ({fault.magnitude}): FC-321 ran to 100 % with the flow far below its SP. With less steam the residue kept its diesel: the stage-30 temperature *rose* by 8–15 K, because there was less vaporisation to cool it. The residue yield rose and the diesel and AGO got heavier. Less vapour went up, so the condenser duty fell by a fifth or more. A furnace problem would have cooled the bottom instead."},
+    {"id": "pa_trip", "weight": 1,
+     "fault": {"type": "pumparoundTrip", "location": {"equipment": "pumparound"}, "severityRange": [0.7, 1.0], "ramp": 0},
+     "answer": {"category": "pumparound", "location": "pumparound"},
+     "debrief": "**The pumparound lost circulation** at {fault.onset:time} ({fault.magnitude}). FI-314 fell, and FC-314 could not hold the duty even with the cooler bypass shut. The heat it used to remove went up the column. The top temperature jumped several kelvin before TC-301 raised the reflux, and the condenser duty stayed 14–53 % higher. The diesel ran heavy for the first ten minutes. The bottom of the column hardly noticed."},
+    {"id": "cot_low", "weight": 1,
+     "fault": {"type": "cotUpset", "location": {"equipment": "furnace"}, "severityRange": [0.6, 1.0], "ramp": 300, "params": {"dT": -15}},
+     "answer": {"category": "furnace", "location": "furnace"},
+     "debrief": "**The furnace outlet was colder than TI-320 said** from {fault.onset:time} ({fault.magnitude}). TC-320 held its reading, but the crude reached the flash zone colder. The flash-zone and stage-30 temperatures *both* fell, by 7–14 K. The overflash dried up, the wash trays ran short of liquid, and the AGO got heavier. Raise the COT set point by the same amount, then get the thermocouple checked."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "crude.d86p95.kero", "from": "start", "op": ">", "value": 8},
+                               {"metric": "crude.d86p95.diesel", "from": "start", "op": ">", "value": 10},
+                               {"metric": "crude.yield.residue", "from": "start", "op": ">", "value": 1.0}]}, "holdFor": 300},
+  "hints": [
+    {"after": 1200, "cost": 0.03, "text": "Compare the bottom of the column with the flash zone (TI-350 and TI-349). Did they move together, or in opposite directions?"},
+    {"after": 2400, "cost": 0.03, "text": "Look at the overhead: the top temperature TI-341, the reflux and the condenser duty. Heat that is not removed lower down ends up there."},
+    {"after": 3600, "cost": 0.03, "text": "TI-320 is what the furnace controller sees. The flash-zone temperature is what the crude actually brings. Steam and pumparound flows have their own meters."}
+  ],
+  "diagnosis": {"categories": ["steamLoss", "pumparound", "furnace", "instrument", "none"],
+                "locations": ["steam:*", "pumparound", "furnace", "instrument:TI-320", "instrument:TI-349"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault: {fault.magnitude} from {fault.onset:time}. First cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+```
+
+Notes:
+- **M9 vocabulary** is listed in §11.2. F24–F26 use the location forms of §9.
+- **Rule 1 does not apply**: there are no instrument candidates. `instrument` stays in the categories as a decoy answer.
+- **F26 is an instrument-like fault on the furnace:** TI-320 reads high. Its category is `furnace`, not `instrument`. The learner must name the cause, not the gauge. The debrief says so.
+- **Severity floors.** F25 below s ≈ 0.6 is invisible, because the cooler still holds the duty (at s = 0.5 only the PA return moves, 202.5 → 140 °C). Hence its range [0.7, 1.0].
+- **Off-spec predicates are true values** (`crude.*`). They fire inside 5–30 min for every candidate at the middle of its range (VALIDATION.md §H, H8).
+
+---
+
 ## 12. Units and formatting
 
 ```dart
@@ -2027,6 +2229,22 @@ Painters read only tokens and style enums; there is no `if (theme.id == …)` an
 ### 13.5 Column painter contract
 
 Input: `SimSnapshot`, `LowsysTheme`, viewport, selection. It draws, per stage: tray deck, weir, downcomer (with backed-up liquid height from `dcFlood`), clear liquid (`hcl`) and froth (`froth`) with the composition colour, vapour particles whose spawn rate ∝ V_j and rise speed ∝ hole velocity, entrainment spray when ψ > 0.02, with density growing with ψ and carryover streams to the tray above (and from tray 1 into the vapour line) when jetFlood ≥ 1 (jet flood is spray, not a full tray: the fill is about 0.35, PHYSICS.md §5.6); weep drips when weepFrac > 0.05; dumping (near-empty deck, liquid raining) and dry states; full-froth flooding overlay only when frothFill ≥ 1 or dcFlood ≥ 1 (SCOPE.md §7.4). Packed beds (M8, SCOPE.md M8 "texture, wetting, liquid rivulets"): per segment, a packing texture (random rings or corrugated sheets by `packingId`) drawn at the segment's height; wetted-fraction shading from `wetFrac` (dry patches below 0.7); liquid rivulets whose count ∝ L'_k and whose width ∝ `packHoldup`; vapour particles rising through the voids at a speed ∝ u_V; HETP ticks on the bed edge (model view only); distributor and redistributor trays drawn between beds and above each bed. Flooding overlay when `packFlood` ≥ 1: liquid pooling from the top of the segment, spreading upward. The F21 side bias (rivulets crowded to one side in proportion to f) is drawn **only** from `PackedBedSnapshot.maldistribution`, which is NaN in drills and plant views, so a hidden fault is never painted. In plant views `packHoldup` and `wetFrac` stay (PHYSICS.md §10.9), and the rest of the painter's input is the masked snapshot. Drum and sump levels; condenser with CW flow animation; reboiler (kettle or thermosyphon loop with circulation arrows and quality-coloured riser). Hit-testing returns `ExplainTarget`s for taps. Particle positions use the UI clock (smooth at any sim speed); particle counts per SCOPE.md §7.3.
+
+**Crude flowsheet (M9).**
+- **Main column.** The 30 stages are drawn as valve trays, with the 1.7 m stripping section swaged in below stage 26.
+- **Strippers.** The three side strippers stand beside the column. Each is two stages with a level sight glass on its boot. Draw lines leave stages 8, 15 and 21, and vapour returns enter stages 7, 14 and 20.
+- **Pumparound.** A loop from stage 16 through a cooler symbol back to stage 14, labelled with its duty and return temperature.
+- **Furnace.** A box on the feed line to stage 26, showing TI-320. In the Brass theme it also has a flame sprite whose size follows the COT.
+- **Steam.** Steam inlets at stage 30 and under each stripper, with puffs in Brass.
+- **Drum.** Its water boot shows the sour-water outflow.
+- **Liquid colour.** The mean boiling point of the stage liquid maps to `liquidLight` → `liquidHeavy` (§13.4).
+- **Drawing order.** It follows the stage order; strippers draw after the main column.
+- **Hit-testing.** Every stage, stripper stage and stream (draws, PA, steam, products) opens the math overlay, using the crude equation ids of PHYSICS.md §15.
+
+**Products tab (M9).**
+- **Charts.** `CrudeProductData` gives the TBP curves (feed and five products, with the ideal cut temperatures as vertical ticks), the D86 curves (naphtha to AGO) and the three gap bars (green ≥ 0, red < 0, labelled in K).
+- **Plant views.** The tab draws the last lab result with its sample time (§11.12).
+- **Yield table.** Below the charts: yields against the ideal yields at the same draw levers, the overflash, and the residue TBP 5 %.
 
 ### 13.6 Fonts and assets
 

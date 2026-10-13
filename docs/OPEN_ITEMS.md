@@ -50,6 +50,35 @@ Collected by the lead from validation passes. Fix in the docs, then delete the i
 
 ## For the physics lead
 
+- **M9 decisions taken in the readiness pass (settled; listed so that the owner can overrule them).**
+  1. **Constants quoted from memory, not checked against the sources (no downloads):**
+     - Fallon–Watson vapour Cp, c_p = (4 − SG)(t_°F + 670)/6450 (PHYSICS.md (9.2)). Checked against n-hexane: within 3 %.
+     - The steam vapour Cp fit 30.2 + 0.0104 T.
+     - The Daubert (1994) TBP → D86 constants. They reproduce v1.0's VC-15.2, so v1.0 used the same values.
+     - The Riazi–Daubert, Lee–Kesler and Watson–Nelson forms of §9.1 are v1.0's. The prototype reproduces the v1.0 table exactly, but nobody re-read the papers.
+  2. **Enthalpy reference.** The crude enthalpy reference is each component's saturated liquid at T_b, and the vapour enthalpy is anchored there (§9.1).
+     - *Why:* the §3.3 path (Watson ΔH_vap) gives a vapour enthalpy that falls near T_c, and with the 298 K reference the (4.6) denominator went to −132 kJ/mol on crude stages.
+     - *Alternative:* a rigorous ideal-gas Cp (Kesler–Lee) with the same reference: more constants, the same behaviour.
+  3. **The ỹ_w filter** (τ_w 30 s, cap 0.98; §9.3) against the steam-stage loop gain (≈ 12 on stage 30). *Alternative:* solve T and V_HC together on steam stages. That is exact, but it is an extra scalar solve per stage, and it does not fit the bottom-up (4.6) sweep.
+  4. **Draw levers are product rates**, and the stripper level sets the draw (§9.4). v1.0's FC on the draw made the product 82–85 % of the lever.
+  5. **TBP tail trim of 1 %** for product D86 0/100 % (§9.6).
+     - Without it, traces wreck the end points (diesel D86 0 % −154 °C).
+     - 0.5 % would make the default D–K −24 K instead of −9 K.
+     - *Alternative:* convert TBP 5/95 % directly with half-interval Daubert constants. Not standard.
+  6. **Defaults.**
+     - COT 345 °C (v1.0 360: overflash 10.9 %, against 1–6 %).
+     - PA 5 MW (v1.0 6: D–K −25.5 K) on a range of 0–10 MW (v1.0 0–15: the kero tray dries above ≈ 7.5 MW).
+     - Stripping section D 1.7 m (3.2 m gave 11–15 % flood).
+     - PA circulation 120 m³/h with a 120 °C cooler limit.
+     - Q_C,max 15 MW.
+     - Steam at 200 °C.
+     - Theoretical stages (E = 1).
+  7. **Overhead simplified** (§9.7): ideal P_top and drum temperature, with Q_C,max only flagged. A PA trip in the field also raises the top pressure; LowSYS does not show that.
+  8. **F26 is a high-reading furnace thermocouple** (TI-320 shows the SP), so that "re-target COT" is the remedy and H8 needs the flash-zone TI. **F25 is a circulation loss** with the duty following (9.3), so s ≤ 0.5 is invisible; H8's range is [0.7, 1.0].
+  9. **G16's residue criterion** becomes TBP 5 % ≥ 355 °C. v1.0's "residue D86-equivalent IBP" is undefined, because residues have no D86 (§9.6).
+  10. **Tags renumbered to the 300 series** (PHYSICS.md §10.7). v1.0's TC-201/FC-201… collided with TI-201/202, FT-201 and PT-201.
+  11. **H8 lab results in plant views** (sample every 1800 s, published 900 s later; ENGINE_API.md §11.12). This is new: v1.0 did not say how D86 appears in a plant view.
+- **Open (medium): engine dynamics of the crude column.** Every M9 number is a steady state, or a transient of the prototype's simplified dynamics: holdup weirs, no entrainment or weeping, implicit coupling of the side operations. The engine must record its own settling times (G16 par 7200 s is an estimate) and the H8 times from onset. It must also confirm that the explicit stripper and PA coupling of §9.4 is stable at dt = 0.5 s with the ỹ_w filter.
 - **M8 decisions taken in the readiness pass (settled; listed so that the owner can overrule them).**
   1. **The packing table (PHYSICS.md §6.2) is quoted from memory** of Kister, *Distillation Design* (1992), ch. 8: a, ε and F_p for the five packings, σ_c, and ρ_bed (derived from steel 7900 and ceramic 2300 kg/m³ × (1 − ε)). None of it was checked against the book, and nothing was downloaded. The VC-13 numbers follow the table, so if the owner corrects a value, re-run `tools/prototypes/m8/vc13.dart` and `g15.dart`. *Still open (2026-10-13 rulings): no doc change can verify it; it needs the book. The values match the spec lead's own recollection of Kister's tables, which is not a check.*
   2. **struct250 HETP_ref 0.45 → 0.50 m**, by the doc's own rule (1200/a + 4 in = 0.502 m). *Alternative:* keep a vendor-typical 0.40–0.45 m, which gives 10–11 segments per 4.5 m bed; `bt_packed` and every VC-13.5–13.8 number would then change.

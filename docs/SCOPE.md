@@ -185,16 +185,21 @@ Reference steady states: VALIDATION.md VC-27.1.
 | Lever | Range | Default | SI / US |
 |---|---|---|---|
 | Crude rate | 33–265 m³/h (5,000–40,000 bbl/d) | 132.5 m³/h (20,000 bbl/d) | m³/h / bbl/d |
-| Furnace outlet temperature (COT) | 330–390 | 360 | °C / °F |
+| Furnace outlet temperature (COT) | 330–390 | 345 (M9 readiness; v1.0 360 gave 10.9 % overflash) | °C / °F |
 | Top pressure | 1.0–2.5 | 1.6 | bar(a) / psia |
 | Top temperature SP (TC-201 → reflux) | 90–160 | 125 | °C / °F |
 | Kerosene draw | 0–25 % of crude (vol) | 11.7 % | m³/h / bbl/d |
 | Diesel draw | 0–30 % | 16.7 % | m³/h / bbl/d |
 | AGO draw | 0–15 % | 5.3 % | m³/h / bbl/d |
-| Pumparound duty | 0–15 | 6.0 | MW / MMBtu/h |
+| Pumparound duty | 0–10 (v1.0 0–15; the kero tray runs dry above ≈ 7.5 MW, the cooler limits at ≈ 10.9 MW) | 5.0 (M9 readiness; v1.0 6.0) | MW / MMBtu/h |
 | Bottom stripping steam | 0–5000 | 2000 | kg/h / lb/h |
 | Side-stripper steam (each) | 0–1000 | 300 | kg/h / lb/h |
 | Overhead drum temperature (via CW) | 30–60 | 45 | °C / °F |
+
+M9 readiness notes:
+- **Draw levers.** The three draw levers set **product** rates: the stripper bottoms, m³/h at 15.6 °C, on FC-311/312/313. The draw from the column follows the stripper level (PHYSICS.md §9.4), so the defaults equal the ideal yields of VALIDATION.md VC-15.3.
+- **Not offered for crude.** The column is 30 theoretical stages; `murphree`, `nTrays` and `feedStage` are not offered.
+- **Default steady state** (PHYSICS.md §9.8): naphtha 19.75 / kero 11.70 / diesel 16.70 / AGO 5.30 / residue 46.55 vol %; overflash 4.6 %; gaps K–N +0.9, D–K −9.0, A–D −9.7 K; Q_C 8.95 MW.
 
 ---
 
@@ -228,10 +233,10 @@ Each fault has a physical model (PHYSICS.md §11 gives the equations), a severit
 | F21 | Packing maldistribution (distributor plugged) | Parallel-column model with liquid split fraction f = 0.6 s (PHYSICS.md §6.6) | Fewer effective stages; T profile in the bed distorts; ΔP almost unchanged | None (needs shutdown); raise reflux | M8 |
 | F22 | Packing flooding (operating condition) | Robbins ΔP reaches the Kister–Gill flood ΔP; holdup rises steeply; HETP rises | Steep ΔP rise across the bed; HETP and separation worsen; liquid carryover | Cut rates | M8 |
 | F23 | Packing crushed / compacted | Packing factor F_p × (1 + 1.5 s), area unchanged, bed height H_bed × (1 − 0.15 s) (same segment count) | Higher ΔP at the same load; earlier flooding | Cut rates | M8 |
-| F24 | Stripping steam loss (crude) | Steam flow × (1 − s) | Residue lighter (more diesel/AGO lost to residue); flash-zone and bottom T rise; light ends in side products (front end of kero/diesel falls) | Restore steam | M9 |
-| F25 | Pumparound trip (crude) | PA flow × (1 − s), and PA duty with it (trip at s = 1, step) | Heat removal shifts to the overhead; top T and overhead load rise; internal reflux above the PA rises, below it falls; products get heavier | Raise reflux; cut COT | M9 |
-| F26 | Furnace outlet temperature upset (crude) | COT += s ΔT (default ΔT = −15 K), ramp 300 s | Overflash changes; residue yield and gas-oil yields shift | Re-target COT | M9 |
-| F27 | Draw tray dry (crude; operating condition) | Side draw exceeds internal liquid; draw pan empties | Draw flow cannot meet SP (FC saturates); trays below the draw dry; next-heavier product front end gets lighter | Reduce the draw rate | M9 |
+| F24 | Stripping steam loss (crude) | Steam delivered × (1 − s) at one injection point (bottom or a stripper); its FC saturates | Bottom steam: residue yield up (+0.9 vol % at s = 0.85, +3.4 at s = 1), stage-30 T **up** 8–15 K, flash-zone T up ≈ 1.7 K, Q_C down 18–28 %, diesel and AGO heavier; at s = 1 the AGO tray runs dry. Stripper steam: that product's front end gets lighter (SS2 at s = 1: diesel D86 5 % 229 → 189 °C) | Restore steam | M9 |
+| F25 | Pumparound circulation loss (crude) | PA circulation × (1 − s) (trip at s = 1, step); the duty follows while the cooler can still reach it (s ≤ 0.5 is invisible except for the PA return T) | Heat removal shifts to the overhead: top T up 4.6–13 K until TC-301 raises the reflux (× 1.7–2.1), Q_C up 14–53 %, top flood up; the diesel runs heavy for the first ≈ 10 min, then *lighter* at steady state (more internal reflux) | Cut the crude rate or restore the pump | M9 |
+| F26 | Furnace outlet temperature upset (crude) | True COT = TC-320 SP + s ΔT (default ΔT = −15 K), ramp 300 s; TI-320 keeps reading the SP | Flash-zone and stage-30 T both **down** 7.5–14 K, overflash to ≈ 0, Q_C down 6–9 %, AGO heavier; at s = 1 the AGO tray runs just dry | Re-target COT (raise the SP by \|s ΔT\|) | M9 |
+| F27 | Draw tray dry (crude; operating condition) | A draw takes more than the internal liquid; the stripper level falls and its product FC saturates | The lowest draw dries first when the lift is short (AGO above a kero draw of ≈ 15.5 %, with F24 s = 1 or F26 s = 1). The kero tray dries when the PA takes too much heat (≥ ≈ 7.5 MW): the kero product falls and the diesel's front end gets lighter (D86 5 % 229 → 202 °C at 8 MW) | Reduce the draw rate or the PA duty | M9 |
 
 The hidden-fault drill pool uses F04, F05, F06, F07, F09, F10, F11, F12, F13, F14, F15, F17, F18, F19, F20, F21, F23, F24, F25, F26, F28. The M8 pass added F12 (H6), F15 (H4), F23 (H7) and F26 (H8), which the drill table of §6.2 already used. H7 also uses the operating condition F22, through its planning event.
 
@@ -260,9 +265,9 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G13 | Debutanizer keys and FUG | Debutanizer, T3 at the sandbox defaults (32 trays, E = 0.7) | Compare the FUG panel to the rigorous column; raise reflux and duty together | Meet 98 % LK/HK recoveries (R ≈ 1.73); read N_min and R_min off the FUG panel; compare Gilliland's N with 32 × 0.7 + 1 (ENGINE_API.md §11.8) | M7 |
 | G14 | Thermosyphon tuning | B-T, T2, thermosyphon | Restore stable boilup after a low sump level causes surging. Start: sump held at 15 % with the inlet valve pinched to 8 % (stable, duty-limited); at t = 0 the inlet is opened fully and the loop starts to surge | Stop the oscillation (amplitude < 2 % of boilup, I_s < 1) without losing more than 10 % duty (≥ 1170 kW of the 1300 kW SP); then explain why throttling helps. Throttling alone cannot do it at 15 % level (ENGINE_API.md §11.8) | M6 |
 | G15 | Packing retrofit | B-T, **T1**, full hydraulics (M8 readiness: v1.0 said T2, but G15's tray numbers are VC-12.3's Tier-1 values, and in Tier 2 the B-T condenser cannot follow load changes, as for G11) | Compare 20 sieve trays to 9 m of structured packing (lever `internals`) | Report the ΔP ratio (≈ 10) and the capacity gain at equal flood % (≈ 6 %: the lower bed's liquid load is the limit). See why x_D rises (18 theoretical stages against ≈ 14) (ENGINE_API.md §11.8) | M8 |
-| G16 | Crude cut points and gaps | Crude, T2 | Set draws and PA to meet kero D86 95 % ≤ 235 °C and a diesel–kero gap ≥ 0 °C | Meet both specs with residue D86-equivalent IBP ≥ 340 °C | M9 |
+| G16 | Crude cut points and gaps | Crude, T2 at the defaults (COT 345 °C, PA 5 MW: kero D86 95 % 238 °C, D–K gap −9 K) | Set draws, PA and stripping steam to meet kero D86 95 % ≤ 235 °C and a diesel–kero gap ≥ 0 K | Meet both specs with the residue TBP 5 % ≥ 355 °C (M9: replaces v1.0's undefined "residue D86-equivalent IBP ≥ 340 °C"; residues have no D86). See that draws move cut points while internal reflux and stripping steam open gaps (PA 3 MW alone: 231 °C and +6.5 K; ENGINE_API.md §11.8) | M9 |
 
-Objective predicates, hints and reference numbers for G1–G15: ENGINE_API.md §11.8.
+Objective predicates, hints and reference numbers for G1–G16: ENGINE_API.md §11.8.
 
 ### 6.2 Hidden-fault drills (10)
 
@@ -277,7 +282,7 @@ In a drill the engine injects one fault (from the drill's candidate list, chosen
 | H5 | Bottoms level swings | B-T, T2, thermosyphon, plant view with calculations | F19 sump level transmitter drift (true level low → surge), F17 inlet restriction, F18 outlet restriction | Thermosyphon circulation and exit quality; inlet vs outlet line ΔP; compare level with mass balance and the LG-102 sight glass |
 | H6 | Off-spec overhead | Debutanizer, T3, ideal hydraulics, plant view with calculations; planning raises feed, reflux and duty by 8 % at 45 min | F07 feed heavier in the keys (less C3/iC4, more nC4/iC5), F12 reflux pump capacity loss, F20 reflux valve FV-102 stuck | Feed analyser AT-100 (light cut) moves vs reflux flow below SP with FC-102 at 100 % from the onset vs FC-102 OP running away after the planning event while the flow stays flat (C4). Full JSON: ENGINE_API.md §11.10 |
 | H7 | Packed bed underperforms | B-T packed (two 4.5 m struct250 beds in a 1.0 m shell), T2, plant view with calculations, CW at 15 °C; planning raises feed, reflux and duty by 25 % at 45 min | F21 maldistribution (upper or lower bed), F23 crushed packing (upper or lower bed), F22 near-flood operation (no fault: the planning event takes the healthy lower bed to 97 % of flood) | What changed **before** the rates rose? Bed ΔP (PDT-102/103) at constant load: crushed → up 45–110 %; maldistribution → flat while that bed's T profile flattens and the product drifts; flooding → nothing, then ΔP 1.8× for 1.25× load. Full JSON: ENGINE_API.md §11.11 |
-| H8 | Crude product drift | Crude, T2 | F24 stripping steam loss, F25 pumparound trip, F26 COT upset | Bottom T and residue yield; overhead duty and top T; flash-zone T |
+| H8 | Crude product drift | Crude, T2, plantCalc, lab D86 every 30 min | F24 bottom stripping steam loss (s 0.7–1), F25 pumparound circulation loss (s 0.7–1), F26 COT low (s 0.6–1, TI-320 reads the SP). Full JSON: ENGINE_API.md §11.12 | Stage-30 T up (steam) vs down together with the flash zone (COT); Q_C and top T up (PA) vs Q_C down (steam, COT); FC-321 or FC-314 saturated |
 | H9 | Don't trust the gauge | B-T, **T2** (T1 has no temperatures or pressure), full hydraulics, plant view, all loops in AUTO with the TC-101 cascade, no bad-PV shedding | One draw from 13: twelve instrument faults on FT-101/102/103/104, LT-101/102, PT-101, TI-107, TI-114 (F19 bias/drift/stuck, F28 signal loss/plugged/spiking/coated), or, about 1 in 8, a **real** feed change with every instrument healthy (decoy). Full JSON: ENGINE_API.md §11.6 | Decide *process problem vs instrument problem* and name the tag: cross-check neighbouring TIs, material and energy balance, valve OP vs measured flow, "too steady" trends. Bonus for putting the affected loop in MAN before product goes off-spec. |
 | H10 | Bad valve or bad meter? | B-T, T2, plant view | F20 FV-102/FV-103 stuck vs F19/F28 (bias, drift, plugged) on FT-102/FT-103 vs a real upset (F07). Full JSON: ENGINE_API.md §11.7 | OP moving while flow is flat (valve) vs flow reading disagreeing with the heat/mass balance (meter) vs everything consistent (real upset) |
 
@@ -557,7 +562,21 @@ Readiness pass completed 2026-10-13 (excerpt: docs/milestones/M8.md). Spec chang
 
 - Engine: assay → pseudo-components (PHYSICS.md §9), crude thermo with steam, crude column topology (main column, three 2-stage side strippers, pumparound, bottom and stripper steam), product property calculations (TBP, D86 via Daubert, 5–95 gaps), crude control scheme, faults F24–F27.
 - App: Brass theme; crude flowsheet in ColumnView; Products tab with TBP/D86 curves and gap bars; scenario G16; drill H8.
-- Acceptance: VC-15 (pseudo-component properties, D86 conversion, crude plausibility) passes.
+- Acceptance: VC-15.1–15.7 (pseudo-components and the M9 enthalpy rule, D86 conversion, ideal and lumped cuts, the default steady state, F24–F27, G16, structure and robustness), VC-19 for crude, VC-21 for the crude equation lines, VC-26.1 on G16 and H8, and the §H H8 rows.
+
+M9 readiness pass (2026-10-13; prototype `tools/prototypes/m9`, excerpt `docs/milestones/M9.md`):
+- **Enthalpy.** Crude enthalpies take the T_b reference and an anchored vapour enthalpy with the Fallon–Watson Cp_V (PHYSICS.md §9.1). §3.3's path gave a falling vapour enthalpy near T_c, and negative (4.6) denominators on crude stages.
+- **Steam fraction.** The bubble point uses a filtered, capped steam fraction (§9.3); the lagged v1.0 value has a loop gain of ≈ 12 on stage 30.
+- **Product draws.** The draw levers set product rates, and the stripper level sets the draw (§9.4).
+- **Pumparound.** Fixed circulation of 120 m³/h, with a cooler limit at a 120 °C return (§9.5).
+- **TBP trim.** Product TBP 0/100 % are read at 1/99 % (§9.6); without it a 0.007 % trace gave a diesel D86 0 % of −154 °C.
+- **Overhead.** Ideal top pressure and drum temperature, with Q_C,max 15 MW only flagged (§9.7).
+- **Column.** Theoretical stages (E = 1), and a 1.7 m stripping section (§9.2).
+- **Defaults.** COT 345 °C (was 360) and PA 5 MW (was 6; range 0–10).
+- **Tags.** Crude tags are renumbered to the 300 series (PHYSICS.md §10.7).
+- **Faults.** F24–F27 are defined with numbers (PHYSICS.md §11); F26 is a high-reading COT.
+- **Content.** The G16 residue criterion becomes TBP 5 % ≥ 355 °C. H8 gets its full JSON (ENGINE_API.md §11.12).
+- **Validation.** VC-15.4 becomes a [P] reference table, and VC-15.5–15.7 are new.
 
 ### M10 — Content completion, polish, platforms
 

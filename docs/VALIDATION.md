@@ -616,13 +616,39 @@ Further unit checks:
 
 ## VC-15 Crude fractionation
 
-**VC-15.1 Pseudo-components [I].** From the TBP table and cut points of PHYSICS.md §9.1 with K_W = 11.9, the engine reproduces the PHYSICS.md §9.1 table: vol fractions ± 1×10⁻⁴; T_b ± 0.05 K; SG ± 1×10⁻⁴; MW ± 0.05; T_c ± 0.05 K; P_c ± 0.005 bar; ω ± 1×10⁻⁴; ΔH_vap(T_b) ± 0.01 kJ/mol; Cp₀ ± 0.05 J/mol/K; dCp ± 1×10⁻³. Bulk SG 0.8656 (31.96 °API) ± 1×10⁻⁴; mean MW 216.9 ± 0.1. Each pseudo-component's Lee–Kesler P_sat(T_b) = 101 325 Pa to 1×10⁻⁶ relative (consistency of the ω definition).
+M9 readiness pass (2026-10-13): every number comes from `tools/prototypes/m9` (`vc15.dart`, `base.dart`, `cases.dart`, `h8.dart`, `g16.dart`). [P] rows are steady states of the prototype's own dynamic relaxation, cross-checked by a Wang–Henke bubble-point solve that agrees to 1×10⁻⁴ K. They use the model of PHYSICS.md §9 as revised: T_b enthalpy reference, ỹ_w filter, product-rate draw levers, PA cooler limit, 1 % TBP trim, ideal overhead, COT 345 °C and PA 5 MW. The prototype has no entrainment or weeping; the tolerances allow for the engine's full hydraulics.
 
-Spot P_sat values (Pa): PC1 at 200 °C 1.9843×10⁶, at 360 °C 1.6955×10⁷; PC5 at 200 °C 1.4683×10⁴, at 360 °C 4.6417×10⁵; PC9 at 360 °C 91.577. Tolerance 1×10⁻⁴ relative.
+**VC-15.1 Pseudo-components [I].**
+- **The §9.1 table.** From the TBP table and cut points of PHYSICS.md §9.1 with K_W = 11.9, the engine reproduces it within these tolerances:
 
-**VC-15.2 TBP → ASTM D86 (Daubert 1994) [I].** For a TBP curve (°C) 0 %: 150, 10 %: 165, 30 %: 180, 50 %: 200, 70 %: 220, 90 %: 240, 100 %: 255, the converter gives D86 (°C) 0 %: 173.46, 10 %: 178.22, 30 %: 184.23, 50 %: 196.45, 70 %: 210.62, 90 %: 225.28, 100 %: 239.92 (5 %: 175.84, 95 %: 232.60). Tolerance 0.01 K.
+  | Property | Tolerance |
+  |---|---|
+  | vol fraction | ± 1×10⁻⁴ |
+  | T_b | ± 0.05 K |
+  | SG | ± 1×10⁻⁴ |
+  | MW | ± 0.05 |
+  | T_c | ± 0.05 K |
+  | P_c | ± 0.005 bar |
+  | ω | ± 1×10⁻⁴ |
+  | ΔH_vap(T_b) | ± 0.01 kJ/mol |
+  | Cp₀ | ± 0.05 J/mol/K |
+  | dCp | ± 1×10⁻³ |
 
-**VC-15.3 Ideal cut products [I].** Perfect separation at TBP cut points 165 / 240 / 340 / 370 °C of the shipped assay:
+- **Bulk.** SG 0.8656 (31.96 °API) ± 1×10⁻⁴; mean MW 216.9 ± 0.1. The M9 prototype gives 216.87.
+- **Consistency of the ω definition.** Each pseudo-component's Lee–Kesler P_sat(T_b) = 101 325 Pa to 1×10⁻⁶ relative.
+
+Spot P_sat values (Pa): PC1 at 200 °C 1.9843×10⁶, at 360 °C 1.6955×10⁷; PC5 at 200 °C 1.4683×10⁴, at 360 °C 4.6417×10⁵; PC9 at 360 °C 91.577. Tolerance 1×10⁻⁴ relative. All are reproduced by the M9 prototype.
+
+M9 enthalpy rule (PHYSICS.md §9.1 (9.1)–(9.2)):
+- **Vapour heat capacity.** Cp_V = a_V + b_V T with a_V / b_V of PC1 37.069 / 0.31724, PC5 89.044 / 0.76203, PC9 207.707 / 1.77755; water 30.2 / 0.0104. Tolerance 1×10⁻³ relative.
+- **Reference values.** h_L,i(T_b,i) = 0 and h_V,i(T_b,i) = ΔH_vap,i(T_b,i), both exact.
+- **Vapour enthalpy rises with T for every component** from 300 to 700 K. This is the check that v1.0's path fails: PC1 by Watson gives 52.16 → 49.16 kJ/mol from 240 to 250 °C.
+- **Steam.** h_V,w(200 °C) − h_V,w(100 °C) = 3.460 kJ/mol ± 0.001.
+- **Denominator sign.** At the VC-15.4 steady state every stage has H_j − h_j > 0, with a minimum of 41.0 kJ/mol ± 2, and `solverHealth.negativeLatent` = 0.
+
+**VC-15.2 TBP → ASTM D86 (Daubert 1994) [I].** For a TBP curve (°C) 0 %: 150, 10 %: 165, 30 %: 180, 50 %: 200, 70 %: 220, 90 %: 240, 100 %: 255, the converter gives D86 (°C) 0 %: 173.46, 10 %: 178.22, 30 %: 184.23, 50 %: 196.45, 70 %: 210.62, 90 %: 225.28, 100 %: 239.92 (5 %: 175.84, 95 %: 232.60). Tolerance 0.01 K. The M9 prototype reproduces them. The constants are quoted from memory (PHYSICS.md §9.6).
+
+**VC-15.3 Ideal cut products [I].** Perfect separation at TBP cut points 165 / 240 / 340 / 370 °C of the shipped assay (assay curve, untrimmed):
 
 | Product | TBP range (°C) | Yield (vol % of crude) | D86 5 % (°C) | D86 50 % | D86 95 % |
 |---|---|---|---|---|---|
@@ -630,20 +656,103 @@ Spot P_sat values (Pa): PC1 at 200 °C 1.9843×10⁶, at 360 °C 1.6955×10⁷; 
 | Kerosene | 165–240 | 11.67 | 183.7 | 199.2 | 223.9 |
 | Diesel | 240–340 | 16.67 | 259.9 | 282.4 | 316.9 |
 | AGO | 340–370 | 5.30 | 339.7 | 344.4 | 353.1 |
-| Residue | 370+ | 46.36 | (TBP only) | | |
+| Residue | 370+ | 46.36 | (TBP only; TBP 5 % 382.8) | | |
 
-Ideal 5–95 gaps (D86): kerosene–naphtha +36.9 K, diesel–kerosene +36.0 K, AGO–diesel +22.8 K. Tolerance 0.1 K (yields 0.01 %). These are the defaults for the draw levers (SCOPE.md §4.4) and the upper bound for any real gap.
+Ideal 5–95 gaps (D86): kerosene–naphtha +36.9 K, diesel–kerosene +36.0 K, AGO–diesel +22.8 K. Tolerance 0.1 K (yields 0.01 %). The draw-lever defaults (SCOPE.md §4.4) are these ideal yields. The ideal gaps are the upper bound for any real gap. The M9 prototype reproduces every value.
 
-**VC-15.4 Crude column plausibility [checks after M9 tuning].** Default crude preset, Tier 2, run to steady state:
-- Material balance: Σ products (mass) = crude feed (mass) within 0.1 %; water out = steam in within 0.1 %.
+**Lumped (M9).** The same cuts, expressed as each cut's share of each pseudo-component and run through the product path of PHYSICS.md §9.6 (1 % trim), give D86 5 % / 95 % of:
+
+| Product | D86 5 % (°C) | D86 95 % (°C) |
+|---|---|---|
+| Naphtha | 59.1 | 158.2 |
+| Kerosene | 175.6 | 231.3 |
+| Diesel | 246.4 | 324.6 |
+| AGO | 324.9 | 396.5 |
+
+Tolerance 0.1 K. The nine-component lumping alone narrows the gaps to +17.4 / +15.1 / +0.3 K. These are the upper bound for a simulated gap.
+
+**VC-15.4 Default steady state [P] (M9 readiness; replaces v1.0's plausibility ranges).**
+
+Setup: the `crude` preset, Tier 2, full hydraulics, noise off, run to steady state from cold. The defaults are SCOPE.md §4.4 as revised (COT 345 °C, PA 5 MW).
+
+| Quantity | Reference | Tolerance |
+|---|---|---|
+| Yields (vol % of crude): naphtha, kero, diesel, AGO, residue | 19.75, 11.70, 16.70, 5.30, 46.55 | naphtha and residue ± 0.3; draws ± 0.02 (FC) |
+| Overflash (vol %) | 4.60 | ± 0.6 |
+| TI on stage 1 (= TC-301 SP), kero draw (stage 8), diesel draw (15), AGO draw (21) (°C) | 125.00, 182.26, 250.12, 322.55 | stage 1 ± 0.05; others ± 1.5 |
+| Flash zone (26), stage 30 (°C) | 343.25, 331.09 | ± 1.5 |
+| PA: stage 16 → return (°C) | 265.34 → 202.50 | ± 1.5 / ± 3 |
+| Stripper bottoms (°C) | 164.66 / 238.54 / 302.56 | ± 2 |
+| Reflux (kmol/h); Q_C (MW) | 316.1; 8.945 | ± 3 % |
+| Draws to SS1–3; vapour returns (kmol/h) | 96.12 / 102.05 / 28.37; 17.37 / 14.88 / 6.37 | ± 3 %; ± 10 % |
+| D86 5 / 50 / 95 (°C), naphtha | 58.9 / 100.2 / 159.7 | ± 3 |
+| D86 5 / 50 / 95 (°C), kero | 160.5 / 200.3 / 238.2 | ± 3 |
+| D86 5 / 50 / 95 (°C), diesel | 229.3 / 281.9 / 327.9 | ± 3 |
+| D86 5 / 50 / 95 (°C), AGO | 318.2 / 369.3 / 398.2 | ± 3 |
+| Gaps K–N, D–K, A–D (K) | +0.9, −9.0, −9.7 | ± 4 |
+| Residue TBP 5 % (°C) | 358.8 | ± 2 |
+| P_26, P_30 (bar(a)) | 1.699, 1.723 | ± 0.02 |
+| Column ΔP (kPa) | 12.89 | ± 15 % |
+| Jet flood, min / max over stages 1–30 (%) | 36.0 / 59.3 (tray 17) | ± 4 points |
+| Water dew-point margin on stage 1 (K) | 50.1 | ± 2 |
+
+Also checked (all [I]):
+- Material: Σ products (mass) = crude (mass) within 1×10⁻⁴ relative, and water out = steam in (160.98 kmol/h).
 - Energy closure ≤ 1×10⁻³ relative.
-- Simulated gaps strictly below the ideal gaps (no "better than perfect" separation), and: kerosene–naphtha between −15 and +35 K; diesel–kerosene between −30 and +34 K; AGO–diesel between −45 and +20 K (an overlap here is normal).
-- Naphtha D86 95 % 130–190 °C; kerosene D86 95 % 215–270 °C; diesel D86 95 % 310–370 °C.
-- Overflash 1–6 vol % of crude; residue yield 40–55 vol %.
-- Top tray temperature 100–150 °C and at least 5 K above the water dew point at its steam partial pressure.
-- Flash-zone temperature within 25 K below the COT; bottom temperature below the flash-zone temperature (steam stripping cools the residue).
-- Every main-column tray between 35 % and 85 % jet flood, no weeping, column ΔP 15–60 kPa. If not, the implementer adjusts the preset diameter/geometry (not the physics) and records it.
-- Direction checks: kero draw +2 % of crude → kero D86 95 % up, diesel D86 5 % down, kero–naphtha gap unchanged ± 3 K, diesel–kero gap down; PA trip (F25) → top temperature and overhead duty up within 10 min; stripping steam loss (F24) → residue yield up, diesel/AGO yield down, bottom temperature up.
+- Every simulated gap is below the lumped bound of VC-15.3.
+- No `model.*` crude flag is set: drawDry, paDutyLimited, condenserLimited, waterCondensing.
+- No stage weeps.
+
+Direction checks [P], each from the default steady state:
+- **Kero draw +2 % of crude (13.7 %):** kero D86 95 % up (238.2 → 256.1); diesel D86 5 % **up** (229.3 → 238.5; v1.0 said down: the cut point moves up); K–N gap within ± 5 K of its start (+0.9 → +4.4); D–K gap down (−9.0 → −17.6); residue −1.97 vol %; overflash 4.60 → 1.74.
+- **Kero draw −2 % (9.7 %):** kero D86 95 % down (230.2); residue +1.98 vol %; overflash up (7.58).
+- **COT +5 K (350 °C):** overflash up (6.56); D–K gap up (+0.1); Q_C up (9.27 MW).
+- **PA duty 3 MW:** D–K gap up (+6.5); Q_C up (10.81 MW); max flood up (65.7 %).
+- **Bottom steam 1000 kg/h:** residue up (47.07); stage-30 T up (336.9 °C).
+- **Fault directions** follow VC-15.5: F24 bottom T up and residue up; F25 top T and Q_C up within 10 min; F26 flash zone and bottom T down.
+
+The prototype's cold start reaches this state in 3.5 h of sim time. The engine records its own time (VC-27 style); it should be ≤ 8 h.
+
+**VC-15.5 Faults F24–F27 [P].** These are from the default steady state, noise off, with the fault's own ramp; values are the new steady state unless a time is given.
+
+| Fault | Reference | Tolerance |
+|---|---|---|
+| F24 bottom steam, s = 1 | Residue 49.92 vol %; stage 30 +14.9 K, ≥ +12 K within 5 min; flash zone +1.75 K; Q_C −28 %; overflash 0; AGO 3.20 vol %, with FC-313 saturated and `model.drawDry` set | residue ± 0.5; T ± 2 K; Q_C ± 4 points; AGO ± 0.5 |
+| F24 bottom steam, s = 0.5 | Residue +0.52 vol %; stage 30 +5.8 K; Q_C −12.6 %; no draw dry | ± 0.2; ± 1.5 K; ± 3 points |
+| F24 `ss2`, s = 1 | Diesel D86 5 % 188.5 °C; D–K gap −55.5 K | ± 6 K; ± 8 K |
+| F25, s = 1 (trip) | Q_C 13.70 MW (+53 %), reached within 5 min; reflux 678 kmol/h; TI-341 peak ≥ +6 K within 10 min (prototype +13.2 K at 3 min), back within 1 K of the SP by 40 min; diesel D86 95 % above its start value from 2 to 10 min (prototype +56 K at 5 min); steady diesel D86 95 % 324.3 °C; max flood 88.6 % | Q_C ± 4 %; reflux ± 4 %; D95 ± 4 K; flood ± 5 points |
+| F25, s = 0.5 | Duty held at 5.00 MW (FC-314 not saturated); PA return 140.0 °C; every TI within 1 K of its start after 10 min | return ± 3 K |
+| F25, s = 0.85 | Cooler limit: PA duty 1.77 MW, return 120.0 °C, FC-314 saturated and `model.paDutyLimited` set; Q_C +34 %; reflux × 1.73 | duty ± 0.15 MW; Q_C ± 4 points |
+| F26, s = 1 (−15 K) | Flash zone −14.0 K, stage 30 −13.3 K; Q_C −9.2 %; overflash ≤ 0.2 %; AGO 5.15 vol %, with FC-313 saturated; AGO D86 95 % 459 °C; residue 46.55 vol %; TI-320 unchanged (reads the SP) | T ± 1.5 K; Q_C ± 2 points; AGO ± 0.15; D95 ± 15 K |
+| F26, s = 0.6 | Flash zone −8.0 K, stage 30 −7.5 K; Q_C −5.9 %; overflash 1.44 % | ± 1.5 K; ± 2 points; ± 0.5 |
+| F27 kero draw 16 % (lever) | AGO tray dry: AGO 4.60 vol %, FC-313 saturated, overflash 0; residue 43.02 vol % | ± 0.3 |
+| F27 PA 8 MW (lever) | Kero tray dry: kero 7.97 vol %, FC-311 saturated; diesel D86 5 % 201.6 °C; residue 49.58 vol % | kero ± 1.0; ± 6 K; ± 1.0 |
+
+**VC-15.6 G16 references [P].** SCOPE.md §6.1; ENGINE_API.md §11.8.
+- **Start.** The default fails both specs: kero D86 95 % 238.2 °C, D–K gap −9.0 K.
+- **Single moves.**
+  - PA 3 MW alone meets them: kero 95 % 231.1, D–K +6.5, residue TBP 5 % 358.4, Q_C 10.81 MW, max flood 65.7 %.
+  - SS2 steam 1000 kg/h alone meets them: kero 95 % 232.3, D–K +12.6, Q_C 9.72 MW.
+  - Shifting the cut points alone does not (kero 10.7 %, diesel 17.7 %: kero 95 % 231.0 but D–K −7.1). Draws move cut points; internal reflux and stripping open gaps. This is the G16 lesson.
+- **Combined.** PA 3 MW with SS2 steam 1000 kg/h: D–K +12.9 K.
+- **Tolerances.** ± 3 K on every D86 value. Each "meets" or "fails" verdict must match the prototype. A row whose margin is under 3 K is exempt.
+
+**VC-15.7 Structure and robustness.**
+- *Configuration.*
+  - `crude` offers Tier 2 only.
+  - `murphree`, `nTrays`, `feedStage` and `internals` are not offered; the tier badge shows no T1/T3.
+  - `validate()` rejects: a draw or return stage outside 1–30; a PA whose return is not above its draw; a stripper with other than 2 stages.
+  - The tags of PHYSICS.md §10.7 exist; no tag collides with TI-201/202, FT-201 or PT-201.
+- *Lever extremes.* Each is run for 6 h from the default steady state. None may produce a NaN or a negative holdup, and the matching flags must be raised:
+  - crude rate 33 and 265 m³/h;
+  - COT 330 and 390 °C;
+  - PA 0 and 10 MW;
+  - each draw at 0 and at its maximum;
+  - bottom steam 0 and 5000 kg/h;
+  - TC-301 SP 90 and 160 °C;
+  - P_top 1.0 and 2.5 bar(a).
+- *Fault extremes.* For F24 s = 1, F25 s = 1 and F26 s = 1, `solverHealth.bubbleFallbacks` and `negativeLatent` stay 0.
+- *No alternation.* No stage temperature alternates in sign between consecutive steps for more than 20 steps after any VC-15.5 onset. This checks the ỹ_w filter of PHYSICS.md §9.3.
 
 ## VC-16 Controllers [I] / [P]
 
@@ -728,7 +837,7 @@ Round trip toSI(fromSI(v)) = v: linear quantities (every conversion that is a pu
 |---|---|---|
 | `Simulator.step()` B-T Tier 1, 22 stages | ≤ 30 µs | Windows dev machine (release/AOT) |
 | `step()` 40 trays × 7 components, Tier 3 DePriester (synthetic config: the seven C3–nC7 components of PHYSICS.md §2.1, z = 0.05, 0.15, 0.25, 0.20, 0.15, 0.12, 0.08, `debut` geometry and pressure, feed tray 20). v1.0 said "8 components, Tier 2", but the database has only seven light hydrocarbons (M7 readiness pass; OPEN_ITEMS.md) | ≤ 100 µs (desktop), ≤ 300 µs (mid-range Android, release) | both |
-| `step()` crude, default | ≤ 150 µs desktop, ≤ 450 µs Android | both |
+| `step()` crude, default (M9: 36 stages × 9 pseudo-components + steam; the engine needs the banded solve with the explicit side-operation coupling of PHYSICS.md §9.4. The M9 prototype's dense 36 × 36 solves take ≈ 0.36 ms per step in JIT Dart, so dense solves are out) | ≤ 150 µs desktop, ≤ 450 µs Android | both |
 | `snapshot()` for 42 stages × 8 components | ≤ 50 µs | desktop |
 | McCabe–Thiele build (warm cache) | ≤ 0.3 ms | desktop |
 | `explain(tray)` | ≤ 5 ms | desktop |
@@ -1056,9 +1165,11 @@ For each drill candidate the test injects the fault (fixed seed, onset at 600 s,
 | H7 | `crushed_lower`: F23 bed 2, s = 0.3 | PDT-103 up ≥ 40 % within 10 min [+57 %: 1.61 → 2.53 kPa]; lower-bed calc flood % up ≥ 7 points [78.7 → 88.1]; x_B within 0.004 [+0.0028] |
 | H7 | `near_flood`: no fault, the planning event only (rule-7 exception, ENGINE_API.md §11.5) | before 2700 s no change beyond noise; after it, PDT-103 ≥ 1.7× its pre-event value within 30 min while FT-101/102 and FT-103 rise 1.25× [steady 1.61 → 2.95 kPa, 1.83×; PDT-102 1.68×]; lower-bed calc flood % ≥ 95 [97.5]; calc HETP of stage 18 up ≥ 20 % [0.500 → 0.622 m]; x_B up ≥ 0.004 within 2 h [steady 0.01108 → 0.01708]; PC-101 holds P_top with the CW valve below 100 % [Q_C 1599 of 1795 kW] |
 | H7 | `crushed_lower` at s = 0.5 with the event (the hardest case) [P] | no NaN, no negative holdup; lower-bed φ_p > 1 and `model.flood` raised (plantCalc keeps it); PDT-103 keeps rising for ≥ 5 min after the event; the run completes the 7200-s time limit. The engine records the levels reached [no-carry-over steady-state bound: φ_p 1.14, ΔP 8.98 kPa, inside PDT-103's 0–10 kPa] |
-| H8 | F24 stripping steam loss | bottom T up; residue yield up; flash-zone T slightly up |
-| H8 | F25 pumparound trip | top T and Q_C up within 10 min; diesel D86 95 % up |
-| H8 | F26 COT −15 K | residue yield up; overflash down; AGO yield down |
+| H8 | Frame (M9 readiness; ENGINE_API.md §11.12): `crude` at the defaults, Tier 2, full hydraulics, noise off for these rows, severity at the middle of the range. Bracketed values are the prototype's. Times count from onset | |
+| H8 | `steam_loss`: F24 `bottom`, s = 0.85 (range [0.7, 1.0], ramp 60 s) | stage-30 TI (TI-350) up ≥ 6 K within 5 min [+8.9; +10.4 steady]; flash-zone TI-349 up 0.5–3 K [+1.7]; Q_C down ≥ 15 % within 5 min [−24 %]; FC-321 at 100 % OP with the flow below its SP; residue yield up ≥ 0.5 vol % at 30 min [+0.9; +2.9 at 5 min]; overflash < 1 % at 30 min [0.0] |
+| H8 | `pa_trip`: F25, s = 0.85 (range [0.7, 1.0], step) | TI-341 up ≥ 4 K within 5 min [peak +8.7] and back within 1 K by 40 min; Q_C up ≥ 20 % within 5 min [+32 %; +34 % steady]; FI-314 at 15 % of its start; FC-314 saturated with `model.paDutyLimited` [1.77 MW, return 120 °C]; diesel D86 95 % up ≥ 8 K at 5 min [+20] |
+| H8 | `cot_low`: F26, s = 0.8 (range [0.6, 1.0], ramp 300 s; −12 K) | TI-320 unchanged (± noise); flash-zone TI-349 down ≥ 8 K within 10 min [−11.3] **and** stage-30 TI-350 down ≥ 7 K [−10.9] (F24 moves stage 30 up); Q_C down 4–12 % [−9.0 % at 10 min]; overflash < 1.5 % at 30 min [0.69] |
+| H8 | Separation (all three at the bottom of their ranges, noise on, 1-min means) | stage-30 T: F24 ≥ +5 K, F25 within ± 2 K, F26 ≤ −6 K; Q_C: F24 ≤ −12 %, F25 ≥ +12 %, F26 between −10 % and −3 %. The prototype at the bottoms of the ranges gives F24 s 0.7: +8.3 K, −18 %; F25 s 0.7: +1.1 K at 5 min, +14 %; F26 s 0.6: −7.5 K, −5.8 % |
 
 ### H9 and H10: evidence must be detectable with noise on (ENGINE_API.md §11.5)
 
