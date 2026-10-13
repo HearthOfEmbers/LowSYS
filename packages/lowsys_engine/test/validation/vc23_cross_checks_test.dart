@@ -145,7 +145,7 @@ void main() {
       expect(t3!, lessThanOrEqualTo(1200));
     });
     test(
-        'FT-101 drift +, s 0.6: C1 fails within 25 min, C4:FV-101 within 30 min; C3 never fails',
+        'FT-101 drift +, s 0.6: C1 fails within 25 min, C4:FV-101 within 40 min; C3 never fails',
         () {
       final sim = steadyT1(noise: true, seed: 1);
       sim.advance(600);
@@ -158,9 +158,12 @@ void main() {
         if (checkFails(s, 'C3')) c3Fail = true;
       });
       expect(t1, isNotNull);
-      // C1: 2065 s here (ideal hydraulics) vs 1115 s in the H9.3 run (full);
-      // C4 fails at ≈ 36 min (600-s window mean of the ramp). Allow 40 min.
+      // C1: the spec says 25 min; 2065 s here (ideal hydraulics) vs 935–1275
+      // s with full hydraulics (DEVIATIONS "M3 handoff", open question from
+      // the lead, not part of the 2026-10-12 decisions), so 40 min is kept.
       expect(t1!, lessThanOrEqualTo(2400));
+      // C4: 40 min (spec decision 2026-10-12 #1): the 600-s window mean of
+      // the ramp crosses the fail line at ≈ 36 min.
       expect(t4, isNotNull);
       expect(t4!, lessThanOrEqualTo(2400));
       expect(c3Fail, isFalse);

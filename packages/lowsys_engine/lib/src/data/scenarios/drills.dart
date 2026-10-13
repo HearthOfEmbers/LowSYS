@@ -29,7 +29,7 @@ const String h9Json = r'''
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102 (reflux flow) read {fault.magnitude} wrong from {fault.onset:time}.** FC-102 kept the *reading* at its set point, so the real reflux moved the other way by the same amount. The tell-tales: C4 for FV-102 went red (the valve's OP no longer matched the flow it should give), and C3 (vapour to the top: reboiler vs reflux + distillate) disagreed by the same amount, while every other check stayed green. The trend itself looked normal — a bias has normal noise. Right response: FC-102 to MAN, then set the OP from the valve curve, for example {valve[FV-102].op:0.0} %."},
     {"id": "ft102_plugged", "weight": 1,
-     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
+     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [1.0, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-102", "mode": "plugged"},
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** The reading stopped following the process: its 5-minute σ dropped from about 1.2 kmol/h to under 0.1 (\"too steady\"). FC-102 then kept integrating the small offset between its set point and the trapped value, and walked the real reflux far away while the reading sat on the set point. C4 (FV-102) and C3 both failed. A stuck *valve* would have looked similar on the OP trend, but its flow reading would still have had normal noise and the balances would have agreed."},
@@ -87,7 +87,9 @@ const String h9Json = r'''
   ],
   "events": [
     {"id": "feed_up", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 1.38889,
-     "text": "Upstream raised the feed: FC-101 set point +5 kmol/h."}
+     "text": "Upstream raised the feed by 5 %; reflux and steam were raised 5 % with it."},
+    {"at": 2700, "action": "setSp", "tag": "FC-102", "delta": 1.38889},
+    {"at": 2700, "action": "setSp", "tag": "FC-103", "delta": 65000}
   ],
   "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
                                {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
@@ -145,7 +147,7 @@ const String h10Json = r'''
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102 read {fault.magnitude} wrong from {fault.onset:time}.** The valve was fine and moved as told, but FC-102 controlled a lie, so the real reflux was off by that amount. Two checks failed together: C4 for FV-102 (OP vs flow) *and* C3/C3a (reflux + distillate vs condenser duty). A sticking valve fails only the first."},
     {"id": "ft102_plugged", "weight": 1,
-     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [0.9, 1.0], "ramp": 300},
+     "fault": {"type": "transmitter", "location": {"tag": "FT-102"}, "params": {"kind": "plugged"}, "severityRange": [1.0, 1.0], "ramp": 300},
      "answer": {"category": "instrument", "location": "instrument:FT-102"},
      "protect": [{"tag": "FC-102", "modes": ["man"]}],
      "debrief": "**FT-102's impulse line plugged at {fault.onset:time}.** On the OP trend this looks exactly like a stuck valve: OP moving, reading flat. The difference was the *noise*: the reading became far too smooth (σ under a tenth of typical) and the balances disagreed. With a stuck valve the meter keeps its normal noise and the balances agree."},

@@ -27,6 +27,12 @@ class MeasurementBus {
   /// Light-component mole fractions: feed (effective), distillate, bottoms.
   double feedLight = 0.5, xD = 0.98, xB = 0.02;
 
+  /// Tier 2 true values (M4): top pressure (Pa), steam header gauge pressure (Pa), reflux temperature, CW inlet and
+  /// outlet temperatures (K), CW volume flow (m3/s) and the stage temperatures (K).
+  double pTop = 101325, steamGauge = 350000, tRefl = 350;
+  double cwIn = 303.15, cwOut = 318, cwVol = 0;
+  Float64List stageT = Float64List(0);
+
   double read(String ref) => switch (ref) {
         'drum.levelPct' => drumLevelPct,
         'sump.levelPct' => sumpLevelPct,
@@ -44,7 +50,21 @@ class ControlDesign {
   final double dMax, bMax;
   final double drumLevelSp, sumpLevelSp;
   final double levelKc, levelTi;
+
+  /// Tier 2 data (M4): design top pressure (Pa), CW capacity (kg/s), initial duty (W) and the clean steam-valve
+  /// scale Q_max,0 (W), tray count, instrumented trays, the TC-101 tray and the PC-101 set point (Pa).
+  final double pTopDesign, cwMaxFlow, dutyDesign, qMax0, cwDesign;
+  final int nTrays, tc101Tray;
+  final List<int> trays;
   const ControlDesign({
+    this.pTopDesign = 101325,
+    this.cwMaxFlow = 41.54,
+    this.dutyDesign = 1.3e6,
+    this.qMax0 = 2.17e6,
+    this.cwDesign = 50,
+    this.nTrays = 20,
+    this.tc101Tray = 14,
+    this.trays = const [1, 4, 7, 10, 12, 14, 17, 20],
     required this.feedFlow,
     required this.refluxFlow,
     required this.boilup,
@@ -96,6 +116,55 @@ class ControlSystem {
       at101,
       at102;
   late final ControlLoop fc101, fc102, fc103, lc101, lc102;
+
+  // ---- Tier 2 (M4): pressure, temperatures, cooling water, steam header; PC-101 and TC-101
+  late Valve pv101;
+  late Instrument pt101, pt201, ti100, ti201, ti202, ft201, tiSump;
+  final List<Instrument> trayTis = [];
+  final List<int> trayIds = [];
+  late ControlLoop pc101, tc101;
+
+  /// True once Tier 2 is active: the Tier-2-only instruments, loops and valves are visible and updated.
+  bool tier2 = false;
+
+  /// TC-101 enabled by the operator (lever `tc101Enable`); its mode follows FC-103 (IMAN when FC-103 is not in CAS).
+  bool tc101Enabled = false;
+
+  /// Design P_top (Pa) for alarms, the density of the CW (kg/m3) for FT-201, and the T2 flags set by the stepper.
+  double pDesign = 101325;
+  static const double rhoWater = 995.0;
+  bool modelRelief = false, modelDutyLimited = false;
+
+  /// Instruments of the Tier-2 set in the order of the snapshot.
+  List<Instrument> get t2Instruments => [
+        pt101,
+        pt201,
+        ti100,
+        ...trayTis,
+        tiSump,
+        ti201,
+        ti202,
+        ft201,
+      ];
+
+  /// The instruments, loops and valves the learner sees in the current tier.
+  Iterable<Instrument> get visibleInstruments sync* {
+    for (final i in instruments) {
+      if (!i.hidden) yield i;
+    }
+  }
+
+  Iterable<ControlLoop> get visibleLoops sync* {
+    for (final l in loops) {
+      if (!l.hidden) yield l;
+    }
+  }
+
+  Iterable<Valve> get visibleValves sync* {
+    for (final v in valves) {
+      if (!v.hidden) yield v;
+    }
+  }
 
   final Map<String, Instrument> _inst = {};
   final Map<String, ControlLoop> _loops = {};
@@ -273,8 +342,132 @@ class ControlSystem {
       final g = d.levelKc * lt.spec.sigmaDisp * v.fMax / (ft.spec.hi - ft.spec.lo);
       ft.typicalPct = math.sqrt(ft.spec.sigmaDisp * ft.spec.sigmaDisp + g * g);
     }
-    final cs = ControlSystem._(seed, [fc101, fc102, fc103, lc101, lc102], insts,
-        [fv101, fv102, fv103, lv101, lv102]);
+    // ---- Tier 2 additions (M4): PT/TI/FT-201 instruments, PV-101, PC-101 and TC-101 (PHYSICS.md 10.1, 10.5, 10.7)
+    final pDes = d.pTopDesign;
+    Instrument pt(String tag, String measures, double hi, Quantity q,
+            double res) =>
+        Instrument(
+            InstrumentSpec(
+              tag: tag,
+              type: InstrumentType.pt,
+              measures: measures,
+              quantity: q,
+              lo: 0,
+              hi: hi,
+              tauM: 1,
+              sigmaS: 0.05,
+              tauS: 2,
+              sigmaE: 0.02,
+              resolution: res,
+            ),
+            seed: seed);
+    Instrument ti(String tag, String measures, InstrumentType ty, double sigS,
+            double sigE) =>
+        Instrument(
+            InstrumentSpec(
+              tag: tag,
+              type: ty,
+              measures: measures,
+              quantity: Quantity.temperature,
+              lo: 273.15,
+              hi: 473.15,
+              tauM: 10,
+              sigmaS: sigS,
+              tauS: 20,
+              sigmaE: sigE,
+              resolution: 0.1,
+            ),
+            seed: seed);
+    final pt101 = pt('PT-101', 'pTop', 2 * pDes, Quantity.pressure, 10);
+    final pt201 =
+        pt('PT-201', 'steamGauge', 1e6, Quantity.pressureDelta, 100);
+    final ti100 = ti('TI-100', 'refluxT', InstrumentType.tiLine, 0.025, 0.01);
+    final ti201 = ti('TI-201', 'cwIn', InstrumentType.tiLine, 0.025, 0.01);
+    final ti202 = ti('TI-202', 'cwOut', InstrumentType.tiLine, 0.025, 0.01);
+    final trayTis = [
+      for (final j in d.trays)
+        ti('TI-${100 + j}', 'stage.T[$j]', InstrumentType.tiTray, 0.075, 0.01)
+    ];
+    final tiSump = ti('TI-${100 + d.nTrays + 1}', 'stage.T[${d.nTrays + 1}]',
+        InstrumentType.tiTray, 0.075, 0.01);
+    final ft201 = Instrument(
+        InstrumentSpec(
+          tag: 'FT-201',
+          type: InstrumentType.ftWater,
+          measures: 'cwVol',
+          quantity: Quantity.volumeFlowLiquid,
+          lo: 0,
+          hi: 150 / 3600,
+          tauM: 0.5,
+          sigmaS: 0.30,
+          tauS: 1,
+          sigmaE: 0.02,
+          resolution: 0.1 / 3600,
+        ),
+        seed: seed);
+    final t2insts = [pt101, pt201, ti100, ...trayTis, tiSump, ti201, ti202, ft201];
+    final pv101 = Valve('PV-101', d.cwMaxFlow, seed, op: d.cwDesign);
+    final pc101 = ControlLoop(
+      tag: 'PC-101',
+      pvTag: 'PT-101',
+      mvRef: 'PV-101',
+      params: const PidParams(
+          kc: 10, ti: 120, action: Action.direct, spKick: false),
+      fastLayer: false,
+      lo: 0,
+      hi: 2 * pDes,
+      spLo: 20000,
+      spHi: 500000,
+      sp: pDes,
+      op: d.cwDesign,
+    );
+    final tcTray = d.trays.contains(d.tc101Tray) ? d.tc101Tray : d.trays.first;
+    final tc101 = ControlLoop(
+      tag: 'TC-101',
+      pvTag: 'TI-${100 + tcTray}',
+      mvRef: 'FC-103.sp',
+      params: const PidParams(
+          kc: 4.0,
+          ti: 900,
+          action: Action.reverse,
+          spKick: false,
+          opLo: 20,
+          opHi: 65),
+      fastLayer: false,
+      lo: 273.15,
+      hi: 473.15,
+      spLo: 273.15,
+      spHi: 473.15,
+      sp: 365,
+      op: 40,
+      mode: LoopMode.man,
+    );
+    for (final i in t2insts) {
+      i.hidden = true;
+    }
+    pv101.hidden = true;
+    pc101.hidden = true;
+    tc101.hidden = true;
+    insts.addAll(t2insts);
+    final cs = ControlSystem._(
+        seed,
+        [fc101, fc102, fc103, lc101, lc102, pc101, tc101],
+        insts,
+        [fv101, fv102, fv103, lv101, lv102, pv101]);
+    cs
+      ..pv101 = pv101
+      ..pt101 = pt101
+      ..pt201 = pt201
+      ..ti100 = ti100
+      ..ti201 = ti201
+      ..ti202 = ti202
+      ..ft201 = ft201
+      ..tiSump = tiSump
+      ..pc101 = pc101
+      ..tc101 = tc101
+      ..pDesign = pDes;
+    cs.trayTis.addAll(trayTis);
+    cs.trayIds.addAll(d.trays);
     cs
       ..fv101 = fv101
       ..fv102 = fv102
@@ -716,12 +909,14 @@ class ControlSystem {
       final limitPct = l.fastLayer ? 5.0 : 10.0;
       add('${l.tag}.DEV', AlarmPriority.medium, 30, 10, '${l.tag} deviation',
           (a) {
+        if (l.hidden) return false;
         if (l.mode != LoopMode.auto && l.mode != LoopMode.cas) return false;
         final dev = (l.pct(inst.value) - l.pct(l.sp)).abs();
         return a ? dev > 0.8 * limitPct : dev > limitPct;
       });
       add('${l.tag}.OPSAT', AlarmPriority.medium, 60, 10,
           '${l.tag} output saturated', (a) {
+        if (l.hidden) return false;
         if (l.mode != LoopMode.auto && l.mode != LoopMode.cas) return false;
         final atLimit =
             l.op <= l.params.opLo + 1e-9 || l.op >= l.params.opHi - 1e-9;
@@ -733,7 +928,7 @@ class ControlSystem {
           0,
           0,
           '${l.tag} shed to MAN (bad PV)',
-          (a) => l.shed || (a && inst.quality == Quality.bad),
+          (a) => !l.hidden && (l.shed || (a && inst.quality == Quality.bad)),
           ack: true);
     }
     for (final i in instruments) {
@@ -744,7 +939,7 @@ class ControlSystem {
           0,
           10,
           '${i.spec.tag} signal bad',
-          (a) => i.quality == Quality.bad);
+          (a) => !i.hidden && i.quality == Quality.bad);
       add(
           '${i.spec.tag}.OOR',
           AlarmPriority.low,
@@ -752,6 +947,7 @@ class ControlSystem {
           10,
           '${i.spec.tag} out of range',
           (a) =>
+              !i.hidden &&
               i.quality == Quality.uncertain &&
               i.qualityText != 'STALE' &&
               !(i.spec.type == InstrumentType.pdt && !modelFull));

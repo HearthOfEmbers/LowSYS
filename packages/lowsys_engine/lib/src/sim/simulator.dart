@@ -166,6 +166,10 @@ class Simulator {
 
   double _carry = 0;
   int _serial = 0;
+
+  /// Feed-tray fraction phi = feedStage / N, stored when the feed tray is set explicitly and kept across
+  /// tray-count rebuilds (PHYSICS.md 13.4).
+  double _feedPhi = 0.5;
   late int _seed = options.seed;
   ScenarioRunner? _scenario;
   final List<(String, double)> _failLog = [];
@@ -235,6 +239,7 @@ class Simulator {
     inp.feedQ = lev['feedQ'] ??
         (feed.thermal is FeedQ ? (feed.thermal as FeedQ).q : 1.0);
     inp.feedStage = feed.stage;
+    if (carry == null) _feedPhi = feed.stage / N;
     inp.murphree = config.murphree;
     for (var i = 0; i < nc; i++) {
       inp.z[i] = feed.z[i];
@@ -992,6 +997,7 @@ class Simulator {
         inp.feedQ = v;
       case 'feedStage':
         inp.feedStage = v.round();
+        _feedPhi = inp.feedStage / _config.trayCount;
       case 'refluxFlow':
         inp.refluxFlowSp = v;
         _control.setSp('FC-102', v);
@@ -1461,7 +1467,7 @@ class Simulator {
     final cur = _configWithCurrentLevers();
     final oldN = cur.trayCount;
     if (trays == oldN) return;
-    final fs = (cur.feeds.first.stage * trays / oldN).round().clamp(1, trays);
+    final fs = (_feedPhi * trays + 1e-9).floor().clamp(1, trays);
     rebuild(cur.withTrays(trays, feedStage: fs));
   }
 
@@ -1669,7 +1675,7 @@ class Simulator {
       names: ['Drum', for (var j = 1; j <= N; j++) 'Tray $j', 'Sump'],
       sectionEnds: [N],
     );
-    final instr = [for (final i in _control.instruments) i.readingAt(s.time)];
+    final instr = [for (final i in _control.visibleInstruments) i.readingAt(s.time)];
     InstrumentReading rd(String tag) => instr.firstWhere((r) => r.tag == tag);
     var stagesOut = stages;
     var streamsOut = streams;
@@ -1759,7 +1765,7 @@ class Simulator {
       rebOut = ReboilerSnapshot(hold[N + 1], lt2, rebOut.starvation);
     }
     final loopSnaps = <LoopSnapshot>[];
-    for (final l in _control.loops) {
+    for (final l in _control.visibleLoops) {
       final inst = _control.instrument(l.pvTag);
       loopSnaps.add(LoopSnapshot(l.tag, l.mode, inst.value, l.sp, l.op,
           shed: l.shed,
@@ -1777,7 +1783,7 @@ class Simulator {
           lastDeltaOp: l.lastDeltaOp));
     }
     final valveSnaps = <ValveSnapshot>[];
-    for (final v in _control.valves) {
+    for (final v in _control.visibleValves) {
       final loop = _control.loops.firstWhere((l) => l.mvRef == v.id);
       valveSnaps.add(ValveSnapshot(v.id, loop.op, plant ? nan : v.position,
           v.fMax, v.expectedFlow(loop.op), v.bypassActive ? v.bypassPos : -1));
@@ -1896,6 +1902,7 @@ class Simulator {
           'count': _noisyCount,
         },
         'serial': _serial,
+        'feedPhi': _feedPhi,
         'monitor': {
           'nextCheck': _nextCheck,
           'steadyCount': _steadyCount,
@@ -1969,6 +1976,7 @@ class Simulator {
     sim._nextCheckNoisy = (nz['next']! as num).toDouble();
     sim._noisyCount = (nz['count']! as num).toInt();
     sim._serial = (saved['serial']! as num).toInt();
+    sim._feedPhi = (saved['feedPhi'] as num?)?.toDouble() ?? sim._feedPhi;
     final m = saved['monitor']! as Map<String, Object?>;
     sim._nextCheck = (m['nextCheck']! as num).toDouble();
     sim._steadyCount = (m['steadyCount']! as num).toInt();

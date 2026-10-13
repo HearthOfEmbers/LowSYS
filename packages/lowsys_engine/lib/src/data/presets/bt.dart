@@ -15,12 +15,12 @@ const String btPresetJson = r'''
                  "downcomerAeration": 0.5, "systemFactor": 1.0}}],
   "feeds": [{"stage": 10, "flow": 27.77777777777778, "z": [0.5, 0.5], "thermal": {"q": 1.0}}],
   "condenser": {"type": "total", "drumVolume": 3.0, "overheadVolume": 3.0, "pTopDesign": 101325,
-                "reliefSet": 350000, "cwInletT": 303.15, "cwMaxFlow": 41.54, "uaClean": 29900},
+                "reliefSet": 350000, "cwInletT": 303.15, "cwMaxFlow": 41.54, "uaClean": 29900, "dvMax": 13.88888889, "reliefMax": 83.33333333},
   "reboiler": {"type": "kettle", "sumpHeight": 2.4, "sumpArea": 1.131, "steamHeaderPressure": 451325, "uaClean": 57500},
   "control": {"loops": "default"},
   "hydraulics": "ideal",
   "murphree": 0.7,
-  "initialLevers": {"feedFlow": 27.77777777777778, "refluxFlow": 27.77777777777778, "boilup": 41.666666666666664}
+  "initialLevers": {"feedFlow": 27.77777777777778, "refluxFlow": 27.77777777777778, "boilup": 41.666666666666664, "reboilerDuty": 1301477.0}
 }
 ''';
 
@@ -40,11 +40,11 @@ const String btCustomAlphaPresetJson = r'''
                  "downcomerAeration": 0.5, "systemFactor": 1.0}}],
   "feeds": [{"stage": 10, "flow": 27.77777777777778, "z": [0.5, 0.5], "thermal": {"q": 1.0}}],
   "condenser": {"type": "total", "drumVolume": 3.0, "overheadVolume": 3.0, "pTopDesign": 101325,
-                "reliefSet": 350000, "cwInletT": 303.15, "cwMaxFlow": 41.54, "uaClean": 29900},
+                "reliefSet": 350000, "cwInletT": 303.15, "cwMaxFlow": 41.54, "uaClean": 29900, "dvMax": 13.88888889, "reliefMax": 83.33333333},
   "reboiler": {"type": "kettle", "sumpHeight": 2.4, "sumpArea": 1.131, "steamHeaderPressure": 451325, "uaClean": 57500},
   "control": {"loops": "default"},
   "hydraulics": "ideal",
   "murphree": 0.7,
-  "initialLevers": {"feedFlow": 27.77777777777778, "refluxFlow": 27.77777777777778, "boilup": 41.666666666666664}
+  "initialLevers": {"feedFlow": 27.77777777777778, "refluxFlow": 27.77777777777778, "boilup": 41.666666666666664, "reboilerDuty": 1301477.0}
 }
 ''';

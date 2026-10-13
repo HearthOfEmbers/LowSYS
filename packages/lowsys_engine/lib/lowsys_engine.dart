@@ -29,6 +29,7 @@ export 'src/thermo/component.dart';
 export 'src/thermo/thermo_factory.dart';
 export 'src/thermo/thermo_model.dart';
 export 'src/thermo/tier1_constant_alpha.dart';
+export 'src/thermo/tier2_raoult.dart';
 export 'src/scenario/drill.dart';
 export 'src/scenario/predicate.dart';
 export 'src/scenario/scoring.dart';

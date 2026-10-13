@@ -50,6 +50,22 @@ class ColumnState {
   final Float64List psi;
   final Float64List lbar;
 
+  // ---- Tier 2 (M4): temperatures, enthalpies, normalised K, bubble-point sensitivities, overhead (PHYSICS.md 4.5, 7)
+
+  /// Stage temperature T_j (K), liquid enthalpy h_j and enthalpy H_j of the vapour leaving stage j (J/mol).
+  final Float64List t, hLiq, hVap;
+
+  /// Normalised K-values K~_ij (4.3), stage pressure P_j (Pa) and tau_j = dT_j/dP (K/Pa, 4.5).
+  final Float64List kt, pStage, tau;
+
+  /// Overhead pressure P_top (Pa), inert inventory n_I (mol), condensable inventory per component n_V,i (mol).
+  double pTop = 101325, nI = 0;
+  final Float64List nVi;
+
+  /// Condensing temperature T_0,sat of the drum liquid, reflux temperature T_0 (K), condensation rate (mol/s),
+  /// condenser duty (W), delivered reboiler duty (W), vent + relief rate (mol/s).
+  double tSat0 = 350, tRefl = 350, nCond = 0, qC = 0, qR = 0, nVent = 0, nRelief = 0, dV = 0;
+
   /// Simulation time (s).
   double time = 0;
 
@@ -71,7 +87,14 @@ class ColumnState {
         entrain = Float64List(nTrays + 2),
         bypass = Float64List(nTrays + 2),
         psi = Float64List(nTrays + 2),
-        lbar = Float64List(nTrays + 2);
+        lbar = Float64List(nTrays + 2),
+        t = Float64List(nTrays + 2),
+        hLiq = Float64List(nTrays + 2),
+        hVap = Float64List(nTrays + 2),
+        kt = Float64List((nTrays + 2) * nc),
+        pStage = Float64List(nTrays + 2),
+        tau = Float64List(nTrays + 2),
+        nVi = Float64List(nc);
 
   void copyFrom(ColumnState o) {
     m.setAll(0, o.m);
@@ -88,6 +111,23 @@ class ColumnState {
     bypass.setAll(0, o.bypass);
     psi.setAll(0, o.psi);
     lbar.setAll(0, o.lbar);
+    t.setAll(0, o.t);
+    hLiq.setAll(0, o.hLiq);
+    hVap.setAll(0, o.hVap);
+    kt.setAll(0, o.kt);
+    pStage.setAll(0, o.pStage);
+    tau.setAll(0, o.tau);
+    nVi.setAll(0, o.nVi);
+    pTop = o.pTop;
+    nI = o.nI;
+    tSat0 = o.tSat0;
+    tRefl = o.tRefl;
+    nCond = o.nCond;
+    qC = o.qC;
+    qR = o.qR;
+    nVent = o.nVent;
+    nRelief = o.nRelief;
+    dV = o.dV;
     time = o.time;
     feedAct = o.feedAct;
     refluxAct = o.refluxAct;
@@ -111,6 +151,14 @@ class ColumnState {
         'alphaE': _l(alphaE),
         'psi': _l(psi),
         'lbar': _l(lbar),
+        'T': _l(t),
+        'pTop': pTop,
+        'nI': nI,
+        'nVi': _l(nVi),
+        'tSat0': tSat0,
+        'tRefl': tRefl,
+        'qC': qC,
+        'qR': qR,
         'time': time,
         'feedAct': feedAct,
         'refluxAct': refluxAct,
@@ -137,6 +185,16 @@ class ColumnState {
     _load(alphaE, j['alphaE']);
     if (j['psi'] != null) _load(psi, j['psi']);
     if (j['lbar'] != null) _load(lbar, j['lbar']);
+    if (j['T'] != null) {
+      _load(t, j['T']);
+      _load(nVi, j['nVi']);
+      pTop = (j['pTop']! as num).toDouble();
+      nI = (j['nI']! as num).toDouble();
+      tSat0 = (j['tSat0']! as num).toDouble();
+      tRefl = (j['tRefl']! as num).toDouble();
+      qC = (j['qC']! as num).toDouble();
+      qR = (j['qR']! as num).toDouble();
+    }
     time = (j['time']! as num).toDouble();
     feedAct = (j['feedAct']! as num).toDouble();
     refluxAct = (j['refluxAct']! as num).toDouble();
@@ -152,6 +210,11 @@ class StepInputs {
   bool ratioMode = false;
   double boilupSp = 0;
   double feedQ = 1.0;
+
+  /// Feed temperature (K, Tiers 2/3) before fault effects, and reflux subcooling (K), inert vent opening (%).
+  double feedT = 365;
+  double refluxSub = 0;
+  double inertVent = 0;
   int feedStage = 1;
   double murphree = 0.7;
   final Float64List z;
@@ -173,8 +236,12 @@ class StepDebug {
 
   /// Component rates (mol/s) per component: feed in, distillate out (D m0_new / M0hat), bottoms out.
   final Float64List feedRate, distillateRate, bottomsRate;
+
+  /// Component rates (mol/s) that leave through the vent, the relief valve and the vapour product (Tiers 2/3).
+  final Float64List ventRate;
   StepDebug(int nc)
       : feedRate = Float64List(nc),
         distillateRate = Float64List(nc),
-        bottomsRate = Float64List(nc);
+        bottomsRate = Float64List(nc),
+        ventRate = Float64List(nc);
 }

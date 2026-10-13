@@ -33,14 +33,22 @@ class FaultLocation {
   final int? stageFrom, stageTo;
   final int? feedIndex;
   final String? tagName;
+
+  /// Equipment id for the Tier-2 faults: `feed`, `condenser`, `reflux`, `reboiler`, `overhead`, `steam`.
+  final String? equipmentId;
   const FaultLocation._(
-      {this.stageFrom, this.stageTo, this.feedIndex, this.tagName});
+      {this.stageFrom,
+      this.stageTo,
+      this.feedIndex,
+      this.tagName,
+      this.equipmentId});
 
   /// Stages [from]..[to] counted from the top (trays 1..N).
   const FaultLocation.stages(int from, int to)
       : this._(stageFrom: from, stageTo: to);
   const FaultLocation.feed(int index) : this._(feedIndex: index);
   const FaultLocation.tag(String tag) : this._(tagName: tag);
+  const FaultLocation.equipment(String id) : this._(equipmentId: id);
   const FaultLocation.whole() : this._(stageFrom: 1, stageTo: 1000);
 
   bool coversStage(int j) =>
@@ -51,6 +59,7 @@ class FaultLocation {
         if (stageTo != null) 'to': stageTo,
         if (feedIndex != null) 'feed': feedIndex,
         if (tagName != null) 'tag': tagName,
+        if (equipmentId != null) 'equipment': equipmentId,
       };
 
   factory FaultLocation.fromJson(Map<String, Object?> j) => FaultLocation._(
@@ -58,6 +67,7 @@ class FaultLocation {
         stageTo: (j['to'] as num?)?.toInt(),
         feedIndex: (j['feed'] as num?)?.toInt(),
         tagName: j['tag'] as String?,
+        equipmentId: j['equipment'] as String?,
       );
 
   @override
@@ -65,7 +75,7 @@ class FaultLocation {
       ? (stageFrom == stageTo
           ? 'tray $stageFrom'
           : (stageTo! >= 1000 ? 'all trays' : 'trays $stageFrom-$stageTo'))
-      : (feedIndex != null ? 'feed' : (tagName ?? ''));
+      : (feedIndex != null ? 'feed' : (tagName ?? equipmentId ?? ''));
 }
 
 /// A fault to inject (ENGINE_API.md 9). Severity s_f in (0, 1]; current severity follows PHYSICS.md (11.1).
@@ -153,6 +163,22 @@ String faultLabel(FaultType t) {
       return 'Foaming (F06)';
     case FaultType.feedComposition:
       return 'Feed composition upset (F07)';
+    case FaultType.feedThermal:
+      return 'Feed thermal upset (F08)';
+    case FaultType.coolingLoss:
+      return 'Loss of condenser cooling (F09)';
+    case FaultType.condenserFouling:
+      return 'Condenser fouling (F10)';
+    case FaultType.nonCondensables:
+      return 'Non-condensables in the overhead (F11)';
+    case FaultType.refluxPumpTrip:
+      return 'Reflux pump trip (F12)';
+    case FaultType.reboilerFouling:
+      return 'Reboiler fouling (F13)';
+    case FaultType.condensateBackup:
+      return 'Reboiler condensate backup (F14)';
+    case FaultType.steamHeaderLoss:
+      return 'Steam header pressure loss (F15)';
     default:
       return t.name;
   }

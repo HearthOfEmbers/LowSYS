@@ -194,16 +194,33 @@ void main() {
         }
       }
     });
-    test('G6 N = 28 → 0.98056, N = 27 → 0.97761 (E 0.5)', () {
-      for (final (n, xd) in [(28, 0.98056), (27, 0.97761)]) {
+    test('G6 N = 28 (feed 14) → 0.98056, N = 27 (feed 13) → 0.97761 (E 0.5)',
+        () {
+      for (final (n, feed, xd) in vc264G6) {
         final sim = newSim(btConfig(overrides: {
           'sections[0].trays': n,
-          'feeds[0].stage': n == 27
-              ? 13
-              : 14, // doc: 27 → feed 13 (floor of 13.5); 14 gives 0.97870
+          'feeds[0].stage': feed, // N 27 with feed 14 would give 0.97870
           'murphree': 0.5
         }));
         expect(runSteady(sim).xD, closeTo(xd, 1e-4), reason: 'N = $n');
+      }
+    });
+    test(
+        'G6 via the nTrays lever: the feed tray rounds down from φ = 0.5 (27 → 13, 28 → 14) and does not drift over rebuilds',
+        () {
+      // PHYSICS.md §13.4 / spec decision 2026-10-12 #7
+      final sim = newSim(btConfig(overrides: {'murphree': 0.5}));
+      runSteady(sim);
+      final want = {for (final (n, f, xd) in vc264G6) n: (f, xd)};
+      for (final n in [27, 28, 27, 21, 28]) {
+        sim.setLever('nTrays', n.toDouble());
+        final fs = sim.lever('feedStage').round();
+        expect(fs, (0.5 * n + 1e-9).floor().clamp(1, n), reason: 'N = $n');
+        final w = want[n];
+        if (w != null) {
+          expect(fs, w.$1, reason: 'N = $n feed tray');
+          expect(runSteady(sim).xD, closeTo(w.$2, 1e-4), reason: 'N = $n xD');
+        }
       }
     });
   });

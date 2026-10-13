@@ -2,6 +2,7 @@ import '../config/column_config.dart';
 import '../core/ids.dart';
 import 'thermo_model.dart';
 import 'tier1_constant_alpha.dart';
+import 'tier2_raoult.dart';
 
 /// Builds thermo models from configurations (ENGINE_API.md 3.2).
 abstract final class ThermoFactory {
@@ -10,9 +11,9 @@ abstract final class ThermoFactory {
       case ThermoTier.t1:
         return Tier1ConstantAlpha.fromConfig(config);
       case ThermoTier.t2:
+        return Tier2Raoult.fromConfig(config);
       case ThermoTier.t3:
-        throw UnsupportedError(
-            'Thermo ${tier.name} arrives with a later milestone (M4/M5)');
+        throw UnsupportedError('Thermo t3 arrives with M5');
     }
   }
 }
