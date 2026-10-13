@@ -32,6 +32,8 @@ export 'src/snapshot/mccabe_thiele.dart';
 export 'src/snapshot/txy.dart';
 export 'src/snapshot/sim_snapshot.dart';
 export 'src/thermo/component.dart';
+export 'src/thermo/crude_thermo.dart';
+export 'src/snapshot/crude_products.dart';
 export 'src/thermo/thermo_factory.dart';
 export 'src/thermo/thermo_model.dart';
 export 'src/thermo/tier1_constant_alpha.dart';
