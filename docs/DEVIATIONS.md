@@ -237,3 +237,96 @@ M5 is complete on the coder side. Engine suite and all app tests pass; the only 
 - **Paper tests:** `app/test/m5_golden_test.dart`: U2 contrast for all three themes (Paper numbers of SCOPE 7.2 reproduced) and U4 goldens (`app/test/goldens/<theme>_column_mccabe.png`, the whole 1440x900 screen at the B-T steady state, so column and McCabe-Thiele painters together; regenerate with `--update-goldens`).
 - Screenshots refreshed: `docs/screenshots/m5/`.
 - Still open: Paper margin-note leader line; T-x-y touch-target audit; `vc28_*` validation tests belong to the validator.
+
+## M5 validation
+
+Validator pass on engine 9348b7c in a clean worktree. It was re-run at fb33c07 (the coder's M5 close-out, which landed during the pass), and the statuses below are at fb33c07.
+
+- **Start.** With the `vc18_mccabe_thiele_data_test.dart` fix (`rMin!`), the suite at 9348b7c was 473 pass, 2 skipped, 0 fail.
+- **New tests.** Four validation files: `m5_tier3_thermo_validation_test.dart`, `m5_columns_validation_test.dart`, `m5_mccabe_txy_validation_test.dart`, `m5_g9_g10_validation_test.dart`. They rest on an independent reference, `reference/tier3_reference.dart`: binary NRTL, McWilliams DePriester, Lee–Kesler and a MESH Newton with a numerical Jacobian (P held). The M4 close-out re-checks are in `m4_e50_v4_test.dart` (spec 4ee46dd).
+- **End state at fb33c07: 547 pass, 4 skipped, 5 fail.**
+  - Skips: the two old ones, plus two VC-28.8 clauses that fail for spec reasons (OPEN_ITEMS.md, M5 validation, items 1 and 2).
+  - Failures: all engine-side, coder items 1, 5, 6 and 7 below.
+
+**Pass (engine against the docs and against the independent reference):**
+- VC-10.4: γ∞ (6 values); engine γ equals the reference to 1e-12 on a T × x grid.
+- VC-10.5: all 9 azeotrope rows through `TxyData.findAzeotropes`, including 0.1 / 0.08 atm, the T values, the maximum-boiling flags and the literature bands. `mw` has none.
+- VC-10.6: within the experiment bands (± 0.5 K, ± 0.015), and equal to the reference to 1e-6 K.
+- VC-10.8: over each preset's P_top range (mw/ew/ac 0.2–5 bar, c4 3–25 bar), from the cold guess Σ x T_sat(P) and from the engine's own cold start. No fallback; |ΣKx − 1| < 1e-9.
+  - §3.6.1 Newton iterations per 1000 points: mw ≤ 6, ew ≤ 6, ac ≤ 7 (26.5 % need 7), c4 ≤ 3.
+- VC-10.9: all three rows. DePriester α 1.36 / 1.33 against Lee–Kesler 1.379 / 1.354 at the c4 T3 top and bottom.
+- VC-9.4 (6 K values) and VC-9.5 (6 bubble and dew points, ± 0.05 K) with the six-component DePriester model. For the 852 °R limit see OPEN_ITEMS.md (DePriester source).
+- VC-28.1:
+  - Table rows, VC-5.4, and CW 49.90 %, which equals (7.3) applied to the reference Q_C.
+  - dt: the dt-2 steady state stays steady at dt 0.5, and dt 30 agrees to 1e-6.
+  - R 20 at D 10: 0.89074 with utilities ×1.9. R 40 checked against the reference only: 0.89231.
+  - Tier 1: 0.983063.
+  - 0.5 atm, R 10: 0.900211 / 61.624 °C / 1246.7 kW, with 15 °C water.
+  - x_B [P] against [I]: reconciled (OPEN_ITEMS.md).
+- VC-28.2:
+  - L₀ 150: T_D / T_B.
+  - L₀ 300 with utilities ×1.8: D 38.0, x_D 0.99993, x_B 0.35488; x_B stays above 0.3335 throughout.
+- VC-28.3 (± 0.05 K, ± 0.1 kmol/h):
+  - Tier 2: T_D, T_B, V₁ and V_B.
+  - Tier 3 at D 40, run at the reference duty 1553.95 kW: every row.
+  - Tier 3 at 1542.6 kW: T_D, T_B and V_B.
+  - T2 → T3 switch at fb33c07: CW 49.96 → 59.05 %, peak |P − SP| 142 Pa.
+- VC-28.6 [P]: Tier 1 x_D 0.98335; back in Tier 3, duty 1202.1 ± 1 kW, D 9.67 ± 0.1, x_D 0.88720 ± 5e-4.
+- VC-28.7:
+  - The D 30 row, run at the reference duty 902.39 kW: D 30.000, x_D 0.994611, x_B 0.002309, 64.585 / 99.569 °C, V_B 79.71.
+  - Preset duty: the temperatures and V_B.
+  - Tier 1: x_B.
+- VC-18.4:
+  - Builder R_min 1.1000 on the VC-1 case.
+  - `ew` tangent pinch 0.7527 / 1.873, equal to the reference.
+  - Feed pinch alone at x_D 0.85: 1.165. At x_D 0.80 the feed pinch governs (1.021); by 0.82 the tangent pinch has taken over.
+- VC-28.4:
+  - The q-line at q 0.5 (feed T from (3.15)) ends at x 0.385, with |y_line − y*| < 1e-8 and no other crossing.
+  - The "blocked" banners use the finder's azeotrope x at P_top.
+- VC-28.5:
+  - mw, ew, ac: the dew curve comes from the bubble sweep; the engine's dewT agrees to 1e-6 K; the markers equal `findAzeotropes`.
+  - Grid refinement; spot values from VC-10.3 and 10.6.
+  - `ew` at 0.5 atm: 0.9105 / 61.62 °C.
+  - One build takes < 2 ms (median of 21).
+  - Tier-1 ideal view: every T* lies on the bubble curve to 1e-6 K.
+  - c4: the end points are where K_i = 1.
+- VC-21: `eq.nrtl` / `eq.depriester` equal y* on every tray of ew, ac and c4; each line has TeX, and every id is in the §15 catalogue.
+- VC-28.8 G10: D 48.0, x_D 0.8567, x_B 0.3630; x_B never below 0.3335; o3 = round(findAzeotropes, 3) = 0.333; no safety events; o1 at 6.05 h of 24 h.
+- VC-28.8 G9 (fb33c07):
+  - The shipped JSON has the new o3 and hint 2.
+  - After hint 1: x_D 0.8902, R 17.6.
+  - o3 (x_D ≥ 0.95 held 300 s) 0.41 h after the Tier-1 switch.
+  - At 0.5 bar(a): P 50 000 Pa, D 5.970, x_D 0.90050, T_D 61.33 °C, CW 37.3 % of m_cw,max.
+  - No safety events.
+  - Times: o1 26.28 h, o5 55.81 h, over the 48-h limit (OPEN_ITEMS.md item 1).
+  - Low-CW path: no oscillation, CW 9.3 %; the −8.0 kPa dip is OPEN_ITEMS.md item 2.
+- M4 close-out re-checks (spec 4ee46dd): all pass at fb33c07.
+  - VC-5.4 in full hydraulics ≤ 1e-6 at design and at +20 % load.
+  - `cwOpPartial` 30 % from the preset and from the switch.
+  - `balanceResidual` ≤ 1e-9.
+  - C1/C2/C3b `n/a`, C3a / C5 drum `ok`, C4:PV-101, no C4:PV-102.
+  - T1 → T2 PC-101 at 50 %.
+  - VC-16.6b.
+- VC-4.1 and every other M1–M4 test: unchanged, pass.
+
+**Coder items (repro in the named test):**
+1. **Open: per-preset lever ranges and FT/valve spans (PHYSICS.md §2.3 "Lever ranges") are not implemented.** Every preset keeps the B-T maxima: L₀ 300, V_B 300, F 250 kmol/h, Q_R 3 MW. The spec range is 0–2 × the preset default.
+   - Effect: `c4` in Tier 1 starts at the table V_B of 320 but delivers 300. The result is D 20.000, x_D 0.99314, x_B 0.25172, against the VC-28.3 Tier-1 row of D 40, 0.92631 / 0.04913.
+   - Repro: `Simulator(Presets.byId('c4').copyWith(tier: ThermoTier.t1))`, then `runToSteadyState()`.
+   - Tests: `m5_columns_validation_test`, "Tier 1 (α 1.35) …" and "lever ranges …".
+2. **Fixed at fb33c07: the feed after a T2/T3 → T1 → T3 round trip.** At 9348b7c the feed stayed at its 1-atm temperature and G9 hint 3 failed (drum 108 %, D pinned at 20 kmol/h, P 82 kPa, x_D 0.300). Confirmed by the G9 player.
+3. **Fixed at fb33c07: the c4 T2 → T3 Q_C-continuous CW initialisation.** At 9348b7c the CW stayed at 49.96 % and the peak was 5729 Pa.
+4. **Fixed at fb33c07: the G9 JSON** (o3 without `steady`, hint 2 text).
+5. **Open: the q-line with q = 1 ± ε.** `ew`, z 0.95, saturated liquid: at t = 1 s the live q is 1.0000037. `_qPinchT2` then walks in x (slope 2.7e5) and ends at the frame corner (1, 1), not at ≈ (0.95, y*(0.95) = 0.944). At t = 0, where q is exactly 1, it is correct.
+   - Fix: a tolerance on |q − 1| (e.g. 1e-6), and for |slope| > 1 a frame end on y = 0/1.
+   - Test: `m5_mccabe_txy_validation_test`, "ew, z 0.95 …". For the walk direction see OPEN_ITEMS.md item 3.
+6. **Open: dt 30 s robustness.**
+   - Repro: `ac` at E 1 with the condenser ×2 (UA 167.4 kW/K, CW max 83.08 kg/s) and dt = dtFastForward = 30 s. From its steady state, step L₀ 150 → 300 kmol/h and the duty ×1.8.
+   - At dt 30, `runToSteadyState` returns "reached" at P 141 kPa, D 0.14 kmol/h, drum 2.6 %, energy residual 0.72, with 418 negative clamps after the step (and 615 more during the dt-30 cold start).
+   - At dt 2 and 10 s the same step ends at D 16.32 with P at its SP and an energy residual of 5e-12.
+   - Cause: the n_V,i ≥ 0 clamp hides an overshoot that §12.7 should catch by halving the step, and the steady monitor accepts a state whose energy balance does not close.
+   - A related, physically infeasible case (duty ×1.8 at L₀ 150, boil-up beyond F + L₀) never settles at any dt: 660–6178 clamps, and the drum at 2085 % at dt 30.
+   - Test: `m5_columns_validation_test`, "dt 30 s after a large step …".
+7. **Open: explain (minor).** The §15 tray row lists `eq.bubblePoint` (the 3.6.1 result), but no Tier-2/3 tray returns it. Tier 2 also uses `eq.equilibrium.T2` where §15 says `eq.raoult` (the M4 VC-21 id check).
+8. **Fixed at fb33c07: the M4 close-out items of 4ee46dd** ((7.4) entrainment, `cwOpPartial`, D_V in `balanceResidual`, partial-condenser cross-checks). The coder also made C5 sump `n/a` with a partial condenser; OPEN_ITEMS.md item 7 asks the lead to ratify that.
+9. **Open, minor: `coldGuess` uses Σ x T_b, not Σ x T_sat(P) (§3.6.1).** It is harmless: VC-10.8 converges from either guess over the full ranges with no fallback. Record it, or switch.

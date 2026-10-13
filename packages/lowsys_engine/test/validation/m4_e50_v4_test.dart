@@ -2,10 +2,12 @@
 // 10.7; VC-16.6b), V4 run to steady state with Tier 2 + full hydraulics +
 // TC-101, and the Tier-1 display T* (PHYSICS.md 1.3).
 //
-// The partial-condenser runs use B-T Tier 2, ideal hydraulics and CW 30 %:
-// at the spec default of 70 % the 50 %-design condenser condenses all of V1
-// and PV-102 shuts (OPEN_ITEMS.md). [engine] = engine value at 1155f40, a
-// regression pin; everything else is checked against the equations.
+// The partial-condenser runs use B-T Tier 2, ideal hydraulics and CW 30 %,
+// the `condenser.cwOpPartial` default of PHYSICS.md 7.2 (2026-10-13; at 70 %
+// the 50 %-design condenser condenses all of V1 and PV-102 shuts, which is
+// correct behaviour). [engine] = engine value at 1155f40, a regression pin;
+// everything else is checked against the equations. The M4 close-out
+// re-checks of OPEN_ITEMS.md (spec 4ee46dd) are at the end of the E50 group.
 library;
 
 import 'dart:convert';
@@ -88,7 +90,7 @@ void main() {
       expect(valveOf(s, 'PV-102').fMax, closeTo(_dvMax, 1e-6));
       final pc = loopOf(s, 'PC-101');
       expect(pc.mode, LoopMode.auto);
-      expect(pc.kc, 2.0, reason: 'DEVIATIONS E50 tuning ([impl-tunable])');
+      expect(pc.kc, 2.0, reason: 'PHYSICS.md 10.7 (ratified 2026-10-13)');
       expect(pc.ti, 30.0);
       expect(c.cwOp, 30.0, reason: 'CW from its own lever cwOP');
       expect(s.kpis.pTop, closeTo(_pDesign, 0.01), reason: 'PC-101 holds P');
@@ -240,9 +242,9 @@ void main() {
       expect(q.kpis.pTop, inInclusiveRange(90000, 99000));
     });
 
-    test('spec default CW 70 %: the condenser takes all of V1, PV-102 shuts and P falls below SP',
+    test('CW 70 % (above the total-condensation OP ≈ 48.5 %): the condenser takes all of V1, PV-102 shuts and P falls below SP',
         () {
-      // OPEN_ITEMS.md (E50 cwOP default): the 70 % default predates the 50 % design.
+      // PHYSICS.md 7.2 (2026-10-13): correct behaviour, not an error state.
       final q = _steadyPartial(70).snapshot();
       expect(q.condenser!.vaporProduct, lessThan(1e-6));
       expect(valveOf(q, 'PV-102').position, lessThan(1e-6));
@@ -293,6 +295,50 @@ void main() {
           expect(v[2], closeTo(ref[2], 0.01), reason: 'dt $dt P');
         }
       }
+    });
+
+    // ---- M4 close-out re-checks (OPEN_ITEMS.md "For validator", spec 4ee46dd)
+
+    test('a partial condenser starts at condenser.cwOpPartial = 30 %, from the preset and from the condenserType switch',
+        () {
+      final cfg = btT2().applyOverrides({'condenser.type': 'partial'});
+      final m = newSim(cfg, options: const SimOptions(seed: 3));
+      expect(m.lever('cwOP'), closeTo(30, 1e-9), reason: 'preset load');
+      final t = newSim(btT2(), options: const SimOptions(seed: 3));
+      t.advance(10);
+      t.setLever('condenserType', 1);
+      expect(t.lever('cwOP'), closeTo(30, 1e-9), reason: 'condenserType switch');
+    });
+
+    test('balanceResidual counts the vapour product: |F z − D x_D − D_V y_V − B x_B| / F z ≤ 1e-9 at steady state',
+        () {
+      expect(s.kpis.balanceResidual, lessThanOrEqualTo(1e-9));
+    });
+
+    test('cross-checks with a partial condenser: C1, C2, C3b n/a; C3a and C5 (drum) ok; C4 on PV-101 (the CW valve), no C4 row for PV-102',
+        () {
+      // the default 30-min window: C2 needs ≥ 1800 s, which the steady run gives
+      final m = _steadyPartial(30);
+      m.advance(3600);
+      final q = m.snapshot();
+      final ids = [for (final c in q.crossChecks) '${c.id} ${c.status.name}'];
+      for (final id in ['C1', 'C2', 'C3b']) {
+        expect(checkOf(q, id)?.status, CheckStatus.notAvailable, reason: '$id; checks $ids');
+      }
+      for (final id in ['C3a', 'C5:drum']) {
+        expect(checkOf(q, id)?.status, CheckStatus.ok, reason: '$id; checks $ids');
+      }
+      expect(checkOf(q, 'C4:PV-101')?.status, CheckStatus.ok, reason: 'checks $ids');
+      expect(checkOf(q, 'C4:PV-102'), isNull, reason: 'checks $ids');
+    });
+
+    test('T1 → T2 switch: PC-101 starts at the 50 % design OP (PHYSICS.md 13.5, 2026-10-13)', () {
+      final m = newSim(btConfig(), options: const SimOptions(seed: 3), warmStart: true);
+      m.advance(60);
+      m.setTier(ThermoTier.t2);
+      final pc = loopOf(m.snapshot(), 'PC-101');
+      expect(pc.op, closeTo(50, 1e-9));
+      expect(pc.mode, LoopMode.auto);
     });
   });
 
@@ -387,27 +433,25 @@ void main() {
     });
 
     test(
-        'VC-5.4 in full hydraulics: energy closure is 1e-11 once the entrained tray-1 liquid e_1 (h_1 − h_0) is counted',
+        'VC-5.4 in full hydraulics with the (7.4) entrainment term e_1 (h_1 − h_0): closure ≤ 1e-6 at design and at +20 % load',
         () {
-      // OPEN_ITEMS.md (7.4 entrainment term): the engine follows (7.4), whose
-      // condenser balance takes e_1 at h_0, so the KPI is 6.8e-6 here (> 1e-6).
-      // Passes before and after a fix of (7.4): the residual is either 0 or
-      // exactly e_1 (h_1 − h_0).
-      final m = newSim(btT2(full: true), options: const SimOptions(seed: 9));
-      runSteady(m);
-      final s = m.snapshot();
-      final th = thermoOf(m.config);
-      final res = _energyBalance(m);
-      expect(s.kpis.energyResidual, closeTo(res.abs() / s.kpis.qr, 1e-9),
-          reason: 'KPI = independent balance');
-      final e1 = s.stages.entrain[1];
-      expect(e1, greaterThan(0), reason: 'full hydraulics entrains');
-      final gap = e1 *
-          (th.hL(s.stages.t[1], _xs(s, 1)) -
-              th.hL(s.condenser!.tReflux, _xs(s, 0)));
-      final closed = math.min(res.abs(), (res - gap).abs()) / s.kpis.qr;
-      expect(closed, lessThan(1e-9),
-          reason: 'residual ${res / s.kpis.qr}, gap ${gap / s.kpis.qr}');
+      // PHYSICS.md 7.2 (2026-10-13): only the new form is asserted. At engine
+      // 1155f40/9348b7c the residual was exactly e_1 (h_1 − h_0): 6.8e-6
+      // (design) and 1.9e-5 (+20 %).
+      for (final load in [1.0, 1.2]) {
+        // +20 %: L0 and duty × 1.2 with 20 °C water so that PC-101 still holds P
+        final m = newSim(
+            btT2(full: true, overrides: load == 1.0 ? const {} : const {'condenser.cwInletT': 293.15}),
+            options: const SimOptions(seed: 9));
+        m.setLever('refluxFlow', m.lever('refluxFlow') * load);
+        m.setLever('reboilerDuty', m.lever('reboilerDuty') * load);
+        runSteady(m);
+        final s = m.snapshot();
+        expect(s.stages.entrain[1], greaterThan(0), reason: 'full hydraulics entrains');
+        final res = _energyBalance(m).abs() / s.kpis.qr;
+        expect(res, lessThanOrEqualTo(1e-6), reason: 'load $load: independent closure $res');
+        expect(s.kpis.energyResidual, lessThanOrEqualTo(1e-6), reason: 'load $load: KPI');
+      }
     });
   });
 
