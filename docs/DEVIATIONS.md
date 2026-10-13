@@ -1026,3 +1026,15 @@ These rule on the two notes in "Spec rulings M9 (coder)" and on SCOPE 7.2. The d
 - (d) In `m10_spec_rulings_test`, restore `energyResidual` < 1×10⁻³ and add the VC-15.7 F24 s = 1 sub-checks: steady state reached; stages 27–30 within 0.02 K of the stage-26 liquid; closure at 3 times; no growth in `negativeClamps` over the final hour. Re-record the stage-30 rise (expected ≈ +13.8 K, inside +12.9 … +16.9). Re-run VC-15.4, which must stay unchanged because no floor binds there, and VC-15.5.
 
 **Validator actions:** run the new VC-15.7 F24 s = 1 / bottom-steam-0 checks. Confirm that the wash trays at overflash 0 are liquid-limited and that no holdup is raised.
+
+
+## M9-coder rulings implemented (2026-10-13)
+
+Implemented in `packages/lowsys_engine/lib` per "Spec rulings M9-coder/M10" actions (a)-(d). No `app/` file was touched.
+
+- (a) Vapour-free mode test: `CrudeColumn.mode` (0 bubble point, 1 vapour-free, 2 liquid-limited) persists between steps. A stage enters vapour-free mode when (4.6) gives V_HC <= 0 and leaves it only when T reaches T_bub (T step capped at the gap, then the bubble Newton runs). T is never reset to T_bub while subcooled. The mode is not saved; after a restore it is derived from T_bub - T and the holdup.
+- (b) Liquid-limited stage on main stages and the first stripper stage: V_HC capped at V_max = In - Out_other + (M - M_film)/dt, T from the energy balance with the surplus, hand-back to the bubble point when T falls to T_bub. Its K values are rescaled so sum x K = 1 in the component solve. `_implicitHold` no longer resets M up to M_film: L = max(0, In - Out - (M_film - M)/dt) and M closes on the flows.
+- (c) `negativeClamps` counts episodes: `SolverHealth` keeps one bit per site (Tier-2 V_j, m_ij, n_V,i, crude L = 0 with M < M_film, crude composition reset), committed once per accepted step; rejected steps leave no marks.
+- (d) `m10_spec_rulings_test` F24 s = 1 test: energyResidual < 1e-3, steady state reached, stages 27-30 within 0.02 K of stage 26, closure at three times 20 min apart, no growth in `negativeClamps` over the last hour.
+
+Results: F24 s = 1 energy closure 3e-10 (3.3e-10, 1.5e-10, 6.4e-11 at the three times), stage-30 rise +13.92 K, negativeClamps 0. Full engine suite: 837 passed, 4 skipped (existing skips), 0 failed. The m5 dt = 30 s large-step case now records 1388 negativeClamps episodes (recorded, not asserted, Tier 1); not examined further.

@@ -78,6 +78,9 @@ class CrudeColumn {
   final Float64List kk = Float64List(ns * nc), dl = Float64List(ns * nc), yy = Float64List(ns * nc);
   final Float64List hl = Float64List(ns), hv = Float64List(ns);
   final Float64List _xn = Float64List(ns * nc);
+  final Float64List _kEff = Float64List(ns * nc); // K values of the component solve (liquid-limited stages rescaled to sum x K = 1)
+  final Float64List _sSum = Float64List(ns); // sum x K at the start of the step
+  final Float64List _tGap = Float64List(ns); // T_bub - T estimate at the start of the step (K)
   final Float64List _mNew = Float64List(ns);
   final Float64List _lw = Float64List(ns);
   final Float64List _steamK = Float64List(4); // mol/s of the four injection points
@@ -176,6 +179,8 @@ class CrudeColumn {
       xSump[i] = z[i];
     }
     time = 0;
+    mode.fillRange(0, ns, 0);
+    vfDT.fillRange(0, ns, 0);
     cotCtl = inp.cot;
     for (var a = 0; a < ns; a++) {
       p[a] = inp.pTop;
@@ -258,12 +263,15 @@ class CrudeColumn {
       final pHc = p[a] * (1 - ywF[a]);
       final off = a * nc;
       th.kValues(kk, off, t[a], pHc, dl);
-      var s = 0.0;
+      var s = 0.0, ds = 0.0;
       for (var i = 0; i < nc; i++) {
         final y = kk[off + i] * x[off + i];
         yy[off + i] = y;
         s += y;
+        ds += y * dl[off + i];
       }
+      _sSum[a] = s;
+      _tGap[a] = s > 0 && ds > 0 ? -math.log(s) / (ds / s) : 0.0;
       if (s > 0) {
         final inv = 1 / s;
         for (var i = 0; i < nc; i++) {
@@ -345,8 +353,9 @@ class CrudeColumn {
         health.negativeLatent++;
         den = 1;
       }
-      v[at] = math.max(
-          0.0, (sd[k] * (hl[ad] - hl[at]) + v[ab] * (hv[ab] - hl[at]) + _qSteam(at)) / den);
+      // first stripper stage: liquid-limited like a dry tray (PHYSICS.md 9.3), never vapour-free
+      v[at] = _vapourOf(at, sd[k] * (hl[ad] - hl[at]) + v[ab] * (hv[ab] - hl[at]) + _qSteam(at), den,
+          sd[k] + v[ab] + (hold[at] - _floorOf(at)) / dt, dt, false);
     }
     final hr = th.hLmix(yy, 0, inp.drumT);
     final paH = paAct > 1e-9 ? hl[ap] - qPA / paAct : hl[ap];
@@ -369,19 +378,16 @@ class CrudeColumn {
         health.negativeLatent++;
         den = 1;
       }
-      final vRaw = num / den;
-      if (vRaw <= 0) {
-        // vapour-free stage (spec rulings M9 item 5): V = 0 and T follows the stage energy balance, not the bubble point,
-        // until the stage is supplied with enough energy to boil again
-        v[a] = 0.0;
-        final cp = th.hLmix(x, a * nc, t[a] + 1) - hl[a];
-        // implicit in the outflow enthalpy (d num / dT = -L cp), stable on the thin film of a dry tray
-        vfDT[a] = cp > 1 && hold[a] > 0 ? (dt * num / (cp * (hold[a] + dt * l[a]))).clamp(-5.0, 5.0) : 0.0;
-        vf[a] = true;
-      } else {
-        v[a] = vRaw;
-        vf[a] = false;
+      // liquid available to the vapour (PHYSICS.md 9.3 liquid-limited stage): V_max = In - Out_other + (M - M_film)/dt
+      var inflow = (j == 1 ? l0 : l[a - 1]) + (j < nm ? v[a + 1] : 0.0);
+      if (j == feedSt) inflow += fF;
+      if (j == paRetSt) inflow += paAct;
+      if (j == paDrawSt) inflow -= paAct;
+      for (var k = 0; k < 3; k++) {
+        if (retSt[k] == j) inflow += v[s1(k)];
+        if (drawSt[k] == j) inflow -= sd[k];
       }
+      v[a] = _vapourOf(a, num, den, inflow + (hold[a] - _floorOf(a)) / dt, dt, true);
     }
     // overhead: reflux from FC-301, limited by what the drum can supply
     final reflux = inp.reflux;
@@ -438,7 +444,13 @@ class CrudeColumn {
     residueOut = bRes;
     qc = _condenserDuty();
     time += dt;
-    return t[0].isFinite && t[nm - 1].isFinite && v[0].isFinite;
+    final ok = t[0].isFinite && t[nm - 1].isFinite && v[0].isFinite;
+    if (ok) {
+      health.commitClamps();
+    } else {
+      health.discardClamps();
+    }
+    return ok;
   }
 
   /// Holdup update of a weir stage with the inflow-minus-vapour balance [dNon] (everything except the weir outflow).
@@ -446,28 +458,87 @@ class CrudeColumn {
     final lo = l[a];
     final hFroth = hold[a] * vL(a) / (aA(a) * 0.5) - geo.weirHeight;
     final k = hFroth > 1e-9 ? 1.5 * lo * vL(a) / (aA(a) * 0.5 * hFroth) : 0.0;
-    var dM = dt * (dNon - lo) / (1 + dt * k);
+    final dM = dt * (dNon - lo) / (1 + dt * k);
     var mNew = hold[a] + dM;
-    final floor = 0.05 * m0(a); // a minimal wetted film keeps a dry tray's composition and temperature defined
+    final floor = _floorOf(a); // a minimal wetted film keeps a dry tray's composition and temperature defined
     if (mNew < floor) {
-      mNew = floor;
-      dM = mNew - hold[a];
-      // spec rulings M9 C2: with the film floor binding the outflow follows from the clamped dM, L = In - Out - dM/dt
-      final lNew = dNon - dM / dt;
-      if (lNew < 0) health.negativeClamps++; // L = 0 with M below the film: counted
+      // PHYSICS.md 9.2: the outflow follows from the clamped change, L = max(0, In - Out - (M_film - M)/dt), and M closes
+      // on the flows. M is never reset up to the film floor (spec ruling M9-coder).
+      final lNew = math.max(0.0, dNon - (floor - hold[a]) / dt);
+      mNew = hold[a] + dt * (dNon - lNew);
+      if (lNew == 0.0 && mNew < floor - 1e-12) health.clampSite(4, a); // L = 0 with M below the film: a counted clamp
+      if (mNew < 1e-3) {
+        // pathological: a holdup that would reach zero (the draw-side limits of 9.4 should prevent it)
+        health.clampSite(4, a);
+        mNew = 1e-3;
+      }
       _mNew[a] = mNew;
-      l[a] = math.max(0.0, lNew);
+      l[a] = lNew;
       return;
     }
     _mNew[a] = mNew;
     l[a] = math.max(0.0, lo + k * dM);
   }
 
+  /// Film floor M_film = 0.05 x the static weir holdup of stage [a] (mol).
+  double _floorOf(int a) => 0.05 * m0(a);
+
   double naphthaOut = 0, residueOut = 0;
 
-  /// Vapour-free main-column stages (V_HC = 0, T from the energy balance) and the temperature step they take.
-  late final List<bool> vf = List<bool>.filled(ns, false);
-  late final List<double> vfDT = List<double>.filled(ns, 0.0);
+  /// Stage mode (PHYSICS.md 9.3): 0 bubble point, 1 vapour-free (V_HC = 0, T from the energy balance, T < T_bub),
+  /// 2 liquid-limited (V_HC capped at the liquid available, T from the energy balance with the surplus, T > T_bub).
+  /// Not saved: the mode follows from T, x and the holdup ([_deriveModes] after a restore).
+  final Int8List mode = Int8List(ns);
+
+  /// Temperature step of the stages that are not in bubble-point mode (K).
+  final Float64List vfDT = Float64List(ns);
+
+  /// True for the vapour-free stages.
+  bool vf(int a) => mode[a] == 1;
+
+  /// True for the liquid-limited (dry) stages.
+  bool liquidLimited(int a) => mode[a] == 2;
+
+  /// Hydrocarbon vapour leaving stage [a] from the (4.6) numerator [num] and latent [den], with the liquid-limited cap
+  /// [vMax]. Decides the stage mode (the stored mode and T decide, not the sign of (4.6) at a subcooled T; [allowVf] is
+  /// false for the first stripper stage) and sets the temperature step of the modelled states in [vfDT].
+  double _vapourOf(int a, double num, double den, double vMax, double dt, bool allowVf) {
+    final vRaw = num / den;
+    final cap = math.max(0.0, vMax);
+    var m = mode[a];
+    if (m == 0) {
+      if (vRaw <= 0 && allowVf) {
+        m = 1;
+      } else if (vRaw > cap) {
+        m = 2;
+      }
+    }
+    mode[a] = m;
+    if (m == 0) {
+      vfDT[a] = 0;
+      return math.max(0.0, vRaw);
+    }
+    final vv = m == 1 ? 0.0 : cap;
+    final src = num - vv * den;
+    final cp = th.hLmix(x, a * nc, t[a] + 1) - hl[a];
+    // implicit in the outflow enthalpy (d src / dT = -L cp), stable on the thin film of a dry tray
+    vfDT[a] = cp > 1 && hold[a] > 0 ? (dt * src / (cp * (hold[a] + dt * l[a]))).clamp(-5.0, 5.0) : 0.0;
+    return vv;
+  }
+
+  /// Modes after a restore: subcooled stages are vapour-free, superheated stages on the film floor are liquid-limited.
+  void _deriveModes() {
+    for (var a = 0; a < ns; a++) {
+      final firstStripper = a >= nm && (a - nm).isEven;
+      final dry = hold[a] <= 1.001 * _floorOf(a);
+      mode[a] = a < nm && _tGap[a] > 0.02
+          ? 1
+          : (a < nm || firstStripper) && dry && _tGap[a] < -1e-4
+              ? 2
+              : 0;
+      vfDT[a] = 0;
+    }
+  }
 
   double _condenserDuty() {
     return v[0] * (hv[0] - th.hLmix(yy, 0, inp.drumT)) + steamUp[0] * (th.hVwater(t[0]) - th.hLwater(inp.drumT));
@@ -476,14 +547,21 @@ class CrudeColumn {
   /// Implicit component step: strippers first, then the main column tridiagonal per component (9.4).
   void _components(double dt) {
     final ap = paDrawSt - 1;
+    // K values of the solve: a liquid-limited stage passes its vapour at the film's composition, sum x K = 1
+    for (var a = 0; a < ns; a++) {
+      final sc = mode[a] == 2 && _sSum[a] > 0 ? 1 / _sSum[a] : 1.0;
+      for (var i = 0; i < nc; i++) {
+        _kEff[a * nc + i] = kk[a * nc + i] * sc;
+      }
+    }
     for (var i = 0; i < nc; i++) {
       // strippers (2 x 2), liquid feed S_d x_d^n (explicit)
       for (var k = 0; k < 3; k++) {
         final at = s1(k), ab = s2(k), ad = drawSt[k] - 1;
-        final a11 = _mNew[at] / dt + l[at] + v[at] * kk[at * nc + i];
-        final a12 = -v[ab] * kk[ab * nc + i];
+        final a11 = _mNew[at] / dt + l[at] + v[at] * _kEff[at * nc + i];
+        final a12 = -v[ab] * _kEff[ab * nc + i];
         final a21 = -l[at];
-        final a22 = _mNew[ab] / dt + pAct[k] + v[ab] * kk[ab * nc + i];
+        final a22 = _mNew[ab] / dt + pAct[k] + v[ab] * _kEff[ab * nc + i];
         final b1 = hold[at] * x[at * nc + i] / dt + sd[k] * x[ad * nc + i];
         final b2 = hold[ab] * x[ab * nc + i] / dt;
         final det = a11 * a22 - a12 * a21;
@@ -493,21 +571,21 @@ class CrudeColumn {
       // main column
       for (var j = 1; j <= nm; j++) {
         final r = j - 1;
-        var diag = _mNew[r] / dt + l[r] + v[r] * kk[r * nc + i];
+        var diag = _mNew[r] / dt + l[r] + v[r] * _kEff[r * nc + i];
         var lower = 0.0, upper = 0.0;
         var rhs = hold[r] * x[r * nc + i] / dt;
         if (j == 1) {
-          diag -= l0 * kk[i];
+          diag -= l0 * _kEff[i];
         } else {
           lower = -l[r - 1];
         }
-        if (j < nm) upper = -v[r + 1] * kk[(r + 1) * nc + i];
+        if (j < nm) upper = -v[r + 1] * _kEff[(r + 1) * nc + i];
         if (j == feedSt) rhs += fF * z[i];
         if (j == paDrawSt) rhs -= paAct * x[ap * nc + i];
         if (j == paRetSt) rhs += paAct * x[ap * nc + i];
         for (var k = 0; k < 3; k++) {
           if (drawSt[k] == j) rhs -= sd[k] * x[r * nc + i];
-          if (retSt[k] == j) rhs += v[s1(k)] * kk[s1(k) * nc + i] * _xn[s1(k) * nc + i];
+          if (retSt[k] == j) rhs += v[s1(k)] * _kEff[s1(k) * nc + i] * _xn[s1(k) * nc + i];
         }
         _a[r] = lower;
         _b[r] = diag;
@@ -537,7 +615,7 @@ class CrudeColumn {
         sum += xi;
       }
       if (sum <= 0) {
-        health.negativeClamps++;
+        health.clampSite(5, a);
         for (var i = 0; i < nc; i++) {
           _xn[off + i] = z[i];
         }
@@ -557,8 +635,26 @@ class CrudeColumn {
       final scale = (1 - _ywOld[a]) / (1 - ywF[a]);
       s *= scale;
       ds *= scale;
-      if (vf[a]) {
-        t[a] += vfDT[a];
+      // T_bub - T at the new x (one Newton step); the modelled states (9.3) hand back to the bubble point when T reaches it
+      final gap = s > 0 && ds > 0 ? -math.log(s) / (ds / s) : (mode[a] == 1 ? double.infinity : double.negativeInfinity);
+      var newton = true;
+      if (mode[a] == 1) {
+        if (vfDT[a] < gap) {
+          t[a] += vfDT[a]; // vapour-free: T is never reset to the bubble point while it is subcooled
+          newton = false;
+        } else {
+          mode[a] = 0;
+        }
+      } else if (mode[a] == 2) {
+        if (gap - vfDT[a] < 0) {
+          t[a] += vfDT[a]; // liquid-limited: the film stays above its bubble point
+          newton = false;
+        } else {
+          mode[a] = 0;
+        }
+      }
+      if (!newton) {
+        // nothing more to do for this stage
       } else if (s > 0 && ds > 0) {
         var dT = -math.log(s) / (ds / s);
         dT = dT.clamp(-10.0, 10.0);
@@ -772,6 +868,7 @@ class CrudeColumn {
     _setSteam();
     _updateFeed();
     _refreshProps();
+    _deriveModes();
   }
 
   // ---------------------------------------------------------------- reporting

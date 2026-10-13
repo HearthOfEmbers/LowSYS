@@ -403,8 +403,10 @@ class Stepper {
     _advance(dt);
     if (!_healthy() || (strictClamp && _clampHit)) {
       s.copyFrom(_backup);
+      health.discardClamps();
       return false;
     }
+    health.commitClamps();
     _controllers(dt);
     s.time += dt;
     return true;
@@ -720,7 +722,7 @@ class Stepper {
     for (var k = 0; k < _mnew.length; k++) {
       var v = _mnew[k];
       if (v < 0) {
-        if (v < -1e-12) health.negativeClamps++;
+        if (v < -1e-12) health.clampSite(2, k);
         if (v < -1e-6) _clampHit = true;
         v = 0;
       }
@@ -1153,6 +1155,7 @@ class Stepper {
       double hF, int fs) {
     final N = nTrays;
     final dP = pNew - s.pTop;
+    health.clearClampKind(1);
     final hRefl = s.hLiq[0];
     // sump (4.7)
     {
@@ -1167,7 +1170,7 @@ class Stepper {
           qR -
           _cj[N + 1] * s.tau[N + 1] * dP / dt;
       final vSump = num / (s.hVap[N + 1] - hB);
-      if (vSump < -1e-12) health.negativeClamps++; // spec rulings M9 C1
+      if (vSump < -1e-12) health.clampSite(1, N + 1); // episodes, PHYSICS.md 12.7
       s.vapor[N + 1] = _sSumpNow * math.max(0.0, vSump);
     }
     for (var j = N; j >= 1; j--) {
@@ -1189,7 +1192,7 @@ class Stepper {
       if (full && j + 1 <= N) num += s.entrain[j + 1] * (s.hLiq[j + 1] - hj);
       num -= _cj[j] * s.tau[j] * dP / dt;
       final vRaw = num / (s.hVap[j] - hj);
-      if (vRaw < -1e-12) health.negativeClamps++; // spec rulings M9 C1
+      if (vRaw < -1e-12) health.clampSite(1, j); // episodes, PHYSICS.md 12.7
       s.vapor[j] = math.max(0.0, vRaw);
     }
   }
@@ -1335,7 +1338,7 @@ class Stepper {
       final yv = nV0 > 0 ? s.nVi[i] / nV0 : yc;
       var nn = s.nVi[i] + dt * ((v1 - s.nCond) * yc - ventTot * yv);
       if (nn < 0) {
-        if (nn < -1e-12) health.negativeClamps++;
+        if (nn < -1e-12) health.clampSite(3, i);
         if (nn < -1e-6) _clampHit = true;
         nn = 0;
       }
