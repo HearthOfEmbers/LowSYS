@@ -314,6 +314,36 @@ class ControlSystem {
 
   ControlSystem._(this.seed, this.loops, this.instruments, this.valves);
 
+  /// For control systems of other presets (the crude unit, M9): the generic services (modes, noise, faults on tags,
+  /// alarms, trends) work on the given lists; the B-T handles stay unset. Call [indexAll] after the lists are final.
+  ControlSystem.generic(int seed, List<ControlLoop> loops, List<Instrument> instruments, List<Valve> valves)
+      : this._(seed, loops, instruments, valves);
+
+  /// Builds the tag maps (and ties each loop to its PV instrument).
+  void indexAll() {
+    for (final i in instruments) {
+      _inst[i.spec.tag] = i;
+    }
+    for (final l in loops) {
+      _loops[l.tag] = l;
+      _inst[l.pvTag]!.loopTag = l.tag;
+    }
+    for (final v in valves) {
+      _valves[v.id] = v;
+    }
+  }
+
+  /// Runs one loop with the BAD-PV shedding rule of the main layer.
+  void runLoop(ControlLoop l, double h, double t) => _executeLoop(l, h, t);
+
+  /// Pushes every instrument, loop and valve to the trend buffer.
+  void pushTrends() {
+    for (final i in instruments) {
+      _pushInstrument(i);
+    }
+    _pushLoops();
+  }
+
   /// Builds the B-T Tier 1 control system at its design flows. The loops and valves start in AUTO at the OPs
   /// that give the design flows, instruments start at the true values (PHYSICS.md 10.4 initialisation).
   factory ControlSystem.bt(ControlDesign d, int seed) {

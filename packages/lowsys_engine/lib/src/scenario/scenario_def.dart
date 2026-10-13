@@ -423,10 +423,11 @@ class ScenarioDef {
   static const Set<String> diagnosisCategories = {
     'cooling', 'fouling', 'inerts', 'foaming', 'trayDamage', 'instrument', 'valve', 'feedUpset', 'steam',
     'thermosyphon', 'maldistribution', 'none', 'restriction', 'condensate', 'pump', 'packingDamage', 'flooding',
+    'steamLoss', 'pumparound', 'furnace',
   };
   static const Set<String> diagnosisLocations = {
     'condenser', 'reboiler', 'rectifying', 'stripping', 'feed', 'instrument:*', 'valve:*', 'packedBed', 'column',
-    'steamSupply', 'tsInletLine', 'tsOutletLine', 'refluxPump', 'bed:*',
+    'steamSupply', 'tsInletLine', 'tsOutletLine', 'refluxPump', 'bed:*', 'steam:*', 'pumparound', 'furnace',
   };
 
   /// True when [path] is a valid template variable of this scenario.

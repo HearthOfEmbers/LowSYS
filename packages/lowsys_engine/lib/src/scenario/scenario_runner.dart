@@ -102,6 +102,18 @@ class SimulatorHost implements ScenarioHost {
     if (c.faultType == FaultType.packingCrush) {
       return '+${(150 * severity).toStringAsFixed(0)} % packing factor, ${(15 * severity).toStringAsFixed(1)} % shorter bed';
     }
+    if (c.faultType == FaultType.strippingSteamLoss) {
+      final pt = c.location.steamPoint ?? 'bottom';
+      final cmd = sim.lever('steam.$pt') * 3600;
+      return 'steam −${(100 * severity).round()} % (${(cmd * (1 - severity)).round()} of ${cmd.round()} kg/h left)';
+    }
+    if (c.faultType == FaultType.pumparoundTrip) {
+      return 'PA circulation at ${(100 * (1 - severity)).round()} % (${(120 * (1 - severity)).round()} m³/h)';
+    }
+    if (c.faultType == FaultType.cotUpset) {
+      final dT = (c.params['dT'] as num?)?.toDouble() ?? -15.0;
+      return 'COT ${dT * severity >= 0 ? '+' : '−'}${(dT * severity).abs().round()} K';
+    }
     if (c.faultType == FaultType.coolingLoss && c.params['mode'] == 'temperature') {
       return (15 * severity).toStringAsFixed(1); // K of CW inlet temperature rise (PHYSICS.md 11)
     }

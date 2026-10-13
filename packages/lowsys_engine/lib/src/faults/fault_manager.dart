@@ -292,6 +292,32 @@ class FaultManager {
     }
   }
 
+  /// Crude unit (M9, PHYSICS.md 11): F24 steam delivered x (1 - s) per injection point, F25 PA circulation x (1 - s),
+  /// F26 true COT = TC-320 value + s dT. Called at the start of every crude step.
+  void applyCrude(double t, CrudeFaultState out) {
+    for (var q = 0; q < 4; q++) {
+      out.steamFactor[q] = 1;
+    }
+    out.paFactor = 1;
+    out.cotOffset = 0;
+    for (final f in _faults) {
+      if (f.cleared) continue;
+      final s = severityAt(f.spec, t);
+      if (s <= 0) continue;
+      switch (f.spec.type) {
+        case FaultType.strippingSteamLoss:
+          final q = const ['bottom', 'ss1', 'ss2', 'ss3'].indexOf(f.spec.location.steamPoint ?? 'bottom');
+          if (q >= 0) out.steamFactor[q] *= 1 - s;
+        case FaultType.pumparoundTrip:
+          out.paFactor *= 1 - s;
+        case FaultType.cotUpset:
+          out.cotOffset += s * ((f.spec.params['dT'] as num?)?.toDouble() ?? -15.0);
+        default:
+          break;
+      }
+    }
+  }
+
   Map<String, Object?> toJson() => {
         'counter': _counter,
         'antifoam': _antifoam,

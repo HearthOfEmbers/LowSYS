@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 import '../core/ids.dart';
 import '../control/instrument.dart';
 import '../faults/fault_spec.dart';
+import 'crude_products.dart';
 
 export '../control/instrument.dart'
     show Quality, InstrumentType, InstrumentReading;
@@ -460,7 +461,11 @@ class Kpis {
 
   /// NaN in Tier 1.
   final double energyResidual;
+
+  /// M9: the crude KPIs (null for every other preset).
+  final CrudeProductKpis? crude;
   const Kpis({
+    this.crude,
     required this.xD,
     required this.xB,
     required this.d,
@@ -527,6 +532,10 @@ class SimSnapshot {
   /// M8: one entry per packed bed, top to bottom (empty for an all-tray column).
   final List<PackedBedSnapshot> beds;
 
+  /// M9 (crude only): the three side strippers and the Products-tab data.
+  final List<StripperSnapshot> strippers;
+  final CrudeProductData? crudeProducts;
+
   const SimSnapshot({
     required this.serial,
     required this.time,
@@ -556,6 +565,8 @@ class SimSnapshot {
     this.energy,
     this.beds = const [],
     this.scenario,
+    this.strippers = const [],
+    this.crudeProducts,
   });
 
   /// Copy with the runner-supplied achieved speed.
@@ -587,6 +598,9 @@ class SimSnapshot {
         fieldChecks: fieldChecks,
         scenario: scenario,
         energy: energy,
+        beds: beds,
+        strippers: strippers,
+        crudeProducts: crudeProducts,
       );
 }
 

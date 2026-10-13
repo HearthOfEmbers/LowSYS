@@ -6,6 +6,9 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../config/column_config.dart';
+import '../control/crude_control.dart';
+import '../model/crude_column.dart';
+import '../snapshot/crude_products.dart';
 import '../config/presets.dart';
 import '../config/tray_geometry.dart';
 import '../control/control_system.dart';
@@ -35,6 +38,8 @@ import '../thermo/tier2_raoult.dart';
 import '../thermo/tier3_depriester.dart';
 import 'lever_spec.dart';
 import 'stepper.dart';
+
+part 'simulator_crude.dart';
 
 /// Outcome of [Simulator.runToSteadyState].
 class SteadyStateResult {
@@ -119,7 +124,7 @@ class SteadyRun {
     final sw = Stopwatch()..start();
     var k = 0;
     while (true) {
-      final steps = 30; // one monitor interval at dt = 2 s
+      final steps = math.max(1, (60 / dt).round()); // one monitor interval
       for (var i = 0; i < steps; i++) {
         _sim._stepOnce(dt);
         if (_sim._halted) {
@@ -163,6 +168,9 @@ class Simulator {
   late StepInputs _inputs;
   late ControlSystem _control;
   late Stepper _stepper;
+
+  /// M9: the crude unit (null for every other preset).
+  _CrudeRt? _cr;
   late HydraulicSolver _hyd;
   late EffectiveParams _ep;
   late FaultManager _faults;
@@ -233,6 +241,11 @@ class Simulator {
   // ---------------------------------------------------------------- construction
 
   void _build(ColumnConfig config, _Carry? carry) {
+    _cr = null;
+    if (config.crude != null) {
+      _buildCrude(config, carry);
+      return;
+    }
     final problems = config.validate();
     if (problems.isNotEmpty) throw ConfigException(problems.join('; '));
     _config = config;
@@ -483,6 +496,10 @@ class Simulator {
   }
 
   void _applyWarmStart() {
+    if (_cr != null) {
+      _crudeWarmStart();
+      return;
+    }
     final key = jsonEncode([_config.toJson(), options.murphreePasses]);
     final cached = _warmCache[key];
     if (cached != null) {
@@ -530,7 +547,7 @@ class Simulator {
 
   /// Advances using the fast-forward step `options.dtFastForward` for about [simSeconds].
   void advanceFast(double simSeconds) {
-    final dt = options.dtFastForward;
+    final dt = _cr != null ? options.dt : options.dtFastForward;
     final steps = (simSeconds / dt).round();
     for (var i = 0; i < steps; i++) {
       _stepOnce(dt);
@@ -540,6 +557,10 @@ class Simulator {
 
   void _stepOnce(double dt) {
     if (_halted) return;
+    if (_cr != null) {
+      _crudeStepOnce(dt);
+      return;
+    }
     var remaining = dt;
     var h = dt;
     var halvings = 0;
@@ -592,8 +613,9 @@ class Simulator {
       double polishTolerance = 1e-11}) {
     _carry = 0;
     // align to a whole number of fast steps from the next monitor check
+    // crude (M9): the dry draw trays need the normal step (an empty tray at dt = 2 s rings), so no coarser step
     return SteadyRun._(this, maxSimSeconds,
-        fastForward ? options.dtFastForward : options.dt, polishTolerance);
+        fastForward && _cr == null ? options.dtFastForward : options.dt, polishTolerance);
   }
 
   // ---------------------------------------------------------------- steady monitor
@@ -714,6 +736,10 @@ class Simulator {
 
   /// Switches the measurement noise (lever `noise`) and re-arms the steady monitor for the new mode.
   void _setNoise(bool on) {
+    if (_cr != null) {
+      _crudeSetNoise(on);
+      return;
+    }
     if (on == _control.noise) return;
     _control.setNoise(on);
     _resetNoisyMonitor();
@@ -1159,6 +1185,7 @@ class Simulator {
 
   /// Current value of a lever (SI).
   double lever(LeverId id) {
+    if (_cr != null) return _crudeLever(id);
     final inp = _inputs;
     if (id.startsWith('feedZ.')) {
       final k = _config.components.indexOf(id.substring(6));
@@ -1251,6 +1278,10 @@ class Simulator {
 
   /// Sets a lever (SI value). Out-of-range values throw [RangeError].
   void setLever(LeverId id, double value) {
+    if (_cr != null) {
+      _crudeSetLever(id, value);
+      return;
+    }
     final spec = _spec(id);
     const eps = 1e-9;
     if (value.isNaN ||
@@ -1452,12 +1483,14 @@ class Simulator {
 
   /// Window of the cross-checks: 300, 600, 1800 or 3600 s.
   void setCheckWindow(double seconds) {
+    if (_cr != null) return;
     _checks.setWindow(seconds);
     _evalChecks();
   }
 
   /// C6 reference (Tiers 2/3): the newest 300 s of the TI readings become the "no change" profile.
   void setTemperatureReference() {
+    if (_cr != null) return;
     final ctx = _t2Context();
     if (ctx == null) return;
     if (_checks.setReference(_trends, ctx)) {
@@ -1549,6 +1582,10 @@ class Simulator {
   /// steady start with noise off, applies loops, noise, view and shed, sets t = 0, then runs the events of
   /// t = 0 and (drills) the draw. Replaces any running scenario. [seed] defaults to the option seed.
   void startScenario(ScenarioDef def, {int? seed}) {
+    if (def.buildConfig().crude != null) {
+      _crudeStartScenario(def, seed);
+      return;
+    }
     _scenario = null;
     _seed = seed ?? options.seed;
     _failLog.clear();
@@ -1610,6 +1647,10 @@ class Simulator {
       {String? tier, Map<String, Object?> overrides = const {}}) {
     var cfg = Presets.byId(presetId);
     if (overrides.isNotEmpty) cfg = cfg.applyOverrides(overrides);
+    if (cfg.crude != null || _cr != null) {
+      _crudeLoadPreset(cfg);
+      return;
+    }
     if (tier != null) {
       cfg = cfg.copyWith(tier: ThermoTier.values.firstWhere((e) => e.name == tier));
     }
@@ -1682,6 +1723,7 @@ class Simulator {
   /// True model values for scenario predicates, read from the live state without building a snapshot
   /// (ENGINE_API.md 11.3). Unknown paths give null.
   dynamic liveMetric(String path) {
+    if (_cr != null) return _crudeLiveMetric(path);
     switch (path) {
       case 'steady':
         return _steady;
@@ -2047,6 +2089,10 @@ class Simulator {
   /// filters are initialised from the current state when going to full.
   void setHydraulicsMode(HydraulicsMode mode) {
     if (mode == _hydraulics) return;
+    if (_cr != null) {
+      _crudeSetLever('hydraulics', mode == HydraulicsMode.full ? 1 : 0);
+      return;
+    }
     _hydraulics = mode;
     _config = _config.copyWith(hydraulics: mode);
     _stepper.full = mode == HydraulicsMode.full;
@@ -2068,6 +2114,7 @@ class Simulator {
   /// Equation trace for the math overlay (ENGINE_API.md 8). Recomputes the hydraulics for the current state
   /// with the same code the stepper and the snapshot use.
   ExplainResult explain(ExplainTarget target) {
+    if (_cr != null) return _crudeExplain(target);
     if (_view.isPlant &&
         target is! ExplainInstrument &&
         target is! ExplainValve &&
@@ -2240,6 +2287,12 @@ class Simulator {
   /// Applies a new configuration, remapping the liquid profile when the tray count changes
   /// (PHYSICS.md 13.4). Drum, sump and controllers keep their state.
   void rebuild(ColumnConfig newConfig, {bool keepHoldups = true}) {
+    if (newConfig.crude != null || _cr != null) {
+      _build(newConfig, null);
+      _applyWarmStart();
+      _emit(SimEventType.rebuildDone, 'Column rebuilt');
+      return;
+    }
     final old = _state;
     final carry = _Carry(
       keepHoldups: keepHoldups,
@@ -2325,6 +2378,7 @@ class Simulator {
 
   /// Immutable copy of the current state (allocates; call once per frame).
   SimSnapshot snapshot() {
+    if (_cr != null) return _crudeSnapshot();
     final s = _state;
     final N = s.nTrays;
     final n = s.n;
@@ -2823,7 +2877,7 @@ class Simulator {
   }
 
   /// The thermo model of the active tier for diagram builders.
-  ThermoModel get thermo => _tier == ThermoTier.t1 ? _thermo : _active;
+  ThermoModel get thermo => _cr != null ? throw UnsupportedError('The crude unit has no binary thermo model') : (_tier == ThermoTier.t1 ? _thermo : _active);
 
   /// The Tier 1 model (relative volatilities).
   ConstantAlphaThermo get tier1Thermo => _thermo;
@@ -2836,6 +2890,7 @@ class Simulator {
 
   /// Component data for the configured components.
   List<Component> get componentData {
+    if (_cr != null) return [for (final p in _col.th.pcs) p.comp, ComponentDb.load()['water']];
     final db = ComponentDb.load();
     return [for (final id in _config.components) db[id]];
   }
@@ -2863,7 +2918,9 @@ class Simulator {
   }
 
   /// Config, levers, full state and controller states (JSON-encodable).
-  Map<String, Object?> saveState() => {
+  Map<String, Object?> saveState() => _cr != null ? _crudeSaveState() : _saveStateGeneric();
+
+  Map<String, Object?> _saveStateGeneric() => {
         'version': 2,
         'config': _configWithCurrentLevers().toJson(),
         'options': {
@@ -2951,6 +3008,10 @@ class Simulator {
         );
     final cfg = ColumnConfig.fromJson(saved['config']! as Map<String, Object?>);
     final sim = Simulator._restoring(cfg, opt, (saved['seed'] as num?)?.toInt() ?? opt.seed);
+    if (sim._cr != null) {
+      sim._crudeRestore(saved);
+      return sim;
+    }
     final inp = saved['inputs']! as Map<String, Object?>;
     sim._inputs
       ..feedFlowSp = (inp['feedFlow']! as num).toDouble()

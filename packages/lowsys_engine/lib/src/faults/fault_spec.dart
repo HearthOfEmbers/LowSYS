@@ -39,8 +39,12 @@ class FaultLocation {
 
   /// Equipment id for the Tier-2 faults: `feed`, `condenser`, `reflux`, `reboiler`, `overhead`, `steam`.
   final String? equipmentId;
+
+  /// Steam injection point of the crude unit (F24): `bottom`, `ss1`, `ss2`, `ss3`.
+  final String? steamPoint;
   const FaultLocation._(
-      {this.stageFrom,
+      {this.steamPoint,
+      this.stageFrom,
       this.stageTo,
       this.feedIndex,
       this.bed,
@@ -54,6 +58,7 @@ class FaultLocation {
   const FaultLocation.bed(int bed) : this._(bed: bed);
   const FaultLocation.tag(String tag) : this._(tagName: tag);
   const FaultLocation.equipment(String id) : this._(equipmentId: id);
+  const FaultLocation.steam(String point) : this._(steamPoint: point);
   const FaultLocation.whole() : this._(stageFrom: 1, stageTo: 1000);
 
   bool coversStage(int j) =>
@@ -66,6 +71,7 @@ class FaultLocation {
         if (bed != null) 'bed': bed,
         if (tagName != null) 'tag': tagName,
         if (equipmentId != null) 'equipment': equipmentId,
+        if (steamPoint != null) 'steam': steamPoint,
       };
 
   factory FaultLocation.fromJson(Map<String, Object?> j) => FaultLocation._(
@@ -75,6 +81,7 @@ class FaultLocation {
         bed: (j['bed'] as num?)?.toInt(),
         tagName: j['tag'] as String?,
         equipmentId: j['equipment'] as String?,
+        steamPoint: j['steam'] as String?,
       );
 
   @override
@@ -82,7 +89,7 @@ class FaultLocation {
       ? (stageFrom == stageTo
           ? 'tray $stageFrom'
           : (stageTo! >= 1000 ? 'all trays' : 'trays $stageFrom-$stageTo'))
-      : (feedIndex != null ? 'feed' : (bed != null ? 'bed $bed' : (tagName ?? equipmentId ?? '')));
+      : (feedIndex != null ? 'feed' : (bed != null ? 'bed $bed' : (steamPoint != null ? 'steam $steamPoint' : (tagName ?? equipmentId ?? ''))));
 }
 
 /// A fault to inject (ENGINE_API.md 9). Severity s_f in (0, 1]; current severity follows PHYSICS.md (11.1).
@@ -194,6 +201,12 @@ String faultLabel(FaultType t) {
       return 'Packing maldistribution (F21)';
     case FaultType.packingCrush:
       return 'Packing crushed (F23)';
+    case FaultType.strippingSteamLoss:
+      return 'Stripping steam loss (F24)';
+    case FaultType.pumparoundTrip:
+      return 'Pumparound circulation loss (F25)';
+    case FaultType.cotUpset:
+      return 'Furnace outlet temperature upset (F26)';
     default:
       return t.name;
   }
