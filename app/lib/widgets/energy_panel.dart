@@ -317,8 +317,8 @@ class _BalanceCard extends StatelessWidget {
       rows: [
         if (!plant && e != null) ...[
           _Row('In: feed + reboiler', _kw(u, e.feed + e.reboiler), t, sub: '${_kw(u, e.feed)} + ${_kw(u, e.reboiler)}'),
-          _Row('Out: condenser + products', _kw(u, e.condenser + e.distillate + e.bottoms), t,
-              sub: '${_kw(u, e.condenser)} + ${_kw(u, e.distillate + e.bottoms)}'),
+          _Row('Out: condenser + products', _kw(u, e.condenser + e.distillate + e.bottoms + e.vaporProduct), t,
+              sub: '${_kw(u, e.condenser)} + ${_kw(u, e.distillate + e.bottoms)}${e.vaporProduct != 0 ? " + ${_kw(u, e.vaporProduct)} vapour" : ""}'),
           _Row('Residual', _kw(u, e.residual), t,
               sub: s.kpis.energyResidual.isNaN ? null : '${(100 * s.kpis.energyResidual).toStringAsExponential(1)} % of Q_R'),
         ],
