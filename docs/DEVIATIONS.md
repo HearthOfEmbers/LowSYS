@@ -678,3 +678,115 @@ Engine side of M8 (docs/milestones/M8.md). `test/m8_*` reproduces VC-13.1-13.3 a
 6. **Sandbox hydraulics.** `debut` now loads with Full hydraulics (M7 close-out ruling, "M7 close-out (coder)" above); `deprop` stays ideal until the spec lead rules on its weeping. `m7_ui_test` follows.
 7. **Screenshots** (docs/screenshots/m8/, 1000 x 700 at 0.8): `bt_packed` after loading, and a crushed lower bed at +50 % load with the flooding overlay (flood 112 %, column dP 10.2 kPa).
 8. Not done: the Balance and Trends tabs list PDT-102 and PDT-103 only through the generic instrument lists; there is no dedicated bed chart. The mixed template has no theme-specific art beyond the shared bed drawing.
+
+## M7 close-out validation
+
+Validator pass on 0de364f (coder 7f3e3db, rulings d48e6ff). Changed: `test/validation/m7_validation_test.dart` (H6 rows as ruled, new group "M7 close-out": VC-9.6 (b) per tray section, VC-16.6d) and `m4_energy_faults_test.dart` (F12 s 0.8). The two skipped M7 tests (M7-S2, M7-C1) are un-skipped and pass. The H6 helper now switches the drill to model view (`view` lever), because drills start in a plant view and `kpis.xDHeavy` is then AT-101 (over-range 0.10 for F12).
+
+**Pass**
+- B-T F12, s 0.8: FT-102 sits at the cap 0.2 × 300 = 60 kmol/h, FC-102 OP 100 %, top T and drum level up.
+- C3a λ_top at T_dew, `debut` healthy steady: C3a `ok`, r/band −0.17; condenser side 120.93 vs V₁ 121.34 kmol/h (−0.3 %, as predicted; T_bub would give +1.9 %). C5 (drum) `ok`, 0.19. The B-T C3a rows (H3, H9, H10) still pass.
+- H6 healthy planning: C3a `check` at +10 min (r/band 1.95; C5 drum `fail`, −2.04, the accepted rate-step transient); no `fail` from +60 min; both `ok` at 2 h (−0.17 / 0.18); D 48.68.
+- H6 F20 + planning: C3a `fail` at +10 min (2.57), `ok` from +30 min and at 2 h (−0.33); C5 (drum) `ok` at 2 h; D +4.11 vs healthy; xDHeavy 0.0789.
+- H6 F07, s 0.75 (0.75-m trays):
+  - D before the 2700-s event peaks at +1.64 kmol/h, 16.5 min after onset (limit 4.5).
+  - D − healthy at 2 h: −0.49 kmol/h.
+  - AT-100 drops 0.02 at 20 min; TI-101 +4.72 K; xDHeavy 0.0112 → 0.0628.
+- H6 F12, s 0.585: FT-102 sits at the cap 63.41 kmol/h. At 2 h D is 62.44 and the true xDHeavy 0.2196 (AT-101 0.100). This confirms the ruling-3 brackets 62.4 / 0.22.
+- VC-9.6 (a): every `ideal` E.3 row of `debut` and `deprop` (#10–#21) passes unchanged on the new geometry.
+- VC-9.6 (b) `debut` (0.75 m, full, seed 3, cold start): steady at 35 880 s. Jet flood 54.0–74.5 %, Φ_min 1.017, no weeping, downcomer flood ≤ 25 %, column ΔP 11.81 kPa (r 0.9764 / 0.9784 in full hydraulics). The coder's "83 %" is the max-flood KPI (82.9 %); jet flood peaks at 74.5 %.
+- VC-9.6 (b) `deprop` flood band: jet flood 59.0–68.3 % (trays 1–10) and 32.6–52.0 % (11–28), so both sections are inside 45–85 %. Max-flood KPI 68.3 %, downcomer ≤ 22 %, column ΔP 6.63 kPa. The `model.flood` alarm is still set at the end of the run: it latched during the cold start, and the KPI shows no flooding.
+- VC-16.6d `debut` (Kc 30):
+  - 24 h quiet: D p-p 0.0000 kmol/h; P_top within 0.000 kPa.
+  - SP +10 kPa: inside ±1 kPa from 290 s; overshoot 7.3 %; decay 0.00.
+  - SP −10 kPa: inside ±1 kPa from 590 s; overshoot 11.2 %; decay 0.01.
+- VC-16.6d (a) `deprop`: quiet over 24 h.
+
+**Coder open points (checked)**
+- **`deprop` weeping fails VC-9.6 (b): confirmed, with one addition.** Stripping Φ_min is 0.341 (weeping 74.3 %); the top section is at 0.909.
+  - **New:** `runToSteadyState` does **not** converge in 400 000 s (seed 3, cold start). Over the last 2 h D drifts 30.83–30.91 kmol/h. The coder's "steady run converges" does not hold for this start.
+  - Mechanism: Φ = √(h_dry/h_cl) scales with the hole velocity. The 0.85-m stripping trays have 2.39× the area of the 0.55-m top trays, so u_h falls 2.4× at a similar vapour flow, and a larger D_c only makes it worse (the coder's scan agrees).
+  - Probe (record only), stripping hole fraction cut from 0.10 to 0.05 at 0.85 m: Φ_min 0.536, weeping 39 %, jet flood 44–83 %. D then limit-cycles at 28.5–33.3 kmol/h and the recoveries fall to 0.943 / 0.979.
+  - At hole fraction 0.06 (an earlier run): Φ 0.44, weeping 57 %, D cycles 28.2–33.6.
+  - Cutting the hole area alone therefore gives no clean tray either.
+- **F07 feed-flash mechanism (ruling 2): refuted. The coder's "not seen" is confirmed with numbers.**
+  - Before onset, the feed is 3.54 K below its tray (tray 16). Its vapour term F (h_F − h_L,16)/λ₁₆ is −3.41 kmol/h: the feed condenses vapour.
+  - At the D peak the feed is 4.65 K below its tray and the term is −4.81 kmol/h, a change of −1.40. The heavier feed condenses more vapour, not less. The term's largest rise during the ramp is +0.11 kmol/h, 2 min after onset.
+  - The +1.64 kmol/h D peak is V₁ +0.64 kmol/h plus LC-101 drawing down a drum level that rose 0.70 %; V_B rose 0.25.
+  - The row's numbers stand (1.64 ≤ 4.5, well below F12's 5); only the mechanism sentence needs new wording.
+
+**Coder items**
+- **M7-C2 (VC-16.6d `deprop`, fail).** With pcKc 120 on the 0.55 / 0.85-m column, PC-101 is underdamped:
+  - SP +10 kPa: inside ±1 kPa only after 1720 s (limit 600); overshoot 28.5 %; decay 0.65 (limit 0.3).
+  - SP −10 kPa: not inside ±1 kPa within 30 min; overshoot 44.8 %; decay 0.85.
+  - SP +50 kPa (c, record): overshoot 37 % (18.5 kPa); no relief.
+
+  Ruling 5's condition applies: measure the open-loop gain (VC-16.6d (d)) and retune pcKc / Ti. The test is skip-flagged with these numbers.
+- **`deprop` D limit cycle at reduced hole fraction (question).** Say whether the 5 kmol/h D cycle with weeping stripping trays (hole fraction 0.05–0.06) is physical tray dumping or a numerical coupling of weep flow and h_cl. It matters if the spec lead picks a hole-fraction fix.
+
+**Spec lead items**
+- **M7-S4 (`deprop` stripping trays).** Weeping plus no convergence at 0.85 m. Options:
+  - (i) accept the weeping for `deprop` and relax Φ_min for its stripping section in VC-9.6 (b); the sandbox stays `ideal`, as now;
+  - (ii) valve trays, or a Φ_min suited to high-pressure service (ρ_V ≈ 36 kg/m³ at 17 bar);
+  - (iii) D_c 0.65–0.70 m with a larger tray spacing against the jet flood.
+
+  The validator suggests (i). The VC-9.6 (b) weeping test is skip-flagged spec-pending.
+- **M7-S5 (F07 wording).** Replace the feed-flash sentence of ruling 2. Suggested: "the heavier feed's transient: V₁ +0.6 kmol/h while the trays heat up, plus the drum-level response of LC-101".
+
+## M8 validation
+
+Validator pass on 0de364f (engine 9eb2b6e, f1fbc23). New files:
+- `test/validation/m8_validation_test.dart`, 16 tests.
+- `reference/packed_reference.dart`. It holds PHYSICS.md §6.3–6.6 and (4.3) written from the spec text, with no engine imports: Illinois regula falsi for G′_fl (1e-13), closed-form Kremser / parallel-column, and a Newton CMO column with per-stage E.
+
+Every column check recomputes each packed segment's ΔP, φ_p, h_L, HETP, λ and E_MV, and each bed's n_th, S and E_mal, from the engine's own state (flows, x, y, T, P; Tier-2 properties from the thermo model). The engine matches everywhere: ΔP 0.1 %, φ_p and E_MV 1e-4, HETP 1e-4 relative. The coder's full M8 suite (VC-13 rows, H7 evidence, G15 hint player) also passes. **Result: pass; no blocking item.**
+
+| E.3 # | Quantity | Engine (reference) | Result |
+|---|---|---|---|
+| 1, 2 | Robbins 309.8307 Pa/m; Kister–Gill 765.17 … 1746.13 | same; engine G′_fl (40 bisections) = reference to 1e-9 | pass |
+| 3–6 | struct250 / pall25m / pall50m at the B-T load; flood-line ΔP and h_L at φ 0.8 / 0.95 / 1.0 | every value within its VC-13 tolerance | pass |
+| 7, 8 | wetting factor 1.10535 / 1.25427 / 1.46463; HETP rule 0.5016 / 0.3016 m | same | pass |
+| 9–11 | E_mal 0.5579 / 0.2559 / 0.4423 (n 8.5, n_eff 3.760); Lewis 0.74015 | same | pass |
+| 12 | `bt` 20/10, E 0.7 | reference Newton 0.981183 | pass |
+| 13, 14 | `bt_packed` T1 full: x_D, x_B; bed ΔP; column ΔP; φ_p; S | 0.993834 = CMO with E_O 1 on 18 stages (0.993834); 0.006166; 587.4 / 818.6 Pa; 1406.0 Pa; 0.4882 / 0.5938; S 0.7685 / 1.1714 (validator's own λ); min L′ 1.924 / 4.201 | pass |
+| 15, 16 | T2 full: x_D, x_B, D, T_B, column ΔP; TI-101 / 109 / 110 / 118; λ | 0.99339, 0.01063, 49.796, 110.56 °C, 1276.2 Pa; 80.44 / 91.80 / 93.37 / 110.06 °C; λ 0.590 … 1.638; min L′ 1.920 / 4.054 | pass |
+| 17 | Mixed template, T1 ideal; `murphree` 0.5 | 0.991331 = CMO; 0.980869 = CMO with E 0.5 on the trays only; segments keep E 1 | pass |
+| 18 | G15: ΔP ratio; k = 0.629 / 0.5938 | 10.31; k 1.0593 gives a lower-bed φ_p of exactly 0.6290 (upper bed × k) | pass |
+| 19 | VC-13.4 n = 5: φ_p, ΔP, HETP(18), h_L(18), x_B | 0.9555, 2692.7 Pa, 0.5968 m, 0.10265, 0.00832 | pass |
+| 20 | H7 healthy | 1263.2 / 1610.5 Pa, 0.6747 / 0.7865, 0.99357 / 0.01108 | pass |
+| 21, 26 | H7 +25 %; +10 % | ΔP 2953.8 Pa (×1.834), φ_p 0.9747, HETP(18) 0.6221 m, n_th 7.547, h_L 0.0627 → 0.1193, x_B 0.01708, Q_C 1599.3 kW, D 62.05; +10 %: φ_p 0.8630 | pass |
+| 22, 23 | F21 upper / lower, s 0.5: E_mal; x; TI span; own-bed ΔP | E_mal 0.5725 / 0.5627 = Kremser on the engine's n_th 9 and the validator's S (0.7508 / 1.0392); x_D 0.97875, x_B 0.03646; spans 11.46 → 8.09 and 12.97 K; ΔP +0.3 % | pass |
+| 24, 25 | F23 upper 0.3 / lower 0.3 / lower 0.5 | 1848.6 / 2534.6 / 3331.6 Pa; φ_p 0.7529 / 0.8814 / 0.9358; n_th 8.595 / 8.329 / 7.502 (H_bed × (1 − 0.15 s)); x moves < 0.007 | pass |
+| 28 | L′_des 1.9 / 4.0 | below every segment L′ at the T1 and T2 defaults | pass |
+
+Not checked: #27 (condenser 1795 / 1382 kW at 100 % CW). It belongs to the condenser model validated in M3 / M4. In `near_flood` the CW valve peaks at 44 % with Q_C 1599 kW.
+
+**Physical sense and directions (pass)**
+- **ΔP vs load.** d ln ΔP / d ln G′ at fixed L′/G′ rises from about 2 at φ 0.5 to above 3 at flood. 1.61× the load (n 0 → 5) gives 3.3× the lower-bed ΔP.
+- **Flooding.** F23's F_p,eff lowers G′_fl, so φ_p rises at constant load.
+  - `near_flood` drill: PDT-103 rises ×1.839 and reaches 1.7× 70 s after the event. It peaks at 3062 Pa 210 s after the event, 3.7 % over the value it settles to, and is within 1 % of VC-13.8's 2953.8 Pa after 30 min.
+  - At the same time PDT-102 is ×1.679, the lower-bed φ_p 0.9751, HETP(18) 0.500 → 0.623 m, and the CW valve ≤ 44 %.
+  - Past flood, the coder's VC-13.4 dynamic row: φ_p crosses 1 at 3477 Pa, then 3863 Pa (+5 min) and 3926 Pa (+10 min).
+- **HETP modifiers.**
+  - Turndown to 50 % (ratio-preserving): HETP(1) 0.550 m (wetting) and HETP(18) 0.526 m; n_th 8.22 / 8.53; x_D 0.99383 → 0.99145; ΔP 321 Pa.
+  - Loading: g(φ) gives HETP(18) 0.597 m at n = 5 and 0.622 m at H7 +25 %.
+- **Maldistribution.** E_mal falls with n and with f and is lowest near S = 1. In the column it equals Kremser on the bed's own n_th and S, and the bed's ΔP and φ_p move by less than 1 %.
+- **Mixed columns.** `murphree` acts on the trays only.
+- **G15 o2.**
+  - The trays state fails o2 (14.5 kPa, x_D 0.978).
+  - The packed steady state has margins of +0.00083 in x_D and 94 Pa in ΔP.
+  - After the switch (10-s sampling), o2 is met at 3150 s (coder 3180 s; par 3600 s) with x_D 0.99312; at +2 h x_D is 0.99377 (steady 0.99383).
+  - The new o2 is sound.
+
+**Coder deviations**
+1. **Holdup-factor lag (τ 10 s): physically sound as a numerical device; steady states unchanged.**
+   - The validator's loop gain of the explicit chain holdup → L_k → φ_p → factor is 3 × (d ln φ/d ln L = 0.099 at fixed G′) × d ln f/d ln φ: 0.04 at φ 0.7, 0.90 at 0.9, 1.47 at 0.95, 2.67 at 1.05. So a 1-s update goes period-2 just above φ_p 0.9, exactly what the coder saw.
+   - Cost: τ is long against a segment's film drainage time. At n = 5 the whole lower bed has Σ M/(3L) ≈ 15 s, so about 1.7 s per segment. Near flood the holdup response is therefore lag-dominated (coder: holdup at 90 % in 100 s, ΔP in 40 s).
+   - The lagged update stays monotone for τ ≥ dt (1 + gain) ≈ 4.3 s at the hardest case (φ 1.13, gain ≈ 3.3). **Optional (coder):** τ = 5 s halves the distortion.
+2. **φ_p, G′_fl and E_mal every step: accepted.** This is the spec's model without the cost-saving refresh, and it removes the step-length dependence. PHYSICS.md §6.3 / §6.6 still say "every 10 steps" (spec text).
+3. **Dry-segment factor h_L/0.005: accepted.** §6.1 should say "0.005 volume fraction", not reuse the tray's 5 mm (spec text).
+4. **Carry-over, G15 o2 via x_D / ΔP, PDT start at the true ΔP: accepted.**
+
+**Spec lead items**
+- **M8-S1 (text only).** §6.3 / §6.6 refresh "every 10 steps" → "every step"; §6.1 dry-segment threshold as a volume fraction.
+- **M8-S2 (optional).** G15 o5 says x_D rose "from 0.978 to 0.994". When o2 latches, x_D is 0.9931; it reaches 0.9938 about 2 h later. Say "to about 0.994 once settled", or leave as is.
