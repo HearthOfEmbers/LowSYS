@@ -167,11 +167,11 @@ Each check: start at a steady state, make the change, run to the new steady stat
 | 8.4 | Lower E_MV 0.7 → 0.5 | x_D down, x_B up (VC-4.3) | T1 |
 | 8.5 | Move feed tray away from optimum | x_D down (VC-4.14) | T1 |
 | 8.6 | Feed lighter (z 0.5 → 0.6) at fixed L₀, V_B | x_D up, x_B up a lot (0.2075) | T1 |
-| 8.7 | Raise P_top 1.013 → 2 bar(a) at fixed L₀ = 100 and D = 50 kmol/h, **with the steam header at 10 bar(g)** (at the default 3.5 bar(g), T_st = 148.1 °C gives only Q_max ≈ 880 kW at 2 bar, so the reboiler duty-limits) | α down (2.492 → 2.304 at x = 0.5); all T up (bottom 108.49 → 132.79 °C, +24.3 K); separation worse (x_D 0.97662 → 0.96080, x_B 0.02331 → 0.03800); **Q_R slightly down** (1306.9 → 1253.5 kW; latent heats fall with T). v1.0 said "Q_R up", which holds only at constant purity (G8). [P] E = 0.7 | T2 |
+| 8.7 | Raise P_top 1.013 → 2 bar(a) at fixed L₀ = 100 and D = 50 kmol/h, **with the steam header at 10 bar(g)** (at the default 3.5 bar(g), T_st = 148.1 °C gives only Q_max ≈ 772 kW at 2 bar, so the reboiler duty-limits) | α down (2.492 → 2.304 at x = 0.5); all T up (bottom 109.60 → 134.66 °C, +25.06 K); separation worse (x_D 0.97808 → 0.96299, x_B 0.02193 → 0.03700); **Q_R slightly down** (1303.1 → 1247.7 kW; latent heats fall with T). v1.0 said "Q_R up", which holds only at constant purity (G8). [P] E = 0.7 | T2 |
 | 8.8 | Subcool reflux by 20 K | V₁ < V₂ (extra condensation on tray 1), x_D up, Q_C up | T2 |
-| 8.9 | Switch T1 → T2 at the B-T default steady state (PHYSICS.md §13.5, top-vapour rule) | No NaN; V₁ within 0.5 % and D within 0.2 kmol/h of their T1 values at the first T2 step; V profile no longer flat: the stripping section steps by −4 … −6 % (V_B 150 → ≈ 141.9 kmol/h; toluene has the larger latent heat); individual tray liquid flows may step ≤ 15 % in the first step (the liquid profile redistributes; v1.0's "no step > 5 % in any flow" is not physical); P within ± 0.5 kPa of SP; new steady state x_D 0.97838 ± 0.0005 (T1 0.98118), D 49.96 ± 0.05. Back to T1 (V_B = V₁): x_D returns to within 5×10⁻⁴ of its original value (prototype 0.981411 against 0.981183; V_B becomes 149.96 rather than 150 because the Tier-2 V₁ settled 0.04 kmol/h lower). [P] at dt = 0.5, 2 and 30 s | T1↔T2 |
-| 8.10 | Ethanol–water, Tier 3, N = 40, E = 1, R large | x_D never exceeds the azeotrope x = 0.8956 (+0.002); Tier 1 with α = 2.4 on the same column exceeds 0.95 | T3, T1 |
-| 8.11 | Acetone–chloroform, Tier 3, feed x = 0.6 | bottoms approach the azeotrope (x ≈ 0.33), distillate approaches pure acetone | T3 |
+| 8.9 | Switch T1 → T2 at the B-T default steady state (PHYSICS.md §13.5, top-vapour rule) | No NaN; V₁ within 0.5 % and D within 0.2 kmol/h of their T1 values at the first T2 step; V profile no longer flat: the stripping section steps by −4 … −6 % (V_B 150 → 141.9 kmol/h at the **first** Tier-2 step, then settling at 141.0 at the new steady state, with V₁ 149.96; toluene has the larger latent heat); individual tray liquid flows may step ≤ 15 % in the first step (the liquid profile redistributes; v1.0's "no step > 5 % in any flow" is not physical); P within ± 0.5 kPa of SP; new steady state x_D 0.97838 ± 0.0005 (T1 0.98118), D 49.96 ± 0.05. Back to T1 (V_B = V₁): x_D returns to within 5×10⁻⁴ of its original value (prototype 0.981411 against 0.981183; V_B becomes 149.96 rather than 150 because the Tier-2 V₁ settled 0.04 kmol/h lower). [P] at dt = 0.5, 2 and 30 s | T1↔T2 |
+| 8.10 | Ethanol–water preset `ew` (N 40, feed 30, z 0.10, D 10 kmol/h), Tier 3, E = 1, R = 10, 20, 40 | x_D never exceeds the azeotrope 0.8956 (+0.002) [P: 0.88693, 0.89074, 0.89229]; Tier 1 with α = 2.4 on the same column at R = 10 exceeds 0.95 [P: 0.98306]; at 0.5 atm(a), R = 10, Tier 3 passes the 1-atm azeotrope [P: 0.90021; the 0.5-atm azeotrope is 0.9105] | T3, T1 |
+| 8.11 | Acetone–chloroform preset `ac` (N 30, feed 15, z 0.6, D 38 kmol/h), Tier 3, E = 1 | bottoms approach the azeotrope from above and never go below it; distillate approaches pure acetone [P: L₀ 150 → x_D 0.96153, x_B 0.37842; L₀ 300 → x_D 0.99993, x_B 0.35488] | T3 |
 | 8.12 | Debutanizer: raise R at fixed D | LK recovery up, HK in distillate down | T1, T3 |
 | 8.13 | Methanol–water: switch T1 (α = 3.5) → T3 | top-section staircase changes (equilibrium curve no longer symmetric); actual operating locus curves | T1→T3 |
 | 8.14 | Cut CW flow capacity to 50 % (F09) with PC in AUTO | PC output → 100 %; P_top rises until Q_C balances; all temperatures rise | T2 |
@@ -238,7 +238,10 @@ Tolerance: T 0.002 K, y 1×10⁻⁵, α 1×10⁻⁴. Pressure effect at x = 0.5:
 | ethanol–water | 1 atm | 0.8956 | 78.141 | 0.894, 78.15 °C (Horsley; CRC) | x ± 0.0010, T ± 0.02 K |
 | ethanol–water | 0.2 atm | 0.9292 | 42.349 | azeotrope shifts to higher ethanol at lower P; disappears below ≈ 0.09 atm | ± 0.002, ± 0.05 K |
 | ethanol–water | 3 atm | 0.8713 | 108.586 | | ± 0.002, ± 0.05 K |
+| ethanol–water | 0.5 atm | 0.9105 | 61.623 | | ± 0.002, ± 0.05 K |
+| ethanol–water | 0.1 atm / 0.08 atm | 0.9421 / 0.9459 | 29.397 / 25.488 | Experiments: no azeotrope below ≈ 0.09 atm. **The model keeps it** (1-atm NRTL parameters; PHYSICS.md §3.4.1); these rows pin the model, not reality | ± 0.003, ± 0.1 K |
 | acetone–chloroform | 1 atm | 0.3335 (acetone), maximum-boiling | 64.610 | ≈ 0.34, 64.4–64.5 °C (Horsley) | ± 0.002, ± 0.05 K |
+| acetone–chloroform | 0.5 / 3 atm | 0.3594 / 0.2460 | 45.365 / 101.517 | (moves to less acetone at higher P) | ± 0.002, ± 0.05 K |
 | methanol–water | 1 atm | none | – | none | no sign change on (0, 1) |
 
 The model must also be within the literature values by: ethanol–water x ± 0.005, T ± 0.1 K; acetone–chloroform x ± 0.02, T ± 0.3 K.
@@ -265,7 +268,7 @@ Tolerances: against the model values T ± 0.01 K, y ± 1×10⁻⁴; against expe
 - Lee–Kesler + Clausius–Clapeyron ΔH_vap at T_b (used for pseudo-components): benzene 30.72, toluene 33.70, n-heptane 32.13 kJ/mol (lit. 30.72, 33.18, 31.77). Tolerance 0.01 kJ/mol against the model values.
 - Lee–Kesler P_sat (bar): propane 10.0209 (300 K), 29.5500 (350 K); isobutane 3.7185, 12.6437; n-butane 2.5831, 9.5116; isopentane 0.9714, 4.2608; n-pentane 0.7205, 3.4105; n-hexane 0.2114, 1.2924; n-heptane 0.0641, 0.5074. Tolerance 1×10⁻⁴ relative.
 
-**VC-10.8 Bubble-point solver robustness.** For every preset system, 1000 random compositions (seeded) and pressures within the preset's lever range: the solver converges (no fallback) in ≤ 6 Newton iterations from a cold guess in ≥ 99 % of cases and always converges with the bisection fallback; result satisfies |Σ K x − 1| < 1×10⁻⁹.
+**VC-10.8 Bubble-point solver robustness.** For every preset system, 1000 random compositions (seeded) and pressures within the preset's lever range: the solver converges (no fallback) from the cold guess Σ x_i T_sat,i(P) in ≤ 6 Newton iterations in ≥ 99 % of cases — ≤ 7 for acetone–chloroform, where neglecting dγ/dT makes convergence linear (prototype: 25 % of a 2001-point grid needed 7; PHYSICS.md §3.4.1) — and always converges with the bisection fallback; result satisfies |Σ K x − 1| < 1×10⁻⁹.
 
 ## VC-11 Tier-2 steady state (B-T MESH with energy balances) [I]
 
@@ -536,7 +539,7 @@ Round trip toSI(fromSI(v)) = v: linear quantities (every conversion that is a pu
 - **18.1** Tier 1, E = 1, steady state (VC-4.2): every operating-locus point (x_j, y_{j+1}) lies on the CMO rectifying line (j above the feed) or stripping line (below) within 1×10⁻⁸; every staircase corner (x_j, y_j) lies on the equilibrium curve within 1×10⁻⁸; the two CMO lines intersect on the q-line within 1×10⁻⁸.
 - **18.2** Tier 1, E = 0.7 (VC-4.1): corners lie on the pseudo-equilibrium curve y_op + 0.7(y* − y_op) within 1×10⁻⁶; for every tray (y_j − y_{j+1})/(y*_j − y_{j+1}) = 0.7 within 1×10⁻⁸.
 - **18.3** Tier 2 steady state (VC-11): the operating locus deviates from the dashed CMO lines by more than 0.002 somewhere in the rectifying section, so non-CMO is visible ([P] max 0.0064 in the rectifying section, 0.0025 in the stripping section). The equilibrium band between P_top and P_bottom has non-zero width when ΔP > 0.
-- **18.4** R_min construction: for the VC-1 configuration the builder's R_min = 1.1000 ± 1×10⁻⁴; for ethanol–water at x_D = 0.80, z = 0.10, q = 1, Tier 3, the R_min line touches the equilibrium curve above the feed pinch (tangent pinch), i.e. the touching point has x > the q-line intersection.
+- **18.4** R_min construction: for the VC-1 configuration the builder's R_min = 1.1000 ± 1×10⁻⁴; for ethanol–water at x_D = 0.85, z = 0.10, q = 1, Tier 3, the R_min line touches the equilibrium curve above the feed pinch (tangent pinch) at x = 0.753 ± 0.003, with R_min = 1.873 ± 0.005 [I]. v1.0 named x_D = 0.80, but there the feed pinch still governs (R_min 1.021); the tangent pinch takes over between x_D 0.80 and 0.82.
 - **18.5** Transient flag: true for the first minute after any lever change, false at steady state.
 - **18.6** Multicomponent pseudo-binary: at the VC-9.3 steady state the primed compositions are within [0, 1] and the staircase has N + 1 corners.
 
@@ -732,11 +735,13 @@ Computed with the JS prototype of the M4 dynamic algorithm, which reproduces VC-
 
 | P_top (bar a) | Q_R (kW) | x_D | x_B | T_D (°C) | T_B (°C) | α on the feed tray |
 |---|---|---|---|---|---|---|
-| 0.50 | 1352.5 | 0.98617 | 0.01290 | 58.38 | 86.19 | 2.714 |
-| 0.70 | 1331.9 | 0.98219 | 0.01720 | 68.11 | 96.46 | 2.607 |
-| 1.013 | 1306.9 | 0.97662 | 0.02331 | 79.60 | 108.49 | 2.498 |
-| 2.00 | 1253.5 | 0.96080 | 0.03800 | 103.10 | 132.79 | 2.315 |
-| 3.00 | 1213.7 | 0.94914 | 0.05113 | 119.19 | 149.18 | 2.211 |
+| 0.50 | 1349.6 | 0.98766 | 0.01234 | 59.02 | 86.94 | 2.707 |
+| 0.70 | 1328.6 | 0.98374 | 0.01627 | 68.86 | 97.35 | 2.601 |
+| 1.013 | 1303.1 | 0.97808 | 0.02193 | 80.54 | 109.60 | 2.491 |
+| 2.00 | 1247.7 | 0.96299 | 0.03700 | 104.75 | 134.66 | 2.302 |
+| 3.00 | 1207.6 | 0.95067 | 0.04932 | 121.19 | 151.45 | 2.197 |
+
+Re-pinned 2026-10-12. The first version came from runs with an artificial condenser (CW at 150 K) on which PC-101 did not hold the labelled pressure; its temperatures sat 0.7–2.3 K below the bubble points of its own compositions (tester). These values come from a perfect condenser (P held exactly). They agree with the tester's independent MESH solution in every digit shown, except x_D at 3 bar (0.95067 vs 0.95068) and x_B at 0.7 and 1 atm (1×10⁻⁵ apart). Every T is the bubble point of its x.
 
 Tolerances: Q_R ± 0.3 %, x ± 2×10⁻⁴, T ± 0.05 K, α ± 0.002.
 
@@ -744,11 +749,11 @@ Tolerances: Q_R ± 0.3 %, x ± 2×10⁻⁴, T ± 0.05 K, α ± 0.002.
 
 | P_top | Reboiler Q_max, steam 3.5 bar(g) (148.1 °C) | Reboiler Q_max, steam 10 bar(g) (184.2 °C) | Condenser max, CW 30 °C | Condenser max, CW 15 °C |
 |---|---|---|---|---|
-| 0.50 | 3559 | 5636 | 781 | 1194 |
-| 0.70 | 2969 | 5046 | 1049 | 1462 |
-| 1.013 | 2277 | 4354 | 1365 | 1778 |
-| 2.00 | **880** | 2957 | 2012 | 2425 |
-| 3.00 | **none** (T_B > T_st) | 2015 | 2455 | 2868 |
+| 0.50 | 3516 | 5593 | 799 | 1212 |
+| 0.70 | 2918 | 4995 | 1070 | 1483 |
+| 1.013 | 2214 | 4290 | 1391 | 1804 |
+| 2.00 | **772** | 2849 | 2058 | 2471 |
+| 3.00 | **none** (T_B > T_st) | 1884 | 2510 | 2923 |
 
 All values are in kW. Needed duties are about Q_R from 27.2 (condenser ≈ Q_R − 20 kW).
 - **At 0.5 bar(a)** the condenser cannot condense with any CW the levers allow (≥ 5 °C). G8 therefore starts its sweep at 0.7 bar(a) with CW at 15 °C.
@@ -760,6 +765,58 @@ These limits are physics, not bugs. A scenario that ignores them leaves the lear
 - F15 starts to limit the duty at s ≈ 0.58 (header 2.95 bar(a), 133.0 °C).
 - F09 flow mode starts to raise the pressure at s ≈ 0.5 (a fully open valve then delivers exactly the design CW flow).
 - H2 and H4 severity ranges must start above these values: F09 [0.6, 1.0], F15 [0.7, 1.0].
+
+## VC-28 Tier 3 and azeotropic columns (M5) [P] / [I]
+
+Computed with the JS prototype used for VC-11 and VC-27, extended with NRTL K-values (PHYSICS.md §3.4.1, ideal enthalpies). It ran with a perfect condenser (P held) or with properly sized utilities; both gave the same steady states.
+
+**28.1 Ethanol–water `ew`** (PHYSICS.md §2.3 defaults: 40 trays, feed 30, z 0.10, L₀ 100, duty 1206.8 kW, E = 1):
+
+| Quantity | Value |
+|---|---|
+| D | 10.00 kmol/h |
+| x_D / x_B | 0.88693 / 0.012590 |
+| T_D / T_B | 78.142 / 96.496 °C |
+| V₁ / V_B | 110.00 / 104.37 kmol/h |
+
+- Tolerances: x ± 2×10⁻⁴, T ± 0.05 K.
+- **dt robustness:** identical at dt = 0.5 and 2 s (0.886926) and 1×10⁻⁶ apart at 30 s, with real utilities (UA 28.83 kW/K, CW 45.5 % at steady state).
+- **R 20 and 40 at D = 10:** x_D 0.89074 and 0.89229, approaching 0.8956 from below.
+- **Tier 1 (α 2.4, L₀ 100, V_B 110):** x_D 0.98306.
+- **0.5 atm(a), R 10:** x_D 0.90021, T_D 61.62 °C, Q_R 1247 kW.
+
+**28.2 Acetone–chloroform `ac`** (30 trays, feed 15, z 0.60, D 38, E = 1):
+
+| L₀ | Q_R | x_D | x_B | T_D / T_B |
+|---|---|---|---|---|
+| 150 | 1515.9 kW | 0.96153 | 0.37842 | 56.917 / 64.551 °C |
+| 300 | 2725.9 kW | 0.99993 | 0.35488 | – |
+
+The bottoms approach the maximum-boiling azeotrope (0.3334) from above and never cross it. Tolerances as 28.1.
+
+**28.3 C4 splitter `c4`**:
+- **Tier 2 (Lee–Kesler)**, 60 trays, feed 30, z 0.40, P 7 bar(a), L₀ 280, D 40, E 0.7: x_D 0.92993, x_B 0.04670, Q_R 1542.6 kW, T_D 51.43 °C, T_B 62.81 °C, V₁ 320.0 / V_B 305.0 kmol/h.
+- **Tier 1** (α 1.35, V_B 320): x_D 0.92631, x_B 0.04913.
+- **Tier 3 (DePriester)** was not prototyped. The implementer records it in the preset JSON on first run, and it must lie within 0.02 of the Tier-2 x_D. VC-9.4 shows DePriester and Lee–Kesler K within a few percent for C4s.
+
+**28.4 McCabe–Thiele with azeotropes [I]** (PHYSICS.md §14.1 rules):
+- `ew`, Tier 3, z 0.10, q 1, 1 atm:
+  - x_D target 0.90: the R_min construction returns ∞ with the "beyond the azeotrope" banner.
+  - x_D 0.85: a tangent pinch, touching at x = 0.753 ± 0.003, R_min = 1.873 ± 0.005 (the feed pinch alone would give 1.165).
+  - x_D 0.80: still the feed pinch at x = 0.10, R_min = 1.021 ± 0.005. The tangent pinch takes over between x_D 0.80 and 0.82.
+- `ew`, z = 0.95 (feed above the azeotrope), q = 1: the q-line meets the equilibrium curve at the single point x = 0.95 with y* < x (below the diagonal).
+- `ac`, x_B target 0.30 with z 0.6: the stripping-side banner.
+- **q-line root search:** for `ew` at q = 0.5, z = 0.5, walking from (0.5, 0.5) towards smaller x finds the crossing at x = 0.385 ± 0.001, the only one on [0, 1]; the bisection result satisfies |y_line − y*| < 1×10⁻⁸.
+- **Staircase:** at the 28.1 steady state it ends with ≥ 3 consecutive steps advancing x by < 0.002 near the top (pinch shading on).
+
+**28.5 T-x-y [I]** (PHYSICS.md §14.4b):
+- For each of `mw`, `ew`, `ac` at 1 atm, every grid point has T_dew(y*(x)) = T_bub(x) to 1×10⁻⁶ K (one bubble sweep makes both curves), and the azeotrope markers equal VC-10.5.
+- Spot values equal VC-10.3 and VC-10.6.
+- `ew` at 0.5 atm shows the azeotrope at 0.9105 / 61.62 °C.
+- Recomputation is skipped when P changes by less than 100 Pa.
+- One build takes < 2 ms (desktop).
+
+**28.6 Tier switch on an azeotropic column [P].** `ew` at its Tier-3 steady state (x_D 0.886926), switched to Tier 1 by the top-vapour rule (V_B = V₁ = 109.997): the new Tier-1 steady state has x_D 0.98335 > 0.8956, the G9 "false win" made visible. Switched back to Tier 3 by the same rule, the duty becomes 1202.1 kW, D 9.67 kmol/h and x_D 0.88720: below the azeotrope again, within 0.002 of the start. The rule is approximate when the compositions of the two tiers differ this much (D −3 %). Assert no NaN, x_D(T3) ≤ 0.8956 + 0.002, and |ΔD| ≤ 5 %.
 
 ---
 

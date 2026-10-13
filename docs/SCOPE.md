@@ -454,6 +454,18 @@ Every milestone is shippable on its own: it builds for Windows desktop and Andro
 
 ### M5 — Tier 3 (NRTL) and azeotropic binaries
 
+> **Readiness status (2026-10-12, pass stopped early).**
+> - **Done:**
+>   - NRTL checked against experiment, with its limits stated (PHYSICS.md §3.4.1).
+>   - Preset defaults and utilities for `mw`, `ew`, `ac` and `c4`, and the lever-range rule (PHYSICS.md §2.3).
+>   - McCabe–Thiele rules for azeotropes and the T-x-y spec (PHYSICS.md §14.1, §14.4b).
+>   - VALIDATION.md: VC-10.5 and VC-10.8 updated, VC-18.4 corrected, new VC-28.
+> - **Not done:**
+>   - G9 and G10 objective rows (ENGINE_API.md §11.8); planned changes: G9 gets a vacuum-rated condenser (UA ≈ 60 kW/K) and a 0.5 atm(a) step; G10 asks for the azeotrope read off the T-x-y diagram (0.333 ± 0.02).
+>   - The G8 debrief line about the 0.5 bar condenser limit.
+>   - Completing the Paper theme (missing tokens surfaceAlt, info, selection, marker, series1–6; export spec; T-x-y styling).
+>   - The M5 acceptance list below, and `c4` Tier-3 (DePriester) reference numbers.
+
 - Engine: NRTL activity model, presets methanol–water, ethanol–water, acetone–chloroform, isobutane–n-butane (DePriester K, PHYSICS.md §3.4), azeotrope finder, T-x-y data.
 - App: Paper theme; T-x-y / x-y tab; scenarios G9, G10.
 - Acceptance: VC-10 azeotrope and VLE checks pass; Tier 3 ethanol–water column cannot exceed the azeotrope composition in the distillate (VC-8).
