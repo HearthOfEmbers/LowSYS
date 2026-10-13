@@ -424,7 +424,12 @@ class McCabePainter extends CustomPainter {
     final w = math.min(plot.width * (compact ? 0.78 : 0.62), 218.0);
     final rows = <(String, TextStyle)>[
       ('${d.lightLabel.toUpperCase()}–${d.heavyLabel.toUpperCase()}', lab.style(12, p.ink, weight: FontWeight.w700)),
-      ('Tier ${s.tier.name.substring(1)}  ·  E = ${s.murphree.toStringAsFixed(2)}', num.style(12, p.inkMuted)),
+      (
+        s.layout.kinds.contains(StageKind.tray)
+            ? 'Tier ${s.tier.name.substring(1)}  ·  E = ${s.murphree.toStringAsFixed(2)}'
+            : 'Tier ${s.tier.name.substring(1)}  ·  packed (HETP)',
+        num.style(12, p.inkMuted)
+      ),
       ('t ${_clock(s.time)} · P ${(s.stages.p[1] / 1e5).toStringAsFixed(3)} bar', num.style(12, p.inkMuted)),
     ];
     final rowH = 15.0;

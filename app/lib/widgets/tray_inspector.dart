@@ -71,13 +71,14 @@ class TrayInspector extends StatelessWidget {
     final N = s.layout.nTrays;
     final feed = s.layout.feedStages.first;
     final full = s.hydraulics == HydraulicsMode.full;
+    final packed = j >= 1 && j <= N && s.layout.kinds[j] == StageKind.packed;
     String frac(double v) => v.toStringAsFixed(4);
     String flow(double v) =>
         '${u.fromSI(Quantity.molarFlow, v).toStringAsFixed(1)} ${u.symbol(Quantity.molarFlow)}';
     String section() {
       if (j == 0) return 'condenser drum';
       if (j == N + 1) return 'sump and reboiler (equilibrium stage)';
-      if (j == feed) return 'feed tray';
+      if (j == feed) return packed ? 'feed, top of the bed' : 'feed tray';
       return j < feed ? 'rectifying section' : 'stripping section';
     }
 
@@ -85,7 +86,7 @@ class TrayInspector extends StatelessWidget {
         ? 'Drum'
         : j == N + 1
         ? 'Sump'
-        : 'Tray $j';
+        : (packed ? 'Segment $j' : 'Tray $j');
     final x = st.x[j * nc], y = st.y[j * nc], ys = st.yStar[j * nc];
     final t2 = s.tier != ThermoTier.t1 && !st.t[j].isNaN;
     final rows = <(String, String)>[
@@ -114,18 +115,27 @@ class TrayInspector extends StatelessWidget {
         '${u.fromSI(Quantity.molarAmount, st.holdup[j]).toStringAsFixed(3)} ${u.symbol(Quantity.molarAmount)}',
       ),
       if (j >= 1 && j <= N) ('E_MV', st.efficiency[j].toStringAsFixed(3)),
-      if (full && j >= 1 && j <= N)
+      if (full && packed)
+        (
+          'dP',
+          '${u.fromSI(Quantity.pressureDelta, st.dp[j]).toStringAsFixed(u == UnitSystem.si ? 0 : 3)} ${u.symbol(Quantity.pressureDelta)}',
+        ),
+      if (full && packed) ('flood', '${(100 * st.packFlood[j]).toStringAsFixed(0)} %'),
+      if (packed) ('HETP', '${st.hetp[j].toStringAsFixed(3)} m'),
+      if (packed) ('liquid holdup', '${(100 * st.packHoldup[j]).toStringAsFixed(1)} %'),
+      if (packed) ('wetted', '${(100 * st.wetFrac[j]).toStringAsFixed(0)} %'),
+      if (full && j >= 1 && j <= N && !packed)
         (
           'dP',
           '${u.fromSI(Quantity.pressureDelta, st.dp[j]).toStringAsFixed(u == UnitSystem.si ? 2 : 3)} ${u.symbol(Quantity.pressureDelta)}',
         ),
-      if (full && j >= 1 && j <= N)
+      if (full && j >= 1 && j <= N && !packed)
         ('flood', '${(100 * st.jetFlood[j]).toStringAsFixed(0)} %'),
-      if (full && j >= 1 && j <= N)
+      if (full && j >= 1 && j <= N && !packed)
         ('downcomer', '${(100 * st.dcFlood[j]).toStringAsFixed(0)} %'),
-      if (full && j >= 1 && j <= N && st.weepFrac[j] > 0)
+      if (full && j >= 1 && j <= N && !packed && st.weepFrac[j] > 0)
         ('weeping', '${(100 * st.weepFrac[j]).toStringAsFixed(0)} %'),
-      if (full && j >= 1 && j <= N)
+      if (full && j >= 1 && j <= N && !packed)
         (
           'froth',
           '${u.fromSI(Quantity.smallLength, st.froth[j]).toStringAsFixed(u == UnitSystem.si ? 0 : 1)} ${u.symbol(Quantity.smallLength)}',

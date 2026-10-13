@@ -75,7 +75,7 @@ void main() {
     sim.setTheme('phosphor');
     await frames(tester, 20);
     expect(sim.diagramTabOrder, contains(3));
-    expect(sim.snapshot.value!.hydraulics, HydraulicsMode.ideal);
+    expect(sim.snapshot.value!.hydraulics, HydraulicsMode.full, reason: 'M7 close-out: the sandbox loads debut with Full hydraulics');
     expect(find.text('Products'), findsOneWidget);
     await tester.tap(find.text('Products'));
     await frames(tester, 20);
