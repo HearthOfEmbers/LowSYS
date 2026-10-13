@@ -263,7 +263,7 @@ h_V,i(T) = h_L,i(T) + ΔH_vap,i(T)                                  (3.5)
 h_L(T, x) = Σ_i x_i h_L,i(T)      H_V(T, y) = Σ_i y_i h_V,i(T)       (3.6)
 ```
 
-Path: heat the liquid to T, then vaporise at T. This is exact for an ideal system if Cp and ΔH_vap are consistent; with these correlations the implied vapour Cp (Cp_L + dΔH_vap/dT) is within about 10 % of the true ideal-gas value (benzene at 353 K: 92 vs about 96 J/mol/K). Heat of mixing is neglected in all tiers (ethanol–water |h^E| ≲ 0.8 kJ/mol, about 2 % of the latent heat). These two simplifications are stated in the math overlay.
+Path: heat the liquid to T, then vaporise at T. This is exact for an ideal system if Cp and ΔH_vap are consistent; with these correlations the implied vapour Cp (Cp_L + dΔH_vap/dT) is within about 10 % of the true ideal-gas value (benzene at 353 K: 92 vs about 96 J/mol/K). Heat of mixing is neglected in all tiers (ethanol–water |h^E| ≲ 0.8 kJ/mol, about 2 % of the latent heat). These two simplifications are stated in the math overlay. **Crude (M9):** the pseudo-components and steam use §9.1's reference state (saturated liquid at T_b) and vapour enthalpy (9.1)–(9.2) instead, because this path gives a falling vapour enthalpy near T_c.
 
 ### 3.4 Tier 3
 
@@ -364,7 +364,7 @@ For steam (crude) water's constants are used in the mixing. Checks: saturated be
 
 ```
 σ_i(T) = σ_ref,i · [ (T_c,i − T) / (T_c,i − T_ref) ]^1.22          (named components)
-σ_i(T) = (673.7 / K_W) · [ (T_c,i − T) / T_c,i ]^1.232  mN/m        (pseudo-components; Riazi 2005)
+σ_i(T) = (673.7 / K_W) · [ max(0, T_c,i − T) / T_c,i ]^1.232  mN/m        (pseudo-components; Riazi 2005; 0 above T_c, M9)
 σ_mix^(1/4) = Σ_i x_i σ_i^(1/4)                                    (3.13)
 ```
 
@@ -1204,6 +1204,8 @@ The column's sump energy balance (4.7) uses Q_R,delivered. The boilup and every 
 
 ## 9. Crude fractionation (M9)
 
+M9 readiness pass (2026-10-13): the numbers in §9 come from the prototype `tools/prototypes/m9` (pure Dart). The changes from v1.0 and the reasons for them are summarised in `docs/milestones/M9.md`. They are: the enthalpy reference and vapour enthalpy (§9.1), the stripping-section diameter and theoretical stages (§9.2), the steam-fraction filter (§9.3), draw levers as product rates (§9.4), the PA circulation and cooler limit (§9.5), TBP tail trimming (§9.6), the overhead (§9.7), and the COT and PA defaults (§9.8).
+
 ### 9.1 Assay and pseudo-components
 
 The shipped assay is a synthetic light crude (about 32 °API, similar in shape to Arab Light), defined by its TBP curve (vol % distilled versus °C, linear interpolation between points):
@@ -1255,49 +1257,117 @@ Resulting table (the engine must reproduce it; VALIDATION.md VC-15):
 
 Bulk: SG 0.8656 (31.96 °API), mean MW 216.9 g/mol.
 
+**Enthalpies of the crude components (M9 readiness rule; replaces §3.3 for `crude`).** The reference state of each pseudo-component, and of water, is its own saturated liquid at T_b:
+
+```
+h_L,i(T) = Cp0_i (T − T0) + ½ dCp_i (T − T0)² − [the same at T_b,i]                         (9.1)
+h_V,i(T) = ΔH_vap,i(T_b,i) + a_V,i (T − T_b,i) + ½ b_V,i (T² − T_b,i²)                          (9.2)
+Cp_V,i = a_V,i + b_V,i T    a_V,i = MW_i · 4.1868 (4 − SG_i) · 210.33/6450    b_V,i = MW_i · 4.1868 (4 − SG_i) · 1.8/6450   (J/mol/K)
+   (Fallon–Watson petroleum-vapour heat capacity, c_p = (4 − SG)(t_°F + 670)/6450 Btu/(lb·°F); quoted from memory)
+water (vapour only): a_V = 30.2, b_V = 0.0104 (fit to ideal-gas steam, 34.4 J/mol/K at 400 K and 36.4 at 600 K; quoted from memory);
+   drum water by (9.1) with the §2.1 Cp0, dCp and T_b = 373.15 K
+σ_i = 0 above T_c,i in §3.5.3 (the base of the 1.232 power would be negative)
+```
+
+Checks (VALIDATION.md VC-15.1): PC1 a_V = 37.069, b_V = 0.31724; PC5 89.044, 0.76203; PC9 207.707, 1.77755. h_L,i(T_b,i) = 0 and h_V,i(T_b,i) = ΔH_vap,i(T_b,i) exactly.
+
+Why the rule (M9 prototype):
+- **§3.3's path fails above T_c.** h_L(T) + Watson ΔH_vap(T) makes the vapour enthalpy *fall* with temperature near T_c, and PC1 (T_c 242.6 °C) and PC2 (304.3 °C) pass T_c inside the column. PC1's vapour enthalpy drops from 52.16 to 49.16 kJ/mol between 240 and 250 °C. Steam drops from 47.55 kJ/mol at 200 °C to 41.11 at 350 °C, so steam heating up in the column would release heat. (9.2) rises monotonically, and its Cp_V is within about 7 % of the Watson path where that path is valid (PC3 at 250 °C: 341 against 319 J/mol/K).
+- **The (4.6) denominator needs a common reference.** H_j − h_j is a latent heat only if vapour and liquid have similar compositions. A crude stage sends light vapour up from heavy liquid. With the 298.15 K reference, each heavy component carries a large h_L (PC9 at 330 °C: about 360 kJ/mol), and at the default steady state H_j − h_j falls to −132 kJ/mol. V_j = num/(H_j − h_j) then changes sign, and the prototype diverged in its first steps. With the T_b reference, components lighter than the stage have h_L > 0 and heavier ones h_L < 0, so H_j − h_j ≥ Σ y_i ΔH_i(T) > 0 (+41 to +287 kJ/mol at the default).
+- **Balances are unchanged.** The reference cancels per component, so steady-state energy closure does not depend on it.
+- **Engine.** Count `solverHealth.negativeLatent` whenever H_j − h_j ≤ 0, and clamp V_j ≥ 0 as in §4.5.
+
 ### 9.2 Column topology (theoretical stages, numbered from the top)
 
 | Item | Stage / value |
 |---|---|
-| Total condenser + drum with water boot | stage 0; drum at 45 °C target (CW), pressure 1.4 bar(a) (P_top − 0.2 bar line loss) |
-| Main column | stages 1–30, valve trays, D_c = 3.2 m, TS = 0.75 m (preset; checked by VALIDATION.md VC-15 sanity limits) |
-| Kerosene draw → side stripper SS1 (2 stages) | draw from stage 8, SS1 vapour returns to stage 7 |
-| Diesel draw → SS2 (2 stages) | draw from stage 15, SS2 vapour returns to stage 14 |
-| AGO draw → SS3 (2 stages) | draw from stage 21, SS3 vapour returns to stage 20 |
-| Pumparound (one, around the diesel section) | draw from stage 16, cooled by Q_PA, returned to stage 14 |
-| Flash zone (feed) | stage 26: crude from the furnace at COT, two-phase |
-| Stripping section | stages 27–30; bottom stripping steam enters below stage 30 |
-| Residue | liquid from stage 30 into the sump (stage 31), level-controlled |
-| Naphtha | liquid distillate from the drum, level-controlled |
+| Total condenser + drum with water boot | stage 0. Drum at P_top − 0.2 bar (1.4 bar(a)) and at the `drumTSp` temperature (45 °C), §9.7 |
+| Main column | stages 1–30. Each is a **theoretical stage** (E = 1; the `murphree` lever is not offered for `crude`), rated for hydraulics as one valve tray (§5.1 valve defaults, TS 0.75 m). D_c is 3.2 m for stages 1–26 and **1.7 m for the stripping section 27–30** (M9: at 3.2 m the stripping trays ran at 11–15 % of jet flood, against VC-15.4's 35–85 %) |
+| Kerosene → side stripper SS1 (2 stages) | draw from stage 8; SS1 vapour returns to stage 7 |
+| Diesel → SS2 (2 stages) | draw from stage 15; vapour returns to stage 14 |
+| AGO → SS3 (2 stages) | draw from stage 21; vapour returns to stage 20 |
+| Pumparound (one, around the diesel draw) | draw from stage 16, cooled, returned to stage 14; circulation 120 m³/h (§9.5) |
+| Flash zone (feed) | stage 26: crude from the furnace at the COT, two-phase |
+| Stripping section | stages 27–30; bottom stripping steam enters stage 30 at 200 °C |
+| Residue | liquid from stage 30 to the sump (stage 31), level-controlled (LC-302) |
+| Naphtha | liquid distillate from the drum, level-controlled (LC-301) |
 
-Feed enthalpy: isothermal flash of the crude (plus no steam) at COT and flash-zone pressure P_26 (§3.6.3); the two-phase feed enters stage 26's balances. Overflash (displayed KPI) = liquid flowing from stage 25 to 26 as vol % of crude.
+Feed enthalpy: isothermal flash of the crude (no steam) at the COT and the flash-zone pressure P_26 (§3.6.3). The two-phase feed enters stage 26's balances. At the defaults (COT 345 °C, P_26 1.699 bar) β = 0.6815 (molar), 50.10 vol % of the crude. Crude rate 132.5 m³/h is 528.36 kmol/h (114.58 t/h).
+
+**Volumes.** Every volume flow (crude rate, draw levers, product FTs, PA circulation, yields, overflash) is at 15.6 °C, v_i = MW_i/(1000 ρ_ref,i).
+
+**Overflash** (displayed KPI): the liquid flowing from stage 25 to stage 26, as vol % of the crude. It is the liquid that washes the flash-zone vapour.
 
 ### 9.3 Steam
 
-Water (steam) is a vapour-only component in the column: it never appears in hydrocarbon liquid (immiscible and above its dew point). Per stage, steam flow S_j passing upward = sum of all steam injected at or below stage j. The vapour leaving stage j is V_j = V_HC,j + S_j with steam mole fraction y_w,j = S_j / V_j. Hydrocarbons boil at their partial pressure (§3.6.1). Energy: steam enters at its injection temperature (default 200 °C superheated, h_V,water) and cools to each stage temperature; in (4.6) replace V by V_HC and add S_{j+1}(h_V,w(T_{j+1}) − h_V,w(T_j)) to the numerator.
+- **Vapour only.** Water (steam) never appears in the hydrocarbon liquid: it is immiscible and above its dew point.
+- **Flows.** The steam S_j passing up from stage j is the sum of all steam injected at or below stage j. The vapour leaving stage j is V_j = V_HC,j + S_j, with steam fraction y_w,j = S_j / V_j. Hydrocarbons boil at their partial pressure (§3.6.1).
+- **Energy.** Steam enters at its injection temperature (200 °C) with h_V,w from (9.2), and leaves each stage at that stage's temperature. In (4.6), replace V by V_HC and add the steam terms: S_{j+1} (h_V,w(T_{j+1}) − h_V,w(T_j)) from below, S_inj (h_V,w(200 °C) − h_V,w(T_j)) at an injection stage, and S_k (h_V,w(T_s1,k) − h_V,w(T_j)) for the steam that returns with stripper k's vapour.
 
-Water dew-point check on stage 1: if P_1 y_w,1 > P_sat,water(T_1) the snapshot raises "water condensing in top trays" (corrosion risk; free water is not modelled). In the drum all steam condenses and leaves through the water boot.
+**Bubble-point steam fraction (M9 rule).** The bubble point uses P_HC = P_j (1 − ỹ_w,j). Here ỹ_w is y_w capped at 0.98 and filtered:
+
+```
+ỹ_w,j ← ỹ_w,j + (dt/τ_w)(min(0.98, y_w,j) − ỹ_w,j),    τ_w = 30 s    (exact at steady state; [impl-tunable] 10–60 s)
+```
+
+Why: v1.0 took y_w from the previous step. On a steam-stripped stage, T sets V_HC through the energy balance, and V_HC sets T through P_HC.
+- The loop gain is G = [S/(V_HC (V_HC + S))] / (d ln P^sat/dT) · L Cp_L/λ. On stage 30 at the default (S 111, V_HC 9.9, L 157 kmol/h) it is **11.6**. The lagged value therefore alternates with growing amplitude.
+- A stage with V_HC → 0 gives y_w → 1, P_HC → 0 and T → 150 K. In the prototype's first steps from a cold start, stages fell to 14 °C.
+- With the filter, the per-step factor is 1 − (1 + G) dt/τ_w = 0.79 at dt = 0.5 s, and the loop stays stable while G < 2τ_w/dt − 1 = 119.
+
+**Water dew-point check (stage 1).** If P_1 y_w,1 > P_sat,water(T_1), the snapshot raises "water condensing in top trays" (a corrosion risk; free water is not modelled). The default margin is 50.1 K. In the drum all the steam condenses and leaves through the water boot.
 
 ### 9.4 Side strippers
 
-Each stripper is a 2-stage chain with tray hydraulics (weir holdup, no ΔP coupling to the main column), stripping steam below its bottom stage, liquid product from its bottom stage (weir outflow; no level control).
+Each stripper is a two-stage chain.
+- **Top stage s1:** a weir tray. Its liquid feed is the draw; its vapour goes to the main column's return stage.
+- **Bottom stage s2:** a boot with a level, 1.0 m³ at 100 % (D_s 1.0 m; no ΔP coupling to the main column). Stripping steam enters below s2, and the product leaves from it.
+- **Pressure:** both stages sit at the draw-stage pressure.
 
-Coupling with exact conservation (each flux appears once, identically, on both sides):
-1. Strippers are solved **first** each step. Their liquid feed is the draw S_d with the main column's draw-stage composition at the start of the step, x_d^n.
-2. Their top-stage vapour V_s with composition y_s^(n+1) is then a known vapour feed to the main column's return stage in the same step.
-3. The main column's draw is an explicit sink S_d x_d^n (limited to 0.5 M_d/dt; if the tray cannot supply it, the draw falls short and the FC saturates — "draw tray dry", F27).
+**M9 rule: the draw levers set the product rate.**
+- `drawRate.kero|diesel|ago` are the SPs of FC-311/312/313, which control the product leaving the stripper bottom (m³/h at 15.6 °C).
+- The draw from the main column follows the stripper level. LC-311/312/313 (internal, SP 50 %) set S_d = P_k + V_s1,k + (M_SP − M_s2)/τ_LC, with τ_LC = 60 s and P_k + V_s1,k as feed-forward.
+- *Why:* v1.0 put the FC on the draw. The product was then the draw less the stripped vapour (82–85 % of the lever at the defaults), and the lever defaults (= the ideal yields, VALIDATION.md VC-15.3) no longer meant what they say.
+- At the defaults the draws are 96.12 / 102.05 / 28.37 kmol/h, the products 78.75 / 87.16 / 22.00 kmol/h, and the vapour returns 17.37 / 14.88 / 6.37 kmol/h.
+
+Coupling with exact conservation (each flux appears once, identically, on both sides; unchanged from v1.0):
+1. The strippers are solved **first** each step. Their liquid feed is S_d with the composition of the main column's draw stage at the start of the step, x_d^n.
+2. Their top vapour V_s with composition y_s^(n+1) is then a known vapour feed to the return stage in the same step.
+3. The draw is an explicit sink S_d x_d^n on the main column.
+
+**Draw tray dry (F27).**
+- *Draw-side limit.* The draw is limited to 0.5 M_d/dt. When the draw stage cannot supply S_d, the stripper level falls.
+- *Product side.* Below 20 % level the product is cut in proportion: P_k × clamp((level − 20 %)/30 %, 0, 1). FC-31x then saturates at 100 % OP with the flow below its SP.
+- *Trays below.* The trays below a dry draw get only what the draw leaves: nothing, when the draw takes it all.
+- *Order.* The lowest draw dries first when the lift is short, because every draw competes for the same flash-zone vapour. Examples at the defaults:
+  - The AGO draw (FC-313) runs dry when the kero draw exceeds about 15.5 % (at 16 %: AGO 4.60 instead of 5.30 vol %).
+  - It also runs dry with no bottom steam (F24 s = 1: AGO 3.20 vol %) and at COT −15 K (F26 s = 1: AGO 5.15 vol %).
+  - The **kero** draw runs dry when the PA takes too much heat: PA 8 MW gives a kero product of 7.97 vol % instead of 11.7, and the diesel D86 5 % falls from 229 to 202 °C. That is the "next-heavier front end gets lighter" symptom.
 
 ### 9.5 Pumparound
 
-Draw P_PA from stage d_PA with composition x^n_{d} (explicit sink, same limit), cooled by Q_PA, returned as liquid to stage r_PA with the same composition and enthalpy h_L(x_d, T_d) − Q_PA/P_PA (the return temperature follows; displayed). Exact conservation by construction. Energy: the return enters (4.6) on stage r_PA as a liquid return R with h_R.
+- **Circulation.** The pump sets a fixed flow of 120 m³/h at 15.6 °C (FI-314; 471.6 kmol/h at the default). F25 multiplies it by (1 − s).
+- **Draw and return.** The PA is drawn from stage 16 with composition x^n_16 (explicit sink, same limit as a side draw) and returned as liquid to stage 14 with the same composition and enthalpy h_L(x_16, T_16) − Q_PA/P_PA. The return temperature follows from that (displayed). Conservation is exact by construction. In (4.6) the return is a liquid return R on stage 14 with h_R.
+- **Duty.** FC-314 sets the duty with the cooler bypass (lever `paDuty`, 0–10 MW, default 5 MW). The cooler cannot bring the return below T_R,min = 120 °C:
+
+```
+Q_PA = min(Q_PA,SP, P_PA [h_L(x_16, T_16) − h_L(x_16, T_R,min)])                                (9.3)
+```
+
+- **Duty limit.** When (9.3) binds, FC-314 saturates ("PA duty limited"). At full circulation the limit is 10.85 MW at the default stage-16 state. At 30 % circulation (F25 s = 0.7) it falls to about 3.4 MW.
+- **Default.** 5 MW returns the PA at 202.5 °C (stage 16 at 265.3 °C).
+- **Why the lever range is 0–10 MW (was 0–15).** Duty taken at the PA is duty not available for reflux above it. Above about 7.5 MW the kero draw tray runs dry (F27, §9.4), and above about 10 MW the cooler limit binds.
 
 ### 9.6 Product properties
 
 For each product stream (naphtha, kerosene, diesel, AGO, residue):
 
-1. Volume fractions of pseudo-components: v_i = x_i MW_i/ρ_ref,i, normalised.
-2. Product TBP curve: each pseudo-component occupies its volume share spread linearly over its assay cut range [T_lo,i, T_hi,i]; components are ordered by T_b; the cumulative curve is piecewise linear.
-3. ASTM D86 by the Daubert (Hydrocarbon Processing 73(9) (1994) 75) TBP→D86 inversion (temperatures in °F):
+1. Volume fractions of the pseudo-components: v_i = x_i MW_i/ρ_ref,i, normalised.
+2. Product TBP curve: each pseudo-component occupies its volume share, spread linearly over its assay cut range [T_lo,i, T_hi,i]. The components are ordered by T_b, and the cumulative curve is piecewise linear. **M9 rule: the curve's 0 % and 100 % points are read at 1 % and 99 % of the product's volume.**
+   - *Why:* equilibrium stages put traces of every pseudo-component into every product. At the default steady state the diesel holds 0.007 vol % PC1. Untrimmed, that sets its TBP 0 % to 20 °C, and Daubert's 10 → 0 conversion then gives a D86 0 % of −154 °C (gaps −96 / −211 / −383 K).
+   - *Sensitivity:* with 0.1 / 0.5 / 1 % trims the default diesel–kero gap is −57 / −24 / −9 K. With 1 % the default gaps (+0.9 / −9.0 / −9.7 K) and end points (kero D86 IBP 146 °C, FBP 249 °C) sit where refinery practice puts them.
+   - *Scope:* the ideal cuts of VALIDATION.md VC-15.3 use the assay curve itself, untrimmed.
+3. ASTM D86 by the Daubert (Hydrocarbon Processing 73(9) (1994) 75) TBP → D86 inversion. Temperatures are in °F. The constants are quoted from memory and reproduce VALIDATION.md VC-15.2:
 
 ```
 D86_50 = (TBP_50 / 0.8718)^(1/1.0258)
@@ -1308,7 +1378,41 @@ D86_5  = (D86_0 + D86_10)/2      D86_95 = (D86_90 + D86_100)/2
 ```
 
 4. Gaps: gap(heavy, light) = D86_5(heavy) − D86_95(light). Positive = gap, negative = overlap.
-5. D86 is shown for naphtha, kerosene, diesel and AGO only; residue shows TBP (D86 is not run on residues).
+5. D86 is shown for naphtha, kerosene, diesel and AGO only. The residue shows TBP: D86 is not run on residues. Its TBP 5 % (default 358.8 °C) is the residue's front-end KPI (G16).
+
+### 9.7 Overhead (M9)
+
+- **Pressure.** P_top is held at the lever value by PC-330, which works on the drum gas blanket (ideal: neither modelled nor drawn as a loop). The drum sits at P_top − 0.2 bar. The pressure model of §7 is not used for `crude`. The stabilised crude has no non-condensables, and the overhead condenses completely in the drum: the naphtha bubble point at 1.4 bar is 92.6 °C, against a 45 °C drum.
+- **Drum temperature.** TC-330 holds the drum at `drumTSp` (30–60 °C) with the CW (ideal). The reflux is the condensed overhead at T_drum (x_0 = y_1).
+- **Condenser duty:**
+
+```
+Q_C = V_HC,1 [H_V(y_1, T_1) − h_L(y_1, T_drum)] + S_1 [h_V,w(T_1) − h_L,w(T_drum)]                 (9.4)
+```
+
+- **Capacity.** Q_C,max = 15 MW (preset). That is 1.68 × the default 8.95 MW, which covers a full PA trip (13.70 MW). Above it, `model.condenserLimited` is set and Q_C is still delivered. A rising pressure is not modelled (§16).
+
+### 9.8 Default steady state (M9 prototype, tools/prototypes/m9)
+
+This is the `crude` preset at its defaults: 132.5 m³/h, COT 345 °C, P_top 1.6 bar(a), TC-301 125 °C, drum 45 °C, draws 11.7 / 16.7 / 5.3 %, PA 5 MW, bottom steam 2000 kg/h, stripper steam 300 kg/h each, full hydraulics. The [P] values with their tolerances are VALIDATION.md VC-15.4. Both independent solvers of the prototype agree to 1×10⁻⁴ K: the dynamic relaxation, and Wang–Henke bubble-point passes from its result.
+
+| Quantity | Value |
+|---|---|
+| Yields (vol % of crude): naphtha, kero, diesel, AGO, residue; overflash | 19.75, 11.70, 16.70, 5.30, 46.55; 4.60 |
+| T (°C): stage 1, kero draw, diesel draw, PA draw → return, AGO draw, flash zone, stage 30 | 125.00, 182.26, 250.12, 265.34 → 202.50, 322.55, 343.25, 331.09 |
+| Stripper bottoms T (°C) | 164.66 / 238.54 / 302.56 |
+| Reflux, naphtha (kmol/h); Q_C (MW) | 316.1, 192.96; 8.945 |
+| P_26, P_30 (bar(a)); column ΔP (kPa); tray ΔP (Pa); jet flood (%) | 1.699, 1.723; 12.89; 341–636; 36.0–59.3 (max tray 17) |
+| D86 5 / 50 / 95 (°C): naphtha, kero, diesel, AGO | 58.9 / 100.2 / 159.7; 160.5 / 200.3 / 238.2; 229.3 / 281.9 / 327.9; 318.2 / 369.3 / 398.2 |
+| Gaps K–N, D–K, A–D (K); residue TBP 5 % (°C) | +0.9, −9.0, −9.7; 358.8 |
+
+**Main levers (prototype scans, each from cold).**
+- *COT* sets the overflash and, through it, the internal reflux: 335 / 340 / 345 / 350 / 360 °C give 1.17 / 2.76 / 4.60 / 6.56 / 10.89 % overflash.
+- *Why the COT default is 345 °C (was 360).* At 360 °C the overflash was 10.9 %, against VC-15.4's 1–6 %. And F26's −15 K then only trims a surplus instead of drying the AGO tray.
+- *PA duty* trades heat recovery against fractionation above the PA: 0 / 3 / 5 / 6 MW give a D–K gap of +9.7 / +6.5 / −9.0 / −25.5 K and Q_C of 13.69 / 10.81 / 8.95 / 8.09 MW.
+- *Why the PA default is 5 MW (was 6).* At 345 °C, 6 MW gave a D–K overlap of −25.5 K and a kero D86 95 % of 246.8 °C.
+- *Stripper steam* raises the 5 % point of its own product. SS2 at 1000 kg/h gives D–K +12.6 K.
+- *Bottom steam* lifts residue material into the AGO: 0 / 1000 / 2000 / 3000 kg/h give a residue yield of 49.92 / 47.07 / 46.55 / 46.05 %.
 
 ---
 
@@ -1628,7 +1732,16 @@ That keeps the B-T loop gain within ≈ 1.8–3× the design value from 35 % dow
 - It is a transmitter re-range. σ_s, σ_e and F19 biases stay in % of span, the PC-101 history is rescaled, and PC-101's Kc stays in % of span, so its Pa-gain falls as 1/span above design. That is accepted: the higher pressures also have the larger condenser ΔT. The +10 kPa SP step of VC-16.6 therefore runs on a 222.65 kPa span.
 - PT-101 `HI` / `LO` alarms sit at 1.15 / 0.85 × SP (§10.8), so a learner who moves the operating pressure does not live in alarm.
 
-Crude (M9): TC-201 top temperature → FC reflux (direct, Kc 1.0 on a 50 K span, Ti 300 s); LC-201 drum → naphtha; LC-202 sump → residue; FC-201…203 side draws; FC-204 PA duty; TC-202 COT (ideal first-order, τ = 60 s: the furnace is not modelled); FC-205…208 steam. Every FC uses the flow-loop settings of §10.4.
+Crude (M9; tags renumbered to the 300 series in the M9 readiness pass, because v1.0's TC-201/202, FC-201…208 and LC-201/202 collided with the utility tags TI-201/202, FT-201 and PT-201 that every Tier-2 preset carries):
+- **Top.** TC-301 (PV: TI-341 on stage 1) → SP of FC-301 (reflux). Cascade, reverse acting (T high → more reflux); Kc 1.0 on a 50 K span, Ti 300 s; FC-301 span 0–684 kmol/h, 2 × the default 342.
+- **Levels.** LC-301 drum hydrocarbon level → naphtha; LC-302 sump → residue. Both are averaging P-only loops as for B-T.
+- **Products.** FC-311/312/313 hold the kero, diesel and AGO product flows (stripper bottoms, m³/h at 15.6 °C). LC-311/312/313 hold the stripper levels on the draws; they are internal (§9.4), shown as levels, with no faceplate.
+- **Pumparound.** FC-314 sets the PA duty through the cooler bypass; FI-314 shows the PA circulation and TI-314 its return temperature.
+- **Furnace.** TC-320 holds the COT: ideal first order, τ = 60 s, because the furnace is not modelled. Its PV is TI-320.
+- **Steam.** FC-321 is the bottom steam; FC-322/323/324 are the steam to SS1/SS2/SS3.
+- **Overhead.** TC-330 (drum T → CW) and PC-330 are ideal (§9.7).
+- **Instruments.** TI-341 … TI-350 sit on stages 1, 4, 8, 11, 15, 18, 21, 24, 26 (the flash zone) and 30; TI-351/352/353 are on the stripper bottoms. Q_C is shown as calculated duty.
+- **Tuning.** Every FC uses the flow-loop settings of §10.4.
 
 Level loops are tuned for averaging: they absorb flow upsets instead of passing them on, which is normal practice for drum and sump levels. These are starting values. If a VC-16 loop check fails, the implementer may retune within ±50 % and must record the change in the preset JSON and DEVIATIONS.md.
 
@@ -1652,7 +1765,7 @@ Each alarm has a stable id `<tag>.<type>` (or `model.<type>`), a priority (H/M/L
 | `OOR` | Quality UNCERTAIN | L | 5 s / 10 s | – |
 | `SHED` | Loop shed to MAN on BAD PV | M | 0 / – (clears when the learner acknowledges and the PV is GOOD) | – |
 | `STALE` | Analyser result older than 2 T_c | L | 0 / 0 | – |
-| `model.flood`, `model.weep`, `model.dcLimited`, `model.dutyLimited`, `model.tsUnstable`, `model.waterCondensing`, `model.drawDry` | As in v1.0: max flood % > 90, weep fraction > 0.3, any downcomer limited, Q_max,0 g(p) > Q_max for 60 s (§8.2), I_s > 1 (`tsUnstable` clears only below I_s 0.98, M6), crude conditions | M (dcLimited L) | 30 s / 30 s | – |
+| `model.flood`, `model.weep`, `model.dcLimited`, `model.dutyLimited`, `model.tsUnstable`, `model.waterCondensing`, `model.drawDry`, `model.condenserLimited`, `model.paDutyLimited` (M9: Q_C > Q_C,max, §9.7; (9.3) binding, §9.5; `drawDry` when any FC-311…313 product is cut by its stripper level, §9.4) | As in v1.0: max flood % > 90, weep fraction > 0.3, any downcomer limited, Q_max,0 g(p) > Q_max for 60 s (§8.2), I_s > 1 (`tsUnstable` clears only below I_s 0.98, M6), crude conditions | M (dcLimited L) | 30 s / 30 s | – |
 | `model.relief` | Relief valve lifting | H | 0 / 30 s | – |
 | `model.solver` | Solver fallback (developer overlay only) / fatal (H) | L/H | 0 | – |
 
@@ -1721,11 +1834,11 @@ Faults act only by changing physical parameters or adding physical flows. No fau
 | F20 Valve fault | valve id | `stuck` (position frozen at t₀) / `failOpen` (command 100 %) / `failClosed` (command 0 %); the actuator lag still applies (§10.3, §10.6) | 0 |
 | F21 Packing maldistribution | packed bed b (1 = top bed) | f = 0.6 s in (6.6), on bed b only (the redistributor below it mixes the liquid again, §6.1). ΔP and φ_p use the bed-mean flows and do not change. H7 column (§2.3 M8 rules, D_bed 1.0 m), upper bed, s = 0.5 (f = 0.3): E_mal 0.57, x_D 0.9936 → 0.9788, x_B 0.0111 → 0.0280, bed ΔP +0.3 %, TI-101 − TI-109 11.5 K → 8.1 K; lower bed, s = 0.5: x_D 0.9742, x_B 0.0365, TI-110 − TI-118 17.0 K → 13.0 K. Drill range [0.5, 0.8] | 0 or 1800 s (drill H7: 900 s) |
 | F23 Packing crushed | packed bed b | F_p,eff = F_p (1 + 1.5 s) in (6.1) **and** (6.2); H_bed × (1 − 0.15 s) (fewer metres of packing, same segment count, so H_k and E_O = H_k/HETP fall); a unchanged. H7 column, s = 0.3: upper-bed ΔP +46 % (1.26 → 1.85 kPa), max φ_p 0.67 → 0.75; lower bed +57 % (1.61 → 2.53 kPa), φ_p 0.79 → 0.88; separation changes by less than 0.003. Drill range [0.3, 0.5] | 0 |
-| F24 Stripping steam loss | steam injection point | steam × (1 − s) | 60 s |
-| F25 Pumparound trip | pumparound | P_PA × (1 − s) (and Q_PA with it) | 0 |
-| F26 COT upset | furnace | COT += s ΔT (default −15 K) | 300 s |
+| F24 Stripping steam loss | steam point: `bottom` (FC-321) or `ss1`/`ss2`/`ss3` (FC-322…324) | The steam delivered × (1 − s): a supply restriction, with FC-32x at 100 % OP and the flow below its SP. Bottom steam, at the default (M9 prototype):<br>- s = 0.5: residue +0.52 vol %, bottom T +5.8 K, Q_C −12.6 %.<br>- s = 0.7: residue +0.74 vol %, bottom T +8.3 K, flash zone +1.5 K, Q_C −17.8 %.<br>- s = 1: residue +3.37 vol % (49.92), bottom T +14.9 K, flash zone +1.75 K, Q_C −28 %, overflash 0, and the AGO tray runs dry (AGO 5.30 → 3.20 vol %; F27).<br>The bottom T and Q_C changes are complete within 5 min.<br>SS2 steam at s = 1: the diesel D86 5 % falls 229.3 → 188.5 °C, and the D–K gap goes from −9.0 to −55.5 K | 60 s |
+| F25 Pumparound circulation loss | pumparound | P_PA × (1 − s): pump wear or a trip (s = 1). Q_PA follows (9.3), so the duty holds while the cooler can still reach it: at s = 0.5 the duty stays at 5 MW and only the return T falls. At s = 0.7 it falls to ≈ 3.4 MW. At s = 1 (trip), at the default:<br>- TC-301's PV peaks +13.2 K at ≈ 3 min (+10.1 K at 5 min, +5.2 K at 10 min, back within 0.3 K by 30 min).<br>- Reflux 316 → 678 kmol/h; Q_C 8.95 → 13.70 MW (+53 %, reached within 5 min); max flood 59 → 89 %.<br>- The diesel D86 95 % rises to 384 °C at 5 min and 346 °C at 10 min, then settles at 324 °C (below the 328 °C base: more internal reflux).<br>At s = 0.7: top T +4.6 K peak and Q_C +15 % | 0 |
+| F26 COT upset | furnace | The true COT = TC-320's SP + s ΔT, with ΔT = −15 K by default. TI-320 keeps reading the SP: the furnace thermocouple reads high, or a pass maldistributes, so TC-320 "holds" the wrong value. The remedy is to re-target the COT, i.e. raise the SP by \|s ΔT\|. At the default:<br>- s = 1: flash zone −14.0 K, bottom −13.3 K (both down, unlike F24); Q_C −9.2 %; overflash 4.60 → 0; the AGO tray runs just dry (AGO 5.15 vol %, FC-313 saturated; AGO D86 95 % 398 → 459 °C); the residue yield is unchanged (46.55).<br>- s = 0.6: flash zone −8.0 K, bottom −7.5 K, Q_C −5.9 %, overflash 1.44 % | 300 s |
 
-F01, F02, F03, F16, F22 and F27 are operating conditions that emerge from the models in §5, §6, §8 and §9. Scenarios provoke them by changing loads. F22 (packing flooding): a bed floods when its φ_p reaches 1 (§6.3). Drill H7 provokes it with a +25 % planning event, which takes the H7 column's lower bed from φ_p 0.79 to 0.97 (ENGINE_API.md §11.11). Drill symptom expectations for every injectable fault are tabulated in VALIDATION.md §H.
+F01, F02, F03, F16, F22 and F27 are operating conditions that emerge from the models in §5, §6, §8 and §9. Scenarios provoke them by changing loads. F27 (draw tray dry, §9.4): at the defaults the AGO draw runs dry above a kero draw of about 15.5 %, and the kero draw runs dry above a PA duty of about 7.5 MW. F22 (packing flooding): a bed floods when its φ_p reaches 1 (§6.3). Drill H7 provokes it with a +25 % planning event, which takes the H7 column's lower bed from φ_p 0.79 to 0.97 (ENGINE_API.md §11.11). Drill symptom expectations for every injectable fault are tabulated in VALIDATION.md §H.
 
 Faults are stored on the snapshot only in sandbox mode. In a drill the snapshot carries no fault information; the UI cannot reveal it.
 
@@ -1996,7 +2109,7 @@ The seed is `SimOptions.seed`. Stream states are part of the saved state (§1.2)
 
 ### 13.1 Cold initialisation (from a configuration only)
 
-1. Every stage gets the feed composition z (crude: also every stripper stage).
+1. Every stage gets the feed composition z (crude: also every stripper stage). **Crude (M9):** T from 120 °C on stage 1, linear to 340 °C on stage 30, with the strippers at their draw-stage T − 5 / − 10 K. V_HC,j = 0.3 F on the main stages and 0.2 / 0.1 × the product on the stripper stages. Reflux 0.5 F. Holdups at 3 × the static weir holdup. ỹ_w from these flows. The prototype reaches the §9.8 steady state from this start in 3.5 h of sim time, with the y_w filter (§9.3) and the T_b reference (§9.1); without either it diverged within the first steps.
 2. Flows by CMO from the levers: L_j = L_0 above the feed, L_0 + qF below; V_j from V_B (Tier 1) or V_B = Q_R,SP / (H − h)_sump estimate (Tiers 2/3).
 3. Pressure: P_top = SP; P_j from the tray ΔP at these flows (Tier 2/3); n_V from the ideal-gas law.
 4. Temperatures: bubble point of z at each P_j.
@@ -2256,6 +2369,7 @@ The math overlay (ENGINE_API.md §8) shows, for the selected item, equations fro
 | Cross-check | `eq.check.material` (C1), `eq.check.component` (C2), `eq.check.topVapour` (C3, C3a), `eq.check.energy` (C3b), `eq.check.valve` (C4), `eq.check.level` (C5), `eq.check.trayT` (C6), `eq.check.bubble` (C7), with the readings substituted |
 | McCabe–Thiele elements | operating line equations, q-line, R_min construction (14.1); pseudo-binary: `eq.hengstebeck` (14.2) |
 | FUG panel (M7) | `eq.fug.alpha` (geometric-mean α, 14.3), `eq.fug.fenske` (N_min), `eq.fug.split` (non-key d_i/b_i), `eq.fug.underwood` (θ and R_min), `eq.fug.gilliland` (X, Y, N), `eq.fug.kirkbride` (N_R/N_S, N_R), each with the live values; `eq.fug.rigorous`, the closing line comparing the shortcut with the running column (N_act, N_R,act, R_act; its value is N_act; added 2026-10-13 from the M7 engine) |
+| Crude (M9) | stage: as a tray plus `eq.steamPartialPressure` (§9.3, P_HC with ỹ_w), `eq.crudeEnthalpy` (9.1–9.2, with the T_b reference); stripper stage: the same plus `eq.stripperDraw` (§9.4); pumparound: `eq.paDuty` (9.3); condenser: `eq.crudeCondenser` (9.4); product: `eq.productTbp` (§9.6 step 2 with the 1 % trim), `eq.daubert` (§9.6 step 3), `eq.gap`; overflash: `eq.overflash` (§9.2) |
 
 ---
 
@@ -2278,7 +2392,7 @@ The math overlay (ENGINE_API.md §8) shows, for the selected item, equations fro
 | DePriester K for hydrocarbons instead of an EOS | §3.4.2 | Textbook standard, fast | Composition dependence of K |
 | FUG with one geometric-mean α per component, the Fenske non-key split and Molokanov's Gilliland fit | §14.3 | The textbook shortcut; it is shown next to the rigorous column, not used by it | α variation along the column (`debut` Tier 3: α_LK 2.22 at the top, 1.89 at the bottom) |
 | Watson λ = 0 above a component's T_c | §3.3 | Only propane in the `deprop` bottoms (x ≈ 0.004) | Supercritical-component enthalpy (< 0.3 % of the reboiler balance) |
-| Crude: no light ends, constant K_W, steam as inert vapour, 2-stage strippers | §9 | Teaching fidelity; captures cut points, gaps, steam stripping, PA heat balance | Offgas, water dew point details, kerosene flash point |
+| Crude: no light ends, constant K_W, steam as inert vapour, 2-stage strippers, theoretical stages (E = 1), 9 pseudo-components with 1 % TBP tail trimming, ideal overhead pressure and drum temperature (Q_C,max only flagged), furnace as a first-order COT | §9 | Teaching fidelity; captures cut points, gaps, steam stripping, overflash, PA heat balance, draw-tray drying | Offgas, overhead pressure rise when the condenser is short, water dew point details, kerosene flash point, sharp product tails (a 9-component lump smears each cut over its pseudo-component ranges) |
 | Valves deliver F_max g(p)(1 + d): no pump curves, no line losses, inherent = installed characteristic | §10.3 | Gives a straight characteristic a learner can check; real loops behave the same in the small | Installed-characteristic distortion, pump run-out |
 | Instrument noise as OU processes with textbook magnitudes; no process-condition dependence | §10.5 | Signatures (bias, frozen, too steady, erratic, slow) are what diagnosis needs | Flashing in impulse lines, temperature effects on transmitters |
 
