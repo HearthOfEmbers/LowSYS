@@ -2,8 +2,12 @@ import 'dart:math' as math;
 
 import 'package:meta/meta.dart';
 
+import 'dart:typed_data';
+
+import '../core/ids.dart';
 import '../thermo/component.dart';
 import '../thermo/thermo_model.dart';
+import '../thermo/tier2_raoult.dart';
 import 'sim_snapshot.dart';
 
 @immutable
@@ -305,17 +309,99 @@ class McCabeThieleBuilder {
     ];
   }
 
+  final Float64List _xs = Float64List(2), _ys = Float64List(2), _ks = Float64List(2);
+  final SolverHealth _health = SolverHealth();
+  double _tg = 350;
+
+  /// Tier 2 bubble-point y*(x) of the light component of a binary at pressure [p].
+  double _yBub(Tier2Raoult th, double x, double p) {
+    _xs[0] = x;
+    _xs[1] = 1 - x;
+    _tg = th.bubbleAt(p, _xs, 0, _tg, _ys, 0, _ks, 0, _health);
+    return _ys[0];
+  }
+
+  List<Point2> _curveT2(Tier2Raoult th, double p) {
+    final key = 't2:${th.comps.map((c) => c.id).join(',')}:${(p / 100).round()}';
+    final hit = _curveCacheT2[key];
+    if (hit != null) return hit;
+    _tg = 350;
+    final out = [
+      for (var k = 0; k <= 100; k++)
+        () {
+          final x = 0.5 * (1 - math.cos(math.pi * k / 100));
+          return Point2(x, _yBub(th, x, p));
+        }(),
+    ];
+    if (_curveCacheT2.length > 24) _curveCacheT2.clear();
+    return _curveCacheT2[key] = out;
+  }
+
+  final Map<String, List<Point2>> _curveCacheT2 = {};
+
+  /// q-line pinch for the non-ideal curve (PHYSICS.md 14.1): walk from (z, z) away from the diagonal in steps of
+  /// 1e-3 in x, take the first sign change of y_line - y* and refine it by bisection to 1e-8.
+  Point2 _qPinchT2(Tier2Raoult th, double p, double z, double q) {
+    if ((q - 1).abs() < 1e-9) return Point2(z, _yBub(th, z, p));
+    final slope = q / (q - 1);
+    double f(double x) => z + slope * (x - z) - _yBub(th, x, p);
+    // direction: towards larger y for q >= 1 and q <= 0, towards smaller x for 0 < q < 1
+    final dir = (q > 0 && q < 1) ? -1.0 : (slope > 0 ? 1.0 : -1.0);
+    var xa = z;
+    var fa = f(xa);
+    for (var k = 1; k <= 1000; k++) {
+      final xb = z + dir * 1e-3 * k;
+      if (xb < 0 || xb > 1) break;
+      final fb = f(xb);
+      if (fa == 0) return Point2(xa, _yBub(th, xa, p));
+      if (fa * fb < 0) {
+        var lo = math.min(xa, xb), hi = math.max(xa, xb);
+        var flo = f(lo);
+        for (var i = 0; i < 60 && hi - lo > 1e-8; i++) {
+          final m = 0.5 * (lo + hi);
+          final fm = f(m);
+          if (flo * fm <= 0) {
+            hi = m;
+          } else {
+            lo = m;
+            flo = fm;
+          }
+        }
+        final x = 0.5 * (lo + hi);
+        return Point2(x, _yBub(th, x, p));
+      }
+      xa = xb;
+      fa = fb;
+    }
+    // no crossing: draw the line to the frame edge
+    final xe = dir > 0 ? 1.0 : 0.0;
+    return Point2(xe, (z + slope * (xe - z)).clamp(0.0, 1.0).toDouble());
+  }
+
   McCabeThieleData build(SimSnapshot s, ThermoModel thermo,
       {bool showRmin = false}) {
     if (s.view == SimView.plant) return McCabeThieleData.unavailable();
-    if (thermo is! ConstantAlphaThermo) {
-      throw UnsupportedError(
-          'Only Tier 1 McCabe-Thiele data is available in M1');
+    final isT2 = thermo is Tier2Raoult;
+    if (!isT2 && thermo is! ConstantAlphaThermo) {
+      throw UnsupportedError('McCabe-Thiele data needs a Tier 1 or Tier 2 model');
     }
     if (thermo.nc != 2)
       throw UnsupportedError(
           'Pseudo-binary (multicomponent) diagrams arrive with M7');
-    final alpha = thermo.alpha[0] / thermo.alpha[1];
+    final th2 = isT2 ? thermo : null;
+    final alpha = isT2
+        ? double.nan
+        : (thermo as ConstantAlphaThermo).alpha[0] /
+            (thermo).alpha[1];
+    final pTop = s.kpis.pTop.isFinite ? s.kpis.pTop : 101325.0;
+    final pBot = s.stages.p[s.layout.nTrays + 1].isFinite
+        ? s.stages.p[s.layout.nTrays + 1]
+        : pTop;
+    final pFeed = s.stages.p[s.layout.feedStages.first].isFinite
+        ? s.stages.p[s.layout.feedStages.first]
+        : pTop;
+    double yEqAt(double x, double p) =>
+        isT2 ? _yBub(th2!, x, p) : McCabeThieleMath.yEq(x, alpha);
     final st = s.stages;
     final N = s.layout.nTrays;
     final nc = st.nc;
@@ -357,8 +443,18 @@ class McCabeThieleBuilder {
     final strip = [Point2(xi, yi), Point2(xB, sS * xB + bS)];
 
     // q-line
-    final q = s.feedQ;
-    final pinch = McCabeThieleMath.qLinePinch(alpha, xF, q);
+    var q = s.feedQ;
+    if (isT2) {
+      final qs = s.streams[StreamId.feed]!.q;
+      if (qs.isFinite) q = qs;
+    }
+    final ({double x, double y}) pinch;
+    if (isT2) {
+      final pp = _qPinchT2(th2!, pFeed, xF, q);
+      pinch = (x: pp.x, y: pp.y);
+    } else {
+      pinch = McCabeThieleMath.qLinePinch(alpha, xF, q);
+    }
     final qLine = Segment2(Point2(xF, xF), Point2(pinch.x, pinch.y));
 
     // local equilibrium, operating locus, staircase, corners
@@ -382,7 +478,9 @@ class McCabeThieleBuilder {
     // Murphree pseudo-equilibrium (Tier 1): y_op + E (y* - y_op)
     final e = s.murphree;
     final pe = <Point2>[];
-    for (final p in _equilibrium(alpha)) {
+    final eqTop = isT2 ? _curveT2(th2!, pTop) : _equilibrium(alpha);
+    final eqBot = isT2 ? _curveT2(th2!, pBot) : null;
+    for (final p in eqTop) {
       final yop = p.x >= xi ? sR * p.x + bR : sS * p.x + bS;
       pe.add(Point2(p.x, yop + e * (p.y - yop)));
     }
@@ -419,7 +517,7 @@ class McCabeThieleBuilder {
       const m = 2000;
       for (var k = 0; k < m; k++) {
         final x = pinch.x + (xD - pinch.x) * k / m;
-        final sl = (xD - McCabeThieleMath.yEq(x, alpha)) / (xD - x);
+        final sl = (xD - yEqAt(x, pTop)) / (xD - x);
         if (sl > sMin) {
           sMin = sl;
           tx = x;
@@ -429,7 +527,7 @@ class McCabeThieleBuilder {
         rmin = RminConstruction(
           from: Point2(xD, xD),
           to: Point2(0, xD * (1 - sMin)),
-          touch: Point2(tx, McCabeThieleMath.yEq(tx, alpha)),
+          touch: Point2(tx, yEqAt(tx, pTop)),
           slope: sMin,
           rMin: sMin / (1 - sMin),
         );
@@ -441,7 +539,8 @@ class McCabeThieleBuilder {
       pseudoBinary: false,
       lightLabel: db[s.components[0]].name,
       heavyLabel: db[s.components[1]].name,
-      equilibriumTop: _equilibrium(alpha),
+      equilibriumTop: eqTop,
+      equilibriumBottom: eqBot,
       localEquilibrium: local,
       qLine: qLine,
       cmoRectifying: rect,

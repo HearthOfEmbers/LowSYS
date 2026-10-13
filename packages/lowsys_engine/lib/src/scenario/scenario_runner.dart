@@ -19,6 +19,13 @@ abstract class ScenarioHost {
   void setLever(LeverId id, double value);
   void setLoopMode(LoopTag tag, LoopMode mode);
   void setSp(LoopTag tag, double sp);
+
+  /// CAS-slave `delta` rule (ENGINE_API.md 11.1): bumps the master's OP by the equivalent % of the slave span.
+  /// Returns false when [tag] is not a CAS slave.
+  bool bumpCasSlave(LoopTag tag, double delta);
+
+  /// Loads another preset (and tier) at its steady state, keeping the scenario running (G7).
+  void loadPreset(String presetId, {String? tier, Map<String, Object?> overrides});
   double loopSp(LoopTag tag);
   LoopMode loopMode(LoopTag tag);
   FaultId injectFault(FaultSpec spec);
@@ -57,6 +64,13 @@ class SimulatorHost implements ScenarioHost {
       sim.control.setMode(tag, mode);
   @override
   void setSp(LoopTag tag, double sp) => sim.control.setSp(tag, sp);
+  @override
+  bool bumpCasSlave(LoopTag tag, double delta) =>
+      sim.control.bumpCasSlave(tag, delta);
+  @override
+  void loadPreset(String presetId,
+          {String? tier, Map<String, Object?> overrides = const {}}) =>
+      sim.loadPreset(presetId, tier: tier, overrides: overrides);
   @override
   double loopSp(LoopTag tag) => sim.control.loop(tag).sp;
   @override
@@ -224,6 +238,10 @@ class ScenarioRunner {
   List<ObjectiveRuntime> get objectiveStates => objectives;
   double get elapsed => _elapsed;
   bool get allAchieved => objectives.every((o) => o.achieved);
+
+  /// True when objective [id] has been met (metric `objective[id].met`).
+  bool objectiveMet(String id) =>
+      objectives.any((o) => o.id == id && o.achieved);
   bool get fullyDiagnosed => _fullyCorrect;
   List<String> get unlockedHints => [
         for (var i = 0; i < def.hints.length; i++)
@@ -415,10 +433,20 @@ class ScenarioRunner {
             LoopMode.values.firstWhere((m) => m.name == e.data['mode']));
       case 'setSp':
         final tag = e.data['tag']! as String;
+        if (e.data['value'] == null &&
+            host.loopMode(tag) == LoopMode.cas &&
+            host.bumpCasSlave(tag, (e.data['delta']! as num).toDouble())) {
+          break;
+        }
         final v = e.data['value'] != null
             ? (e.data['value']! as num).toDouble()
             : host.loopSp(tag) + (e.data['delta']! as num).toDouble();
         host.setSp(tag, v);
+      case 'loadPreset':
+        host.loadPreset(e.data['preset']! as String,
+            tier: e.data['tier'] as String?,
+            overrides: Map<String, Object?>.from(
+                (e.data['overrides'] as Map?) ?? const {}));
       case 'injectFault':
         final id = host.injectFault(ScenarioDef.faultOf(e.data, now));
         if (e.id != null) _eventFaults[e.id!] = id;
