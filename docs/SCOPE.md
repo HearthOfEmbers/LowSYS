@@ -136,6 +136,7 @@ Ranges are hard limits; defaults are for the benzene–toluene (B-T) preset unle
 | Lever | Range | Default | SI / US | Tiers | Notes |
 |---|---|---|---|---|---|
 | Tray type (per section) | sieve / valve | sieve | – | all | Valve trays turn down further before weeping |
+| Internals (M8; B-T family only) | 20 sieve trays / structured packing 2 × 4.5 m / mixed (packed top, trays below) | trays (`bt`), packing (`bt_packed`) | – | all | Switch requires pause; rebuilds the stages (PHYSICS.md §13.4) |
 | Hydraulic realism | ideal / full | full (M2+), ideal in M1 | – | all | "ideal": holdup dynamics only (no ΔP, entrainment, weeping, downcomer limits). Used by textbook scenarios and tests |
 | Cooling-water inlet temperature | 5–45 | 30 | °C / °F | T2, T3 | |
 | Cooling-water flow capacity | 50–500 | 150 | m³/h / US gpm | T2, T3 | 100 % of the CW valve |
@@ -232,7 +233,7 @@ Each fault has a physical model (PHYSICS.md §11 gives the equations), a severit
 | F26 | Furnace outlet temperature upset (crude) | COT += s ΔT (default ΔT = −15 K), ramp 300 s | Overflash changes; residue yield and gas-oil yields shift | Re-target COT | M9 |
 | F27 | Draw tray dry (crude; operating condition) | Side draw exceeds internal liquid; draw pan empties | Draw flow cannot meet SP (FC saturates); trays below the draw dry; next-heavier product front end gets lighter | Reduce the draw rate | M9 |
 
-The hidden-fault drill pool uses F04, F05, F06, F07, F09, F10, F11, F13, F14, F17, F18, F19, F20, F21, F24, F25, F28.
+The hidden-fault drill pool uses F04, F05, F06, F07, F09, F10, F11, F12, F13, F14, F15, F17, F18, F19, F20, F21, F23, F24, F25, F26, F28. The M8 pass added F12 (H6), F15 (H4), F23 (H7) and F26 (H8), which the drill table of §6.2 already used. H7 also uses the operating condition F22, through its planning event.
 
 ---
 
@@ -258,10 +259,10 @@ Scenarios are JSON data (ENGINE_API.md §11). Each has a briefing, objectives (s
 | G12 | Turndown and weeping | B-T, sieve then valve trays | Cut throughput to 35 % | See weeping cost separation on sieve trays and not (yet) on valve trays | M2 |
 | G13 | Debutanizer keys and FUG | Debutanizer, T3 at the sandbox defaults (32 trays, E = 0.7) | Compare the FUG panel to the rigorous column; raise reflux and duty together | Meet 98 % LK/HK recoveries (R ≈ 1.73); read N_min and R_min off the FUG panel; compare Gilliland's N with 32 × 0.7 + 1 (ENGINE_API.md §11.8) | M7 |
 | G14 | Thermosyphon tuning | B-T, T2, thermosyphon | Restore stable boilup after a low sump level causes surging. Start: sump held at 15 % with the inlet valve pinched to 8 % (stable, duty-limited); at t = 0 the inlet is opened fully and the loop starts to surge | Stop the oscillation (amplitude < 2 % of boilup, I_s < 1) without losing more than 10 % duty (≥ 1170 kW of the 1300 kW SP); then explain why throttling helps. Throttling alone cannot do it at 15 % level (ENGINE_API.md §11.8) | M6 |
-| G15 | Packing retrofit | B-T, T2 | Compare 20 sieve trays to 9 m of structured packing | Report ΔP ratio and capacity gain (flood % at the same load) | M8 |
+| G15 | Packing retrofit | B-T, **T1**, full hydraulics (M8 readiness: v1.0 said T2, but G15's tray numbers are VC-12.3's Tier-1 values, and in Tier 2 the B-T condenser cannot follow load changes, as for G11) | Compare 20 sieve trays to 9 m of structured packing (lever `internals`) | Report the ΔP ratio (≈ 10) and the capacity gain at equal flood % (≈ 6 %: the lower bed's liquid load is the limit). See why x_D rises (18 theoretical stages against ≈ 14) (ENGINE_API.md §11.8) | M8 |
 | G16 | Crude cut points and gaps | Crude, T2 | Set draws and PA to meet kero D86 95 % ≤ 235 °C and a diesel–kero gap ≥ 0 °C | Meet both specs with residue D86-equivalent IBP ≥ 340 °C | M9 |
 
-Objective predicates, hints and reference numbers for G1–G14: ENGINE_API.md §11.8.
+Objective predicates, hints and reference numbers for G1–G15: ENGINE_API.md §11.8.
 
 ### 6.2 Hidden-fault drills (10)
 
@@ -275,7 +276,7 @@ In a drill the engine injects one fault (from the drill's candidate list, chosen
 | H4 | Reboiler can't keep up | B-T, T2 | F13 fouling, F14 condensate backup, F15 steam header loss | Onset speed; steam flow vs valve position; header pressure reading |
 | H5 | Bottoms level swings | B-T, T2, thermosyphon, plant view with calculations | F19 sump level transmitter drift (true level low → surge), F17 inlet restriction, F18 outlet restriction | Thermosyphon circulation and exit quality; inlet vs outlet line ΔP; compare level with mass balance and the LG-102 sight glass |
 | H6 | Off-spec overhead | Debutanizer, T3, ideal hydraulics, plant view with calculations; planning raises feed, reflux and duty by 8 % at 45 min | F07 feed heavier in the keys (less C3/iC4, more nC4/iC5), F12 reflux pump capacity loss, F20 reflux valve FV-102 stuck | Feed analyser AT-100 (light cut) moves vs reflux flow below SP with FC-102 at 100 % from the onset vs FC-102 OP running away after the planning event while the flow stays flat (C4). Full JSON: ENGINE_API.md §11.10 |
-| H7 | Packed bed underperforms | B-T packed, T2 | F21 maldistribution, F22 near-flood operation, F23 crushed packing | ΔP at constant load (crushed: up; maldistribution: flat) and bed T profile |
+| H7 | Packed bed underperforms | B-T packed (two 4.5 m struct250 beds in a 1.0 m shell), T2, plant view with calculations, CW at 15 °C; planning raises feed, reflux and duty by 25 % at 45 min | F21 maldistribution (upper or lower bed), F23 crushed packing (upper or lower bed), F22 near-flood operation (no fault: the planning event takes the healthy lower bed to 97 % of flood) | What changed **before** the rates rose? Bed ΔP (PDT-102/103) at constant load: crushed → up 45–110 %; maldistribution → flat while that bed's T profile flattens and the product drifts; flooding → nothing, then ΔP 1.8× for 1.25× load. Full JSON: ENGINE_API.md §11.11 |
 | H8 | Crude product drift | Crude, T2 | F24 stripping steam loss, F25 pumparound trip, F26 COT upset | Bottom T and residue yield; overhead duty and top T; flash-zone T |
 | H9 | Don't trust the gauge | B-T, **T2** (T1 has no temperatures or pressure), full hydraulics, plant view, all loops in AUTO with the TC-101 cascade, no bad-PV shedding | One draw from 13: twelve instrument faults on FT-101/102/103/104, LT-101/102, PT-101, TI-107, TI-114 (F19 bias/drift/stuck, F28 signal loss/plugged/spiking/coated), or, about 1 in 8, a **real** feed change with every instrument healthy (decoy). Full JSON: ENGINE_API.md §11.6 | Decide *process problem vs instrument problem* and name the tag: cross-check neighbouring TIs, material and energy balance, valve OP vs measured flow, "too steady" trends. Bonus for putting the affected loop in MAN before product goes off-spec. |
 | H10 | Bad valve or bad meter? | B-T, T2, plant view | F20 FV-102/FV-103 stuck vs F19/F28 (bias, drift, plugged) on FT-102/FT-103 vs a real upset (F07). Full JSON: ENGINE_API.md §11.7 | OP moving while flow is flat (valve) vs flow reading disagreeing with the heat/mass balance (meter) vs everything consistent (real upset) |
@@ -537,7 +538,20 @@ Readiness pass completed 2026-10-13 (excerpt: docs/milestones/M7.md). Spec chang
 
 - Engine: packing database, packed-section segmentation by HETP, holdup, Robbins ΔP, Kister–Gill flood, HETP modifiers (wetting, loading), parallel-column maldistribution, faults F21–F23; mixed tray/packed columns.
 - App: packed-bed rendering (texture, wetting, liquid rivulets), scenario G15, drill H7.
-- Acceptance: VC-13 passes.
+- Acceptance:
+  - VC-13 passes (VC-13.1–13.9).
+  - VC-21 for the packing lines (`eq.robbins`, `eq.kisterGill`, `eq.packHoldup`, `eq.hetp`, `eq.lewis`, `eq.maldistribution`).
+  - VC-26.1 on G15 and H7, including the M8 vocabulary and the null-fault candidate.
+  - The VALIDATION.md §H rows for H7, with noise off.
+
+Readiness pass completed 2026-10-13 (excerpt: docs/milestones/M8.md). Spec changes:
+- New preset `bt_packed`: two 4.5 m struct250 beds in the B-T shell (9 + 9 segments, feed on stage 10). The new lever `internals` switches the B-T family between trays, packing and a mixed template (PHYSICS.md §2.3, §6.1, §13.4).
+- struct250 HETP_ref 0.45 → 0.50 m, by the stated rule. The packing table is flagged as quoted from memory.
+- Exact rules for the per-segment flows and properties, ΔP in the pressure profile, wetting as max(1, ·) with L'_des, λ as the equilibrium slope (v1.0 used K), and maldistribution with n = n_th and a geometric-mean S (§6.3–6.6).
+- Per-bed PDTs and bed TIs (§10.5), and the plant-view rules for packing (§10.9).
+- G15 moves to Tier 1: its tray numbers are VC-12.3's, and in Tier 2 the B-T condenser cannot follow load changes.
+- The full H7 drill (ENGINE_API.md §11.11): 1.0 m beds, CW at 15 °C, a +25 % planning event that *is* the F22 candidate, and a null-fault candidate.
+- VC-13.4–13.9 are new or rewritten, and the §H H7 rows are rewritten.
 
 ### M9 — Crude fractionation
 

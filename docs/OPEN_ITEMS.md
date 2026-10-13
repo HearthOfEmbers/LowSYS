@@ -12,6 +12,12 @@ Collected by the lead from validation passes. Fix in the docs, then delete the i
 - **M7 is implementation-ready (2026-10-13): work from `docs/milestones/M7.md`.** Two changes reach earlier milestones (both are clear errors or additive; no M4–M6 number changes):
   - **DePriester range (PHYSICS.md §3.4.2, M5 code).** Validity is 365–852 °R, not 700 °R. Outside it, evaluate the formula unclamped and only flag `thermoOutOfRange`. A clamped T makes K independent of T, and the bubble-point Newton then has g' = 0 (the prototype's depropanizer bottoms ran away to 514 °C). The engine at e1d4ae4 has no DePriester code yet, so implement it this way from the start. `c4` is unaffected.
   - **Additive.** Theme tokens `seriesDash1…6` (existing themes: solid); KPIs `xDHeavy` / `xBLight` (binary: 1 − xD and xB); diagnosis vocabulary `pump` / `refluxPump`.
+- **M8 is implementation-ready (2026-10-13): work from `docs/milestones/M8.md`.** Packed sections exist only from M8, so nothing reaches earlier milestones except these additive items:
+  - lever `internals` and `ColumnConfig.internalsTemplates` on `bt` (empty for every other preset);
+  - the scenario schema accepts `"fault": null` candidates, the categories `packingDamage` and `flooding`, and the locations `bed:*`;
+  - `StageArrays.packHoldup` / `wetFrac` and `SimSnapshot.beds`.
+
+  There is no packing code in the engine yet (checked at this pass), so v1.0's struct250 HETP_ref of 0.45 never reached the code.
 
 - **M4 close-out spec decisions (2026-10-13), engine 1155f40.**
   - **(7.4) entrainment term (PHYSICS.md §7.2).** N_cond = [V_1 (H_V − H_1) + Q_C − e_1 (h_1 − h_0)] / (H_V − h_0), also inside the §7.4 pressure solve. No change in ideal hydraulics.
@@ -38,9 +44,30 @@ Collected by the lead from validation passes. Fix in the docs, then delete the i
 - **M6: column-coupled thermosyphon numbers are loop-only estimates.** The numbers in VC-14.2, VC-14.3 and the H5 rows (in [ ]) freeze the VC-14.1 inputs. The engine's sump T and P shift I_s by up to ≈ ±0.05, and the ranges allow for that. Record the engine's I_s at 50 % and 15 % level and the G14 times. Report here if I_s at 15 % is below 1.10 (the surge would be too weak for G14) or above 0.90 at 50 %.
 - **M7: the [I] numbers come from one prototype.** VC-9.3 and VC-9.5–9.8 and the H6 [ ] values come from `tools/prototypes/m7/` (an independent steady-state solver; it reproduces VC-4.1's 0.981183 and VC-9.1/9.2 exactly). Re-derive about four of them with your own code: the VC-9.3 recoveries, the VC-9.5 dew points, and `debut` T_B and Q_R in VC-9.6. Record the engine's G13 settling time (the 86 400-s limit is an estimate) and the H6 timings.
 - **M7: PC-101 on the high-pressure presets.** Estimated loop gain against B-T: about 0.6× (`debut`) and 1.0× (`deprop`). The larger PT-101 span (E48) offsets the smaller dT_sat/dP. Record the response to a ±2 % SP step on each. Report here if it oscillates or takes more than 15 min to settle.
+- **M8: the [I] numbers come from one prototype.** VC-13.4–13.8 and the H7 [ ] values come from `tools/prototypes/m8/`. It is an independent steady-state solver with the packed hydraulics coupled by fixed-point iteration; it reproduces VC-4.1 and every v1.0 VC-13 number. Re-derive about four of them with your own code: the VC-13.2 G'_fl for struct250, the `bt_packed` Tier-1 x_D and bed ΔPs (VC-13.5), and one F21 row of VC-13.8. Record the dynamic quantities, which the prototype cannot give: the time for holdup and ΔP to settle after a load step near flood (VC-13.4); the G15 settling time after the `internals` switch; the H7 times from onset to the first evidence; the levels reached past flood with carry-over.
+- **M8: what flooding with carry-over does.** VC-13.4 n = 6 and the H7 "crushed_lower + event" row run past φ_p = 1, where (6.3)'s carry-over (τ_c 5 s) moves liquid up the bed. The prototype has no carry-over, so these rows are bounds. Report here if the engine oscillates (holdup sloshing between segments), if PDT-103 exceeds its 10 kPa span in H7, or if the step needs more than 100 Newton iterations.
 - **M5 validation re-checks (2026-10-13 spec).** Un-skip the two VC-28.8 clauses against their restated text: G9's hint path within half the new limit (216 000 s), and the low-CW path's new criteria (peak |P − SP| ≤ 12 kPa, back within ± 2 kPa within 10 min and staying there, no sustained oscillation, CW 6–15 %). VC-28.1: CW 49.9 %, R 40 on the reference only, the x_B note at 1206.8 kW. VC-9.5 hand-check digits. Once the coder lands them: VC-28.4 `ew` z 0.95 at the live q (1 ± ε), VC-28.5's cache hysteresis case (101 325 → 101 355 / 101 425 reuse, 101 426 rebuilds), and C5 sump `n/a` with a partial condenser.
 
 ## For the physics lead
+
+- **M8 decisions taken in the readiness pass (settled; listed so that the owner can overrule them).**
+  1. **The packing table (PHYSICS.md §6.2) is quoted from memory** of Kister, *Distillation Design* (1992), ch. 8: a, ε and F_p for the five packings, σ_c, and ρ_bed (derived from steel 7900 and ceramic 2300 kg/m³ × (1 − ε)). None of it was checked against the book, and nothing was downloaded. The VC-13 numbers follow the table, so if the owner corrects a value, re-run `tools/prototypes/m8/vc13.dart` and `g15.dart`.
+  2. **struct250 HETP_ref 0.45 → 0.50 m**, by the doc's own rule (1200/a + 4 in = 0.502 m). *Alternative:* keep a vendor-typical 0.40–0.45 m, which gives 10–11 segments per 4.5 m bed; `bt_packed` and every VC-13.5–13.8 number would then change.
+  3. **Robbins and Kister–Gill for structured packing.** Both were fitted mainly to random packings (Kister–Gill's title says "random packings"). From memory, Kister (1992) also applies the 0.115 F_p^0.7 flood ΔP to structured packings; not verified. Stated as a simplification in PHYSICS.md §16.
+  4. **G15 in Tier 1**, not Tier 2. Its tray side is VC-12.3's Tier-1 [P] values, and the comparison is hydraulic. In Tier 2 every number would need a new engine run, and the B-T condenser has only 7.9 % of headroom. The lesson is honest and small: about 6 % more capacity in this shell, because trays at 0.9 m spacing are roomy and the lower bed carries L/V 1.33; the ΔP (10×) and the stages (18 against 14) are the wins.
+  5. **H7 frame.**
+     - 1.0 m beds, so that the default lower bed sits at 79 % of flood.
+     - CW at 15 °C, so that the condenser can take +25 % (1599 of 1795 kW).
+     - A common planning event that *is* the F22 candidate (a null-fault candidate and a rule-7 exception).
+     - Severity ranges F21 [0.5, 0.8] (ramp 900 s) and F23 [0.3, 0.5] (step).
+     - *Alternative for F22:* a candidate-specific event (planning only in that world). Rejected: a set-point change seen only in one world gives the answer away.
+  6. **Model choices in §6.**
+     - λ uses the equilibrium slope m, not K. v1.0 used K, which disagreed with §4.2 by a factor of 2–4 near the ends.
+     - Wetting enters as max(1, a_w,ref/a_w), with a_w,ref at L'_des and the same properties.
+     - Maldistribution uses n = n_th (fractional) and a geometric-mean S.
+     - A dry-bed factor min(1, h_L/0.005) applies to E_MV.
+     - Each of these is a definition where v1.0 was ambiguous or inconsistent.
+- **Open (low): H7 time score for `near_flood`.** Its evidence starts at the planning event (2700 s), but the time score counts from the drawn t₀ (600–1800 s), as for every candidate. Starting its clock at 2700 s would reveal the answer through the score. *Recommendation:* accept it. The alternative is a fixed t₀ = 2700 s for all candidates' time scores in H7.
 
 - **M7 decisions taken in the readiness pass (settled; listed so that the owner can overrule them).**
   1. The sandbox presets use E = 0.7 tray counts: `debut` 32 / 16, `deprop` 28 / 11, from FUG N / 0.7 and a Tier-3 feed-tray scan. The v1.0 counts (22 / 12, 20 / 8) were the E = 1 designs and gave 0.943 / 0.942 recoveries at E = 0.7. VC-9.3 keeps 22 / 12 at E = 1.
