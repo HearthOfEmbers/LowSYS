@@ -1,3 +1,4 @@
+import '../l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -551,7 +552,10 @@ class LeverTile extends StatelessWidget {
     final d = _toDisplay(value);
     final isLoop = spec.boundLoop != null && !spec.id.contains('Valve');
     final divisions = spec.integer ? (spec.max - spec.min).round() : null;
-    return Opacity(
+    return Semantics(
+      container: true,
+      label: S.leverSemantics(spec.label, _fmtValue(spec, value, units), unit, locked: locked, loopSetpoint: isLoop),
+      child: Opacity(
       opacity: locked ? 0.55 : 1,
       child: Padding(
         padding: const EdgeInsets.only(top: 6),
@@ -603,7 +607,12 @@ class LeverTile extends StatelessWidget {
                       style: t.type.number.style(12, p.inkMuted),
                     ),
                   ),
-                InkWell(
+                Semantics(
+                  button: true,
+                  hint: S.leverEditHint,
+                  excludeSemantics: true,
+                  label: S.leverSemantics(spec.label, _fmtValue(spec, value, units), unit),
+                  child: InkWell(
                   onTap: () => _edit(context),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -620,12 +629,14 @@ class LeverTile extends StatelessWidget {
                     ),
                   ),
                 ),
+                ),
               ],
             ),
             Row(
               children: [
                 _FineButton(
                   icon: Icons.remove,
+                  label: S.leverDecrease(spec.label),
                   onTap: locked ? null : () => _set(d - step),
                   t: t,
                 ),
@@ -640,6 +651,7 @@ class LeverTile extends StatelessWidget {
                 ),
                 _FineButton(
                   icon: Icons.add,
+                  label: S.leverIncrease(spec.label),
                   onTap: locked ? null : () => _set(d + step),
                   t: t,
                 ),
@@ -648,15 +660,17 @@ class LeverTile extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }
 
 class _FineButton extends StatelessWidget {
   final IconData icon;
+  final String label;
   final VoidCallback? onTap;
   final LowsysTheme t;
-  const _FineButton({required this.icon, required this.onTap, required this.t});
+  const _FineButton({required this.icon, required this.label, required this.onTap, required this.t});
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -666,6 +680,7 @@ class _FineButton extends StatelessWidget {
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(minWidth: 40, minHeight: 48),
         icon: Icon(icon, size: 20, color: t.palette.inkMuted),
+        tooltip: label,
         onPressed: onTap,
       ),
     );

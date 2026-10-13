@@ -3,6 +3,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
 import '../controllers/sim_controller.dart';
+import '../l10n/strings.dart';
 import '../theme/lowsys_theme.dart';
 import 'drill_ui.dart';
 import 'time_bar.dart';
@@ -22,7 +23,7 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Guided scenarios', style: t.type.display.style(20, p.ink)),
+              Text(S.scenariosTitle, style: t.type.display.style(20, p.ink)),
               const SizedBox(height: 8),
               Flexible(
                 child: ListView(
@@ -31,11 +32,11 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
                     for (final d in [...Scenarios.all, for (final id in Scenarios.allIds.where((x) => !Scenarios.ids.contains(x))) Scenarios.byId(id)])
                       ListTile(
                         title: Text(
-                          '${d.id.split('_').first}  ${d.title}${d.isDrill ? '  (drill)' : ''}',
+                          '${d.id.split('_').first}  ${d.title}${d.isDrill ? '  ${S.drillTag}' : ''}',
                           style: t.type.display.style(16, p.accent),
                         ),
                         subtitle: Text(
-                          '${d.topic}  ·  ${d.start == 'cold' ? 'cold start' : 'starts steady'}  ·  ${formatClock(d.timeLimit)} limit',
+                          '${d.topic}  ·  ${d.start == 'cold' ? S.coldStart : S.startsSteady}  ·  ${S.limit(formatClock(d.timeLimit))}',
                           style: t.type.label.style(13, p.inkMuted),
                         ),
                         trailing: Icon(Icons.chevron_right, color: p.inkMuted),
@@ -48,7 +49,7 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Close'),
+                  child: Text(S.close),
                 ),
               ),
             ],
@@ -58,6 +59,13 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
     ),
   );
   if (picked == null || !context.mounted) return;
+  await showScenarioBriefing(context, sim, picked);
+}
+
+/// Briefing dialog (S4) for [picked] with Start; shared by the scenario list and the Library.
+Future<void> showScenarioBriefing(BuildContext context, SimController sim, ScenarioDef picked) async {
+  final t = LowsysThemeScope.of(context);
+  final p = t.palette;
   final attempts = picked.isDrill ? await sim.savedAttempts(picked.id) : const <Map<String, Object?>>[];
   if (!context.mounted) return;
   int? replaySeed;
@@ -78,12 +86,12 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
-                    'One fault is hidden in the plant and starts some minutes after you begin. Press Diagnose when you know the category and the location. You have ${picked.diagnosis?.attempts ?? 2} attempts; wrong ones cost points.',
+                    '${S.drillIntro} ${S.drillAttempts(picked.diagnosis?.attempts ?? 2)}',
                     style: t.type.label.style(13.5, p.warn),
                   ),
                 ),
               Text(
-                picked.isDrill ? 'WHAT TO DO' : 'GOALS',
+                picked.isDrill ? S.whatToDo : S.goals,
                 style: t.type.display.style(
                   13.5,
                   p.accent,
@@ -100,7 +108,7 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
                 ),
               if (attempts.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text('Your saved attempts (pick one to replay the same fault)',
+                Text(S.savedAttempts,
                     style: t.type.label.style(13, p.inkMuted)),
                 Wrap(spacing: 6, runSpacing: 4, children: [
                   for (final a in attempts.reversed)
@@ -115,8 +123,8 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
               const SizedBox(height: 8),
               Text(
                 picked.isDrill
-                    ? 'Time limit ${formatClock(picked.timeLimit)}.'
-                    : 'Par time ${formatClock(picked.parTime)}, limit ${formatClock(picked.timeLimit)}.',
+                    ? S.timeLimit(formatClock(picked.timeLimit))
+                    : S.parTime(formatClock(picked.parTime), formatClock(picked.timeLimit)),
                 style: t.type.label.style(12.5, p.inkMuted),
               ),
             ],
@@ -126,11 +134,11 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Back'),
+          child: Text(S.back),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Start'),
+          child: Text(S.start),
         ),
       ],
     )),

@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
+import '../l10n/strings.dart';
 import '../layout/sim_layout.dart';
+import '../widgets/library_ui.dart';
 import '../painters/effects/blueprint_grid.dart';
 import '../theme/lowsys_theme.dart';
 import '../widgets/math_overlay.dart';
@@ -105,12 +107,13 @@ class _SimScreenState extends State<SimScreen> with SingleTickerProviderStateMix
             SafeArea(
               child: ListenableBuilder(
                 listenable: sim,
-                builder: (context, _) => sim.loaded ? const SimLayout() : Center(child: Text('Setting up the drawing board…', style: t.type.display.style(18, p.inkMuted))),
+                builder: (context, _) => sim.loaded ? const SimLayout() : Center(child: Text(S.settingUp, style: t.type.display.style(18, p.inkMuted))),
               ),
             ),
             const ScenarioHud(),
             const MathOverlayHost(),
             const DebriefHost(),
+            const OnboardingHost(),
             ValueListenableBuilder<String?>(
               valueListenable: sim.notice,
               builder: (context, msg, _) => msg == null
@@ -147,11 +150,11 @@ class _SimScreenState extends State<SimScreen> with SingleTickerProviderStateMix
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(color: p.surface, border: Border.all(color: p.accent, width: 1.5)),
                           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('Marching to steady state…', style: t.type.display.style(18, p.ink)),
+                            Text(S.steadyTitle, style: t.type.display.style(18, p.ink)),
                             const SizedBox(height: 12),
                             LinearProgressIndicator(value: prog <= 0 ? null : prog, color: p.accent, backgroundColor: p.gridMajor),
                             const SizedBox(height: 8),
-                            Text('Fast-forward with the column model itself, no shortcuts.', style: t.type.label.style(12.5, p.inkMuted)),
+                            Text(S.steadyBody, style: t.type.label.style(12.5, p.inkMuted)),
                           ]),
                         ),
                       ),

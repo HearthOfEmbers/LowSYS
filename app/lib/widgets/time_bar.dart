@@ -5,6 +5,8 @@ import '../app_scope.dart';
 import '../controllers/sim_controller.dart';
 import '../theme/lowsys_theme.dart';
 import '../theme/themes/registry.dart';
+import '../l10n/strings.dart';
+import 'library_ui.dart';
 import 'scenario_ui.dart';
 
 String formatClock(double t) {
@@ -264,7 +266,7 @@ class _PresetMenu extends StatelessWidget {
     final t = LowsysThemeScope.of(context);
     final p = t.palette;
     return PopupMenuButton<String>(
-      tooltip: 'Presets and options',
+      tooltip: S.menuTooltip,
       icon: Icon(Icons.more_vert, color: p.ink),
       style: dense
           ? IconButton.styleFrom(
@@ -285,6 +287,10 @@ class _PresetMenu extends StatelessWidget {
           sim.setTheme(v.substring(6));
         } else if (v == 'scenarios') {
           showScenarioList(context, sim);
+        } else if (v == 'library') {
+          showLibrary(context, sim);
+        } else if (v == 'tutorial') {
+          sim.onboardingStep.value = 0;
         } else if (v.startsWith('save')) {
           sim.saveSandbox(int.parse(v.substring(4)));
         } else if (v.startsWith('load')) {
@@ -307,22 +313,24 @@ class _PresetMenu extends StatelessWidget {
         PopupMenuItem<String>(
           value: 'scenarios',
           child: Text(
-            'Guided scenarios…',
+            S.menuScenarios,
             style: t.type.label.style(14, p.ink),
           ),
         ),
+        PopupMenuItem<String>(value: 'library', child: Text(S.menuLibrary, style: t.type.label.style(14, p.ink))),
+        PopupMenuItem<String>(value: 'tutorial', child: Text(S.menuTutorial, style: t.type.label.style(14, p.ink))),
         if (sim.scenarioDef != null)
           PopupMenuItem<String>(
             value: 'leave',
             child: Text(
-              'Leave scenario (sandbox)',
+              S.menuLeaveScenario,
               style: t.type.label.style(14, p.ink),
             ),
           ),
         PopupMenuItem<String>(
           value: 'units',
           child: Text(
-            'Units: ${sim.units.value == UnitSystem.si ? 'SI → US field' : 'US field → SI'} (U)',
+            S.menuUnits(sim.units.value == UnitSystem.si),
             style: t.type.label.style(14, p.ink),
           ),
         ),
@@ -330,20 +338,20 @@ class _PresetMenu extends StatelessWidget {
           CheckedPopupMenuItem<String>(
             value: 'theme:${th.id}',
             checked: sim.themeId.value == th.id,
-            child: Text('Theme: ${th.name}', style: t.type.label.style(14, p.ink)),
+            child: Text(S.menuTheme(th.name), style: t.type.label.style(14, p.ink)),
           ),
         if (sim.themeId.value == 'controlRoom')
           CheckedPopupMenuItem<String>(
             value: 'shading',
             checked: sim.compositionShading.value,
-            child: Text('Composition shading', style: t.type.label.style(14, p.ink)),
+            child: Text(S.menuShading, style: t.type.label.style(14, p.ink)),
           ),
         PopupMenuItem<String>(
           value: 'rmin',
           child: Text(
             sim.showRmin
-                ? 'Hide R_min construction'
-                : 'Show R_min construction',
+                ? S.menuHideRmin
+                : S.menuShowRmin,
             style: t.type.label.style(14, p.ink),
           ),
         ),
@@ -352,7 +360,7 @@ class _PresetMenu extends StatelessWidget {
             PopupMenuItem<String>(
               value: 'save$n',
               child: Text(
-                'Save sandbox to slot $n',
+                S.menuSave(n),
                 style: t.type.label.style(14, p.ink),
               ),
             ),
@@ -360,7 +368,7 @@ class _PresetMenu extends StatelessWidget {
             PopupMenuItem<String>(
               value: 'load$n',
               child: Text(
-                'Load sandbox slot $n',
+                S.menuLoad(n),
                 style: t.type.label.style(14, p.ink),
               ),
             ),
@@ -368,7 +376,7 @@ class _PresetMenu extends StatelessWidget {
         PopupMenuItem<String>(
           value: 'reset',
           child: Text(
-            'Reset to steady state',
+            S.menuResetSteady,
             style: t.type.label.style(14, p.ink),
           ),
         ),
