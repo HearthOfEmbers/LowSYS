@@ -183,7 +183,7 @@ void main() {
       final expected = ref.rMinScan(2.5, 0.5, 1.0, p.xD);
       expect(mt.rmin!.rMin, closeTo(expected, 1e-4));
       // and the column runs above minimum reflux
-      expect(sim.snapshot().kpis.refluxRatio, greaterThan(mt.rmin!.rMin));
+      expect(sim.snapshot().kpis.refluxRatio, greaterThan(mt.rmin!.rMin!));
     });
   });
 
