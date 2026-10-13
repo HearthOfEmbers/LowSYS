@@ -65,6 +65,9 @@ abstract class SimRunner {
   /// Thermo model for diagram builders.
   ThermoModel get thermo;
 
+  /// The Tier-2 (Raoult) model: the ideal curves of the T-x-y tab in Tier 1 and the display-only T*.
+  ThermoModel get idealThermo;
+
   /// Trend bins of every reading (M3); the local runner shares the engine's buffer.
   TrendBuffer get trends;
   ColumnConfig get config;

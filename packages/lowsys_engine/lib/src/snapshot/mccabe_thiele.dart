@@ -9,6 +9,7 @@ import '../thermo/component.dart';
 import '../thermo/thermo_model.dart';
 import '../thermo/tier2_raoult.dart';
 import 'sim_snapshot.dart';
+import 'txy.dart';
 
 @immutable
 class Point2 {
@@ -44,21 +45,47 @@ class RangeX {
   const RangeX(this.lo, this.hi);
 }
 
-/// Minimum-reflux construction (PHYSICS.md 14.1).
+enum AzeotropeSide { distillate, bottoms }
+
+/// "x_D (or x_B) is beyond the azeotrope (x = ...)": no reflux ratio reaches the specification (PHYSICS.md 14.1).
+@immutable
+class RminBlock {
+  final AzeotropeSide side;
+  final double xAzeotrope;
+  const RminBlock(this.side, this.xAzeotrope);
+}
+
+/// Minimum-reflux construction (PHYSICS.md 14.1; M5 adds the azeotrope cases).
 @immutable
 class RminConstruction {
-  /// Line from (xD, xD) with slope [slope]; drawn from [from] to [to].
-  final Point2 from, to;
+  /// Null when blocked.
+  final double? sMin, rMin;
 
-  /// Where the line touches the equilibrium curve.
-  final Point2 touch;
-  final double slope, rMin;
-  const RminConstruction(
-      {required this.from,
-      required this.to,
-      required this.touch,
-      required this.slope,
-      required this.rMin});
+  /// Touching point (x, y*): the feed pinch (x_q) or a tangent pinch.
+  final Point2? pinch;
+
+  /// True when the pinch is not at x_q.
+  final bool tangentPinch;
+
+  /// From (x_D, x_D) with slope [sMin], to x = 0; null when blocked.
+  final Segment2? line;
+
+  /// Non-null: draw no line, show the banner.
+  final RminBlock? blocked;
+  const RminConstruction({
+    this.sMin,
+    this.rMin,
+    this.pinch,
+    this.tangentPinch = false,
+    this.line,
+    this.blocked,
+  });
+
+  /// Start and end of the line, the touching point and the slope (null when blocked).
+  Point2? get from => line?.a;
+  Point2? get to => line?.b;
+  Point2? get touch => pinch;
+  double? get slope => sMin;
 }
 
 @immutable
@@ -378,8 +405,101 @@ class McCabeThieleBuilder {
     return Point2(xe, (z + slope * (xe - z)).clamp(0.0, 1.0).toDouble());
   }
 
+  /// R_min construction (PHYSICS.md 14.1). Rectifying side: if the equilibrium curve meets the diagonal in (x_q, x_D)
+  /// the distillate is beyond an azeotrope (R_min infinite); otherwise s_min is the maximum of (x_D - y*)/(x_D - x)
+  /// over [x_q, x_D), refined by golden-section search (tangent pinches). Stripping side: a maximum-boiling azeotrope
+  /// between x_B and x_q blocks the bottoms.
+  RminConstruction? _rmin(
+      Tier2Raoult? th,
+      double Function(double, double) yEqAt,
+      double pTop,
+      double pFeed,
+      double xD,
+      double xB,
+      double xq,
+      double yq) {
+    List<Azeotrope> azs = const [];
+    if (th != null) {
+      final key = 'az:${th.comps.map((c) => c.id).join(',')}:${th.tier.name}:${(pTop / 100).round()}';
+      azs = _azCache[key] ??= TxyData.findAzeotropes(th, pTop);
+    }
+    // stripping side (maximum-boiling azeotrope below the feed)
+    for (final a in azs) {
+      if (a.maximumBoiling && xB < a.x && a.x < xq) {
+        return RminConstruction(blocked: RminBlock(AzeotropeSide.bottoms, a.x));
+      }
+    }
+    if (!(xD > xq)) return null;
+    // distillate side: the curve must stay above the diagonal on (x_q, x_D)
+    const m = 2000;
+    for (var k = 1; k < m; k++) {
+      final x = xq + (xD - xq) * k / m;
+      if (yEqAt(x, pTop) <= x) {
+        double? xa;
+        for (final a in azs) {
+          if (!a.maximumBoiling && a.x > xq - 1e-9 && a.x <= xD + 1e-9) xa = a.x;
+        }
+        xa ??= x;
+        return RminConstruction(blocked: RminBlock(AzeotropeSide.distillate, xa));
+      }
+    }
+    double slopeAt(double x) => (xD - yEqAt(x, pTop)) / (xD - x);
+    var best = xq;
+    var sMin = slopeAt(xq);
+    for (var k = 1; k < m; k++) {
+      final x = xq + (xD - xq) * k / m;
+      final sl = slopeAt(x);
+      if (sl > sMin) {
+        sMin = sl;
+        best = x;
+      }
+    }
+    // golden-section refinement of the best interior point to 1e-6 in x
+    if (best > xq) {
+      var lo = math.max(xq, best - (xD - xq) / m);
+      var hi = math.min(xD - 1e-9, best + (xD - xq) / m);
+      const gr = 0.6180339887498949;
+      var c = hi - gr * (hi - lo), d = lo + gr * (hi - lo);
+      var fc = slopeAt(c), fd = slopeAt(d);
+      for (var i = 0; i < 60 && hi - lo > 1e-9; i++) {
+        if (fc > fd) {
+          hi = d;
+          d = c;
+          fd = fc;
+          c = hi - gr * (hi - lo);
+          fc = slopeAt(c);
+        } else {
+          lo = c;
+          c = d;
+          fc = fd;
+          d = lo + gr * (hi - lo);
+          fd = slopeAt(d);
+        }
+      }
+      final xr = 0.5 * (lo + hi);
+      final sr = slopeAt(xr);
+      if (sr > sMin) {
+        sMin = sr;
+        best = xr;
+      }
+    }
+    if (!(sMin > 0 && sMin < 1)) return null;
+    final tangent = (best - xq).abs() > 1e-3;
+    return RminConstruction(
+      sMin: sMin,
+      rMin: sMin / (1 - sMin),
+      pinch: Point2(best, yEqAt(best, pTop)),
+      tangentPinch: tangent,
+      line: Segment2(Point2(xD, xD), Point2(0, xD * (1 - sMin))),
+    );
+  }
+
+  final Map<String, List<Azeotrope>> _azCache = {};
+
+  /// [xDTarget] / [xBTarget] replace the live product compositions in the R_min construction only (what the
+  /// construction asks "if the specification were ..."; VALIDATION.md VC-28.4).
   McCabeThieleData build(SimSnapshot s, ThermoModel thermo,
-      {bool showRmin = false}) {
+      {bool showRmin = false, double? xDTarget, double? xBTarget}) {
     if (s.view == SimView.plant) return McCabeThieleData.unavailable();
     final isT2 = thermo is Tier2Raoult;
     if (!isT2 && thermo is! ConstantAlphaThermo) {
@@ -511,27 +631,9 @@ class McCabeThieleBuilder {
     }
 
     RminConstruction? rmin;
-    if (showRmin && xD > pinch.x) {
-      var sMin = -1.0;
-      var tx = pinch.x;
-      const m = 2000;
-      for (var k = 0; k < m; k++) {
-        final x = pinch.x + (xD - pinch.x) * k / m;
-        final sl = (xD - yEqAt(x, pTop)) / (xD - x);
-        if (sl > sMin) {
-          sMin = sl;
-          tx = x;
-        }
-      }
-      if (sMin > 0 && sMin < 1) {
-        rmin = RminConstruction(
-          from: Point2(xD, xD),
-          to: Point2(0, xD * (1 - sMin)),
-          touch: Point2(tx, yEqAt(tx, pTop)),
-          slope: sMin,
-          rMin: sMin / (1 - sMin),
-        );
-      }
+    if (showRmin) {
+      rmin = _rmin(isT2 ? th2 : null, yEqAt, pTop, pFeed, xDTarget ?? xD,
+          xBTarget ?? xB, pinch.x, pinch.y);
     }
 
     final db = ComponentDb.load();

@@ -15,6 +15,8 @@ abstract final class Scenarios {
     'G6_real_trays': g6Json,
     'G7_what_cmo_hides': g7Json,
     'G8_pressure_volatility': g8Json,
+    'G9_azeotrope_wall': g9Json,
+    'G10_other_azeotrope': g10Json,
     'G11_flooding': g11Json,
     'G12_turndown': g12Json,
   };

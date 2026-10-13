@@ -29,7 +29,7 @@ class Stepper {
   final Tier1ConstantAlpha thermo;
 
   /// Tier-2 Raoult model (PHYSICS.md 3), used while [tier2] is true.
-  final Tier2Raoult t2;
+  Tier2Raoult t2;
   final CondenserConfig cond;
   final ReboilerConfig reb;
   final ColumnState s;
@@ -873,6 +873,20 @@ class Stepper {
       s.nVi[i] = nv * s.y[nc + i];
     }
     s.nI = 0;
+  }
+
+  /// After a K-model change (T2 <-> T3) the drum temperature moves at once; rescales the condensable inventory
+  /// (composition kept) so that P_top stays where it was: n_V = P (1 - y_I) V / (R T_0,sat).
+  void t2RescaleInventory() {
+    final nv0 = overheadMoles;
+    if (!(nv0 > 0)) return;
+    final nTot = nv0 + s.nI;
+    final yI = s.nI / nTot;
+    final nv = s.pTop * (1 - yI) * cond.overheadVolume / (gasR * s.tSat0);
+    final k = nv / nv0;
+    for (var i = 0; i < nc; i++) {
+      s.nVi[i] *= k;
+    }
   }
 
   /// Condensable vapour inventory (mol).

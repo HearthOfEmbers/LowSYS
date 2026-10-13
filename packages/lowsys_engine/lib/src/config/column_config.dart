@@ -303,6 +303,19 @@ class ColumnConfig {
   final Map<LeverId, double> initialLevers;
   final double murphree;
 
+  /// Tier-3 model (M5) and the "Tier 1 cannot represent this system" flag (`ac`, PHYSICS.md 2.3).
+  final Tier3Model tier3Model;
+  final bool tier1CannotRepresent;
+
+  /// Tiers the learner may select (PHYSICS.md 13.5): `sameAsTier2` has no Tier 3, crude only Tier 2.
+  Set<ThermoTier> get availableTiers {
+    if (presetId == 'crude') return const {ThermoTier.t2};
+    if (tier3Model == Tier3Model.sameAsTier2) {
+      return const {ThermoTier.t1, ThermoTier.t2};
+    }
+    return const {ThermoTier.t1, ThermoTier.t2, ThermoTier.t3};
+  }
+
   const ColumnConfig({
     required this.presetId,
     required this.displayName,
@@ -319,6 +332,8 @@ class ColumnConfig {
     this.hydraulics = HydraulicsMode.ideal,
     this.initialLevers = const {},
     this.murphree = 0.7,
+    this.tier3Model = Tier3Model.sameAsTier2,
+    this.tier1CannotRepresent = false,
   });
 
   factory ColumnConfig.fromJson(Map<String, Object?> j) {
@@ -355,6 +370,9 @@ class ColumnConfig {
         for (final e in lev.entries) e.key: (e.value! as num).toDouble()
       },
       murphree: (j['murphree'] as num?)?.toDouble() ?? 0.7,
+      tier3Model: Tier3Model.values.firstWhere(
+          (e) => e.name == (j['tier3Model'] ?? 'sameAsTier2')),
+      tier1CannotRepresent: (j['tier1CannotRepresent'] as bool?) ?? false,
     );
   }
 
@@ -373,6 +391,8 @@ class ColumnConfig {
         'control': control.toJson(),
         'hydraulics': hydraulics.name,
         'murphree': murphree,
+        'tier3Model': tier3Model.name,
+        if (tier1CannotRepresent) 'tier1CannotRepresent': true,
         'initialLevers': initialLevers,
       };
 
@@ -439,6 +459,8 @@ class ColumnConfig {
     HydraulicsMode? hydraulics,
     Map<LeverId, double>? initialLevers,
     double? murphree,
+    Tier3Model? tier3Model,
+    bool? tier1CannotRepresent,
   }) =>
       ColumnConfig(
         presetId: presetId ?? this.presetId,
@@ -456,6 +478,8 @@ class ColumnConfig {
         hydraulics: hydraulics ?? this.hydraulics,
         initialLevers: initialLevers ?? this.initialLevers,
         murphree: murphree ?? this.murphree,
+        tier3Model: tier3Model ?? this.tier3Model,
+        tier1CannotRepresent: tier1CannotRepresent ?? this.tier1CannotRepresent,
       );
 
   /// Convenience for tests and the app: same column with [trays] trays and the feed on [feedStage].
