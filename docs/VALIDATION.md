@@ -11,6 +11,7 @@ Status: specification v1.0 (2026-10-12). The testing agent turns every case belo
   - **[I]** Computed by the physics lead with an *independent* method that does not share code with the simulator algorithm: closed-form formulas, bisection, or a full Newton solve of the steady-state equations with a numerical Jacobian. The method is described so the tester can re-derive the number.
   - **[P]** Produced by the physics lead's prototype of the exact algorithm in PHYSICS.md §12 (Node.js). These pin down model behaviour, not truth; tolerances are wider and a mismatch first triggers a check of whether the implementation follows PHYSICS.md.
 - **Configurations.** "B-T default" = preset `bt` as in SCOPE.md §4 and PHYSICS.md §5.1: 20 sieve trays, feed tray 10, F = 100 kmol/h, z = 0.5, q = 1, L₀ = 100 kmol/h, V_B = 150 kmol/h, E_MV = 0.7, α = 2.5, dt = 0.5 s, LC-101/102 PI (Kc = 2, Ti = 1800 s, SP 50 %). "Ideal hydraulics" = `HydraulicsMode.ideal`. Stage counting: N trays + partial reboiler (an equilibrium stage); the total condenser is not a stage.
+- **dt = 30 s (ruling 2026-10-13, PHYSICS.md §12.5).** A test-only robustness step. Cases run at dt 30 assert steady states (against the same case at 0.5 or 2 s), no NaN, no fatal and no false "steady"; they do not assert closed-loop transients. Where a case raises a dt-rate loop's gain (the M5 `ac` case: condenser ×2, L₀ 150 → 300 kmol/h, duty ×1.8), assert at dt 30 only: no NaN, no fatal, and `runToSteadyState` returns either reached = false or a state within 0.05 kmol/h (D) and 0.5 kPa (P) of the dt-2 result; `negativeClamps` is recorded, not asserted. At dt 2 and 10 s the same case must settle (D 16.32 ± 0.05 kmol/h, P at SP ± 0.5 kPa), and at dt 2 s `negativeClamps` == 0.
 - **Engine test fixtures.** Tests must be able to (a) build a `Simulator` from a preset with overrides, (b) run until steady (`runToSteadyState`) or for a fixed sim time, (c) read every quantity of `SimSnapshot`, (d) read debug accessors for per-step flows used by the solver (needed for exact conservation accounting, VC-5). Expose (d) through a `@visibleForTesting` `StepDebug` object.
 
 ---
@@ -540,7 +541,7 @@ Further unit checks:
    - the bottom-tray ΔP and the column ΔP oscillate at the same period;
    - `model.tsUnstable` is raised;
    - the amplitude grows over ≥ 30 s (not a step);
-   - FT-103's 5-s trend bins vary by ≤ 2 % of the duty peak to peak (the steam side sees the mean duty, PHYSICS.md §8.3.4).
+   - FT-103's 5-s trend bins vary by ≤ 2 % of the duty peak to peak (FT-103 reads the steam-chest duty Q_st, τ_st = 10 s, PHYSICS.md §8.3.4; ruling 2026-10-13). Record also the peak to peak of the unbuffered Q_k [engine 601f80e: ≈ 8 %].
 
    The true sump level oscillates at the same period with a tiny amplitude (≈ 0.03 % of level; check only that it is periodic).
 3. Then throttle the inlet valve to 16 %. Within 5 min `oscAmplitude` falls by ≥ 30 % [0.141 → 0.085], and it stays ≥ 0.04 [limit 0.082]: throttling alone does not stop it at 15 %. Then raise the level (LC-102 MAN at OP 0 until the level is ≥ 50 %, then AUTO at SP 50 %). Within 5 min of the true level passing 35 %, `oscAmplitude` < 0.005 (boilup peak-to-peak < 1 %), and `model.tsUnstable` clears.
@@ -549,10 +550,10 @@ Further unit checks:
 6. Save and restore in the middle of step 2. The continuation is bit-identical to the uninterrupted run (VC-20); the loop states W, x_r, x_e, the filters and (u, v) are part of the save.
 
 **VC-14.3 G14 [P-type] (ENGINE_API.md §11.8).**
-1. The start state passes the steady monitor, with I_s 0.80–0.95 [0.87], FC-103 at 100 % OP and a duty of 1040–1140 kW [1087].
+1. The start state passes the steady monitor, with I_s 0.80–0.95 [0.87], FC-103 at 100 % OP and a duty of 1040–1180 kW [loop 1087; column-coupled 1157 at 601f80e].
 2. With no action, `oscAmplitude` is ≥ 0.05 within 10 min of t = 0 [≈ 5 min], and o1 is not met within 1 h.
 3. Hint player: apply hint 2 (LC-102 SP 40 %) when it unlocks. o1 is met within 90 min of t = 0, and o2 answered correctly gives a score ≥ 80. Record the time to o1 and the level at which I_s fell below 1 [≈ 31 %].
-4. Throttle-only player: at t = 900 s set `tsInletValve` 16; o1 is not met within 2 h (amplitude stays ≥ 0.04). With `tsInletValve` 10 the loop is stable, but `kpi.qr` < 1 170 kW, so o1 is still not met.
+4. Throttle-only player: at t = 900 s set `tsInletValve` 16; o1 is not met within 2 h (amplitude stays ≥ 0.04). With `tsInletValve` 10 the loop is stable but duty-limited (FC-103 at 100 % OP, `kpi.qr` < 1 260 kW [column-coupled 1200]), so o1 is still not met. Sweep (ruling 2026-10-13): separate runs with `tsInletValve` 8, 9, …, 16 set at t = 900 s and nothing else changed; none meets o1 within 2 h. Also with the inlet at 10 % and the FC-103 SP lowered to 1150 kW at 900 s: o1 not met (duty term).
 5. No safety event: the true sump level stays within 5–95 %.
 
 ## VC-15 Crude fractionation

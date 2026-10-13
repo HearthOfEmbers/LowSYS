@@ -1121,14 +1121,16 @@ The thermosyphon sub-steps run **inside the control fast layer** (§10.1, §12.4
 Q_R,SP,k = Q_v,k = Q_max,0 g(p_k)(1 + d_k)            steam valve request (§10.3)
 Q_max,0  = UA_R,clean (T_st − T_b,mean),  UA_R,clean = U A    (clean exchanger, D = 1, start-of-step T_b,mean)
 thermosyphon sub-step k (8.3)–(8.5) → Q_k, u_k
-FT-103 (Tiers 2/3) measures Q_k                       the steam-side duty, without the (1 + u) factor
+Q_st,k = Q_st,k−1 + (δ_c/τ_st)(Q_k − Q_st,k−1)     steam-chest buffer, τ_st = 10 s (ruling 2026-10-13)
+FT-103 (Tiers 2/3) measures Q_st,k                    the steam-side duty, without the (1 + u) factor
 Q_R,delivered = mean over k of Q_k (1 + u_k)          used by the sump energy balance (4.7) in step 6
 ```
 
 The column's sump energy balance (4.7) uses Q_R,delivered. The boilup and every tray's vapour flow therefore oscillate, and with them the tray ΔPs, the column ΔP and, through the sump pressure, the bottom temperatures. The sump level moves only slightly, because the loop's liquid inventory is not coupled to the sump: the extra boilup over half a cycle is ≈ 8 mol, about 0.03 % of level at 15 %. The loop's own vapour generation W x_e is a diagnostic (shown in the Equipment tab), not a second boilup.
 
 **Why FT-103 does not see the (1 + u) swing.** The steam side has a chest and condensate volume that the process-side surging works against. The shell pressure swings, and the steam valve's flow follows only weakly at periods of 5–20 s.
-- LowSYS idealises this as a perfect buffer. FT-103 and FC-103 see the mean duty, and its slow fall when mist flow limits Q_max.
+- LowSYS models the chest as a first-order buffer between the condensing duty Q_k and the metered steam flow: Q_st with τ_st = 10 s (ruling 2026-10-13). Q_k itself still swings when the loop surges, because the mist-flow limit D(x_e) Q_max,0 moves with x_e (engine 601f80e: ≈ 8 % peak to peak at 15 % level). The buffer passes ≤ 0.14 of an 8.6-s swing and ≤ 0.23 of a 15-s one, so FT-103's 5-s bins vary by ≤ 2 % (VALIDATION.md VC-14.2.2). FT-103 and FC-103 see the mean duty, and its slow fall when mist flow limits Q_max.
+- Q_st applies to the thermosyphon only; with a kettle FT-103 keeps measuring Q_k (no fast component, so the M4 FC-103 results stand). Q_st is set to Q_k at the end of the 13.1 step-7 initialisation and after a kettle → thermosyphon rebuild, is part of the saved loop state (VC-14.2.6), and `ReboilerSnapshot.steamSideDuty` is the sub-step mean of Q_st,k. FC-103 (Kc 0.6, Ti 2 s) on the lagged PV keeps a phase margin of ≈ 55° (process gain ≈ 0.55 % of span per % OP), so its tuning is unchanged.
 - FC-103 (Ti 2 s) therefore does not fight a 9-s oscillation. A real flow loop with a filtered PV would not fight it either.
 - The price is a small energy mismatch. The cycle mean of u is ≤ 0.005 in every VC-14.1 row, so the delivered energy and FT-103 differ by ≤ 0.5 %, inside the 2 % band of C3b (§14.6). A stable loop (u = 0) has no mismatch.
 
@@ -1268,7 +1270,7 @@ This section is the M3 contract (revised 2026-10-12, v1.1). It replaces the v1.0
 
 **Fast layer.** Sub-step δ_c = 0.1 s; n_c = round(dt/δ_c) sub-steps per main step (5 at dt = 0.5 s, 20 at 2 s, 300 at 30 s). It runs at step 2 of the main step (§12.4) and covers the interval [t, t + dt]. Everything it needs from the column (pump limits, Q_max) is frozen at the start-of-step state, as for the thermosyphon (§8.3). Order inside one sub-step:
 
-1. For every valve, in the fixed order FV-101, FV-102, FV-103, LV-101, LV-102, PV-101, PV-102: position update from the current command (§10.3), then valve flow F_k (§10.3), then the flow transmitter on that line (§10.5). With a thermosyphon reboiler (M6), FV-103's step runs one thermosyphon sub-step (§8.3.4) between its valve flow Q_v,k and FT-103, so FT-103 measures that sub-step's Q_k.
+1. For every valve, in the fixed order FV-101, FV-102, FV-103, LV-101, LV-102, PV-101, PV-102: position update from the current command (§10.3), then valve flow F_k (§10.3), then the flow transmitter on that line (§10.5). With a thermosyphon reboiler (M6), FV-103's step runs one thermosyphon sub-step (§8.3.4) between its valve flow Q_v,k and FT-103, so FT-103 measures that sub-step's steam-chest duty Q_st,k (§8.3.4).
 2. For every flow loop in tag order: ratio station (FC-102 in ratio mode, §10.2), then PID execution (§10.2) with h = δ_c. The new OP acts on the valve from the next sub-step.
 
 The flow that every column balance uses in the main step is the mean over the sub-steps:
@@ -1347,7 +1349,7 @@ flow      F_valve = F_max · g(p) · (1 + d)
 - **Steam valve FV-103, Tiers 2/3.** It delivers duty, not a molar flow:
   - F_max·g(p) becomes the duty request Q_v = Q_max,0 · g(p)(1 + d), where Q_max,0 = UA_R,clean (T_st − T_{N+1}) is the clean-exchanger maximum at the start of the step.
   - The delivered duty is Q_k = min(Q_v, Q_max), with Q_max the fouled/flooded value of (8.2) (kettle) or of §8.3 (thermosyphon, where Q_v takes the place of Q_R,SP).
-  - Thermosyphon (M6, §8.3.4): Q_max,0 = UA_R,clean (T_st − T_b,mean) with UA_R,clean = U A (B-T 47.6 kW/K; Q_max,0 ≈ 1636 kW at 50 % level, so the 1300 kW design duty sits at ≈ 79 % open). Q_k comes from the thermosyphon sub-step. FT-103 measures Q_k, and the column receives the sub-step mean of Q_k (1 + u_k).
+  - Thermosyphon (M6, §8.3.4): Q_max,0 = UA_R,clean (T_st − T_b,mean) with UA_R,clean = U A (B-T 47.6 kW/K; Q_max,0 ≈ 1636 kW at 50 % level with the VC-14.1 inputs, so the 1300 kW design duty sits at ≈ 79 % open; column-coupled at E = 0.7 the sump is ≈ 0.8 K cooler, Q_max,0 ≈ 1677 kW and the OP ≈ 77.6 %, ratified 2026-10-13). Q_k comes from the thermosyphon sub-step. FT-103 measures the steam-chest duty Q_st (§8.3.4), and the column receives the sub-step mean of Q_k (1 + u_k).
   - Q_R,delivered = Q̄. This replaces "min(Q_R,SP, Q_max)" in (8.2). The duty limit now shows physically: FC-103 opens the valve to 100 % and the duty still falls short.
   - The v1.0 "steam valve OP (display) = 100 Q/Q_max" is no longer needed, because the valve position is real.
 - **Tier 1 FV-103** delivers boilup V_B = F_max g(p)(1 + d) with F_max = 300 kmol/h. In both tiers, the FT-103 reading is what V_B or Q_R becomes.
@@ -1465,7 +1467,7 @@ Measured quantities:
 - TI-100 measures the reflux temperature T_0 (§7.3, after subcooling).
 - TI-202 measures T_cw,in + Q_C/(ṁ_cw c_p,w).
 - FT-201 measures ṁ_cw/ρ_w with ρ_w = 995 kg/m³.
-- FT-103 measures the delivered boilup (T1) or the delivered duty Q_k (T2/3).
+- FT-103 measures the delivered boilup (T1) or, in T2/3, the steam-side duty: Q_k with a kettle, the steam-chest duty Q_st (§8.3.4) with a thermosyphon.
 - **Analysers on multicomponent presets (M7).** The GC separates every component, and the three tags carry key cuts. For a binary these reduce exactly to the definitions in the table.
   - AT-100: the feed light cut, Σ z_i over the LK and every lighter component.
   - AT-101: the heavy cut in D, Σ x_D,i over the HK and every heavier component (`kpi.xDHeavy`).
@@ -1850,6 +1852,7 @@ Tier 1 skips 5 (V_B lever instead), 10 and 11 (no T, fixed P), and uses K̃ from
 - Fast-forward ("Run to steady state", and speeds ≥ 300× when the user enables "coarse fast-forward" in Settings) uses dt = 2.0 s. Prototype: identical steady states; transients differ by under 1 % in composition.
 - Thermosyphon sub-step 0.1 s; control fast layer sub-step 0.1 s (§10.1); pressure solve once per main step.
 - Tests use dt = 0.5 s unless stated.
+- **dt = 30 s is a test-only robustness step** (ruling 2026-10-13). The app never uses it (dt ≤ 2 s). At 30 s the engine must give the same steady states as at 0.5 and 2 s from the same start, no NaN, no fatal and no false "steady" (§13.3, §12.7 strict clamp). Closed-loop transients need not match: loops executed at rate dt (PC-101, LC-101/102, TC-101) sample every 30 s, and where a configuration raises their loop gain (e.g. a condenser with twice its preset UA doubles PC-101's gain) they may limit-cycle; `runToSteadyState` must then return reached = false. PC-101 is not sub-stepped (the pressure is solved once per main step, so a faster PID would only see a frozen PV), and no tuning depends on dt.
 
 ### 12.6 Cost per step: 40 trays, 8 components, Tier 2
 
