@@ -1,4 +1,4 @@
-# LowSYS status and coordinator handoff
+﻿# LowSYS status and coordinator handoff
 
 Status: IN PROGRESS
 
@@ -54,8 +54,13 @@ Last updated 2026-10-12 by the outgoing coordinator.
   3. Disable the `lowsys-coordinator` scheduled task.
 
 ## Next steps
-1. Read `DEVIATIONS.md` → "M3 handoff" and "Spec decisions 2026-10-12", and `git log -5`.
-2. Done 2026-10-12: OPEN_ITEMS applied to the specs (the engine must now implement CAS-slave `delta` → master OP shift for the H9 ratio-preserving feed event), and `docs/milestones/M4.md` created (about 103 KB). Open questions from the excerpt: VC-7.4's Tier-2 3–9 h window exists only in a test name; no test found for VC-16.3(c); the engine still lacks `inertFraction`, `vaporInventory`, `vaporMoles`, `qMax`, `steamT` and `model.dutyLimited`. The M3-leftovers coder was stopped before it changed anything because usage was low, so step 3 starts from scratch.
-3. **Fresh Sonnet coder:** finish any M3 handoff items (perf first), then build M4 from `docs/milestones/M4.md`, adopting the API names in `fixtures_m4.dart` where reasonable. Push a checkpoint once the Tier-2 engine is in.
-4. **Fresh Opus `xhigh` validator:** run the M4 suite against that checkpoint and adjudicate failures (test wrong, engine wrong or spec wrong). Fix only the tests. Spec issues go into OPEN_ITEMS.md; engine bugs go to the coder.
-5. Report briefly to the user at each milestone. The user is learning distillation and wants autonomous progress, so ask them only for genuine decisions.
+State 2026-10-13 (coordinator run started 2026-10-12):
+- M4: Tier-2 engine in and validated (M4 suite 80/80; da669b8). V1/V2 restore bugs fixed (7312519). M4 app surfaces mostly in (e1d4ae4). Spec decisions on the 9 M4 validation items: da8753e.
+- M5 spec ready (06d06e5, docs/milestones/M5.md). M6 spec ready (6d43717, docs/milestones/M6.md, 29 reference values).
+- In flight: a Sonnet coder finishing M4 leftovers (partial condenser E50, Control Room bars/bubbles, T* display, fonts, screenshots, emulator), then M5. An Opus xhigh validator fixing V3 and re-running the full suite against the da8753e decisions.
+- Decision: spec prototypes (Dart) go into `tools/prototypes/` (tracked). The next spec lane copies `.scratch/m6/` there.
+
+Next:
+1. When the M5 engine checkpoint lands: Opus xhigh validator on M5 (docs/milestones/M5.md reference values).
+2. When the coder finishes M5: start M6 from docs/milestones/M6.md. Ready the M7 spec (Opus xhigh, new physics) while M6 is being coded.
+3. Report briefly to the user at each milestone.
