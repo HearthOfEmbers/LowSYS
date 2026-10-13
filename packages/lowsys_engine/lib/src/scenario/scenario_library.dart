@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../data/scenarios/crude_scenarios.dart';
 import '../data/scenarios/drills.dart';
 import '../data/scenarios/scenarios.dart';
 import 'scenario_def.dart';
@@ -22,6 +23,7 @@ abstract final class Scenarios {
     'G14_thermosyphon': g14Json,
     'G13_debutanizer_fug': g13Json,
     'G15_packing_retrofit': g15Json,
+    'G16_crude_gaps': g16Json,
   };
 
   /// Tier 2 drills: defined and testable (draws, scoring), playable from M4/M6.
@@ -35,6 +37,7 @@ abstract final class Scenarios {
     'H5_bottoms_swings': h5Json,
     'H6_offspec_overhead': h6Json,
     'H7_packed_bed': h7Json,
+    'H8_crude_drift': h8Json,
   };
 
   /// Scenarios playable in this build.

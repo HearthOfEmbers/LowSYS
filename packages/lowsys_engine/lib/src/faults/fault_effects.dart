@@ -77,3 +77,16 @@ class EffectiveParams {
     }
   }
 }
+
+/// Fault effects on the crude unit at the current time (set by the simulator from the fault manager).
+class CrudeFaultState {
+  /// Fraction of the commanded steam that is delivered: bottom, ss1, ss2, ss3 (1 - s of F24).
+  final List<double> steamFactor = [1, 1, 1, 1];
+
+  /// 1 - s of F25.
+  double paFactor = 1;
+
+  /// s dT of F26 (K): true COT = TC-320 value + this.
+  double cotOffset = 0;
+}
+

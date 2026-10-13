@@ -5,6 +5,8 @@ import 'package:meta/meta.dart';
 
 import '../core/ids.dart';
 import '../data/packings_json.dart';
+import '../thermo/crude_thermo.dart';
+import 'crude_config.dart';
 import 'tray_geometry.dart';
 
 Float64List _f64(Object? l) => Float64List.fromList(
@@ -498,6 +500,14 @@ class ColumnConfig {
   final List<InternalsTemplate> internalsTemplates;
   final int internals;
 
+  /// M9 (crude only; empty/null for every other preset): side draws, strippers, pumparound(s), steam points and the
+  /// unit data (ENGINE_API.md 4.1).
+  final List<SideDrawConfig> sideDraws;
+  final List<StripperConfig> strippers;
+  final List<PumparoundConfig> pumparounds;
+  final List<SteamConfig> steam;
+  final CrudeUnitConfig? crude;
+
   /// Key indices used by the analysers and KPIs: the declared keys, or (0, 1) for a binary.
   KeyComponents get effectiveKeys => keys ?? const KeyComponents(0, 1);
 
@@ -531,10 +541,19 @@ class ColumnConfig {
     this.keys,
     this.internalsTemplates = const [],
     this.internals = -1,
+    this.sideDraws = const [],
+    this.strippers = const [],
+    this.pumparounds = const [],
+    this.steam = const [],
+    this.crude,
   });
+
+  bool get isCrude => crude != null;
 
   factory ColumnConfig.fromJson(Map<String, Object?> j) {
     final lev = (j['initialLevers'] as Map<String, Object?>?) ?? const {};
+    final crudeJ = j['crude'] as Map<String, Object?>?;
+    final crudeCfg = crudeJ == null ? null : CrudeUnitConfig.fromJson(crudeJ);
     return ColumnConfig(
       presetId: j['presetId']! as String,
       displayName: (j['displayName'] as String?) ?? j['presetId']! as String,
@@ -553,7 +572,7 @@ class ColumnConfig {
       ],
       feeds: [
         for (final f in (j['feeds']! as List<Object?>))
-          FeedConfig.fromJson(f! as Map<String, Object?>)
+          FeedConfig.fromJson(_resolveAssayFeed(f! as Map<String, Object?>, crudeCfg))
       ],
       condenser: CondenserConfig.fromJson(
           (j['condenser'] as Map<String, Object?>?) ?? const {}),
@@ -582,7 +601,19 @@ class ColumnConfig {
           InternalsTemplate.fromJson(t! as Map<String, Object?>)
       ],
       internals: (j['internals'] as num?)?.toInt() ?? -1,
+      sideDraws: [for (final e in (j['sideDraws'] as List<Object?>?) ?? const []) SideDrawConfig.fromJson(e! as Map<String, Object?>)],
+      strippers: [for (final e in (j['strippers'] as List<Object?>?) ?? const []) StripperConfig.fromJson(e! as Map<String, Object?>)],
+      pumparounds: [for (final e in (j['pumparounds'] as List<Object?>?) ?? const []) PumparoundConfig.fromJson(e! as Map<String, Object?>)],
+      steam: [for (final e in (j['steam'] as List<Object?>?) ?? const []) SteamConfig.fromJson(e! as Map<String, Object?>)],
+      crude: crudeCfg,
     );
+  }
+
+  /// `"z": "assay"` (crude): the mole fractions of the assay pseudo-components, with water 0.
+  static Map<String, Object?> _resolveAssayFeed(Map<String, Object?> f, CrudeUnitConfig? c) {
+    if (f['z'] != 'assay') return f;
+    final th = CrudeThermo((c ?? const CrudeUnitConfig()).assay);
+    return {...f, 'z': [...th.feedZ(), 0.0]};
   }
 
   Map<String, Object?> toJson() => {
@@ -605,6 +636,11 @@ class ColumnConfig {
         if (keys != null) 'keys': {'lk': components[keys!.lk], 'hk': components[keys!.hk]},
         if (internalsTemplates.isNotEmpty) 'internalsTemplates': [for (final t in internalsTemplates) t.toJson()],
         if (internalsTemplates.isNotEmpty) 'internals': internals,
+        if (crude != null) 'sideDraws': [for (final e in sideDraws) e.toJson()],
+        if (crude != null) 'strippers': [for (final e in strippers) e.toJson()],
+        if (crude != null) 'pumparounds': [for (final e in pumparounds) e.toJson()],
+        if (crude != null) 'steam': [for (final e in steam) e.toJson()],
+        if (crude != null) 'crude': crude!.toJson(),
         'initialLevers': initialLevers,
       };
 
@@ -707,7 +743,32 @@ class ColumnConfig {
     }
     if (condenser.drumVolume <= 0) p.add('drumVolume must be > 0');
     if (reboiler.sumpVolume <= 0) p.add('sump volume must be > 0');
+    if (crude != null) _validateCrude(p, n);
     return p;
+  }
+
+  void _validateCrude(List<String> p, int n) {
+    if (tier != ThermoTier.t2) p.add('The crude unit runs Tier 2 only');
+    if (murphree != 1.0) p.add('murphree must be 1.0 for the crude unit (theoretical stages)');
+    if (n != 30) p.add('The crude column has 30 stages (got $n)');
+    if (feeds.length != 1 || feeds.first.stage != 26) p.add('The crude feed enters stage 26');
+    if (components.length != 10) p.add('The crude unit needs PC1..PC9 and water');
+    for (final d in sideDraws) {
+      if (d.drawStage < 2 || d.drawStage > n - 1 || d.returnStage < 1 || d.returnStage > n) {
+        p.add('Draw/return stage of ${d.product} outside 1..$n');
+      } else if (d.returnStage != d.drawStage - 1) {
+        p.add('Return stage of ${d.product} must be drawStage - 1');
+      }
+      if (d.stripper < 0 || d.stripper >= strippers.length) p.add('Stripper ${d.stripper} of ${d.product} is not defined');
+    }
+    for (final s in strippers) {
+      if (s.stages != 2) p.add('A side stripper has exactly 2 stages (got ${s.stages})');
+    }
+    for (final a in pumparounds) {
+      if (a.returnStage >= a.drawStage) p.add('The pumparound return stage must be above its draw stage');
+      if (a.drawStage < 1 || a.drawStage > n || a.returnStage < 1) p.add('Pumparound stages outside 1..$n');
+    }
+    if (steam.where((e) => e.point == 'bottom').length != 1) p.add('Exactly one bottom steam point is required');
   }
 
   ColumnConfig copyWith({
@@ -731,6 +792,11 @@ class ColumnConfig {
     KeyComponents? keys,
     List<InternalsTemplate>? internalsTemplates,
     int? internals,
+    List<SideDrawConfig>? sideDraws,
+    List<StripperConfig>? strippers,
+    List<PumparoundConfig>? pumparounds,
+    List<SteamConfig>? steam,
+    CrudeUnitConfig? crude,
   }) =>
       ColumnConfig(
         presetId: presetId ?? this.presetId,
@@ -753,6 +819,11 @@ class ColumnConfig {
         keys: keys ?? this.keys,
         internalsTemplates: internalsTemplates ?? this.internalsTemplates,
         internals: internals ?? this.internals,
+        sideDraws: sideDraws ?? this.sideDraws,
+        strippers: strippers ?? this.strippers,
+        pumparounds: pumparounds ?? this.pumparounds,
+        steam: steam ?? this.steam,
+        crude: crude ?? this.crude,
       );
 
   /// The configuration with internals template [id] active (PHYSICS.md 13.4): its sections, feed stage and

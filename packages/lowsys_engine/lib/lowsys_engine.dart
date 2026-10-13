@@ -2,6 +2,7 @@
 library;
 
 export 'src/config/column_config.dart';
+export 'src/config/crude_config.dart';
 export 'src/config/presets.dart';
 export 'src/config/tray_geometry.dart';
 export 'src/control/control_system.dart';

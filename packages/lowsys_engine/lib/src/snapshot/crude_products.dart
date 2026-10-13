@@ -41,7 +41,9 @@ class CrudeProductData {
 
   /// K: the cut points (3 side-cut boundaries plus the naphtha end point) implied by the cumulative yields.
   final Float64List idealCutT;
-  const CrudeProductData(this.tbp, this.d86, this.gaps, this.idealYieldVolPct, this.idealCutT);
+  /// Lab sample time (s) in the plant views (D86 and gaps are the last lab result); NaN in the model view.
+  final double labSampleTime;
+  const CrudeProductData(this.tbp, this.d86, this.gaps, this.idealYieldVolPct, this.idealCutT, {this.labSampleTime = double.nan});
 }
 
 /// Product property calculations on liquid compositions (mole fractions of the pseudo-components).
@@ -118,4 +120,86 @@ class CrudeProducts {
   /// Product TBP curve (K) at 0..100 % in 2 % steps.
   List<({double vol, double t})> tbpCurve(Float64List x, int off) =>
       [for (var p = 0; p <= 100; p += 2) (vol: p.toDouble(), t: tbpTrimmed(x, off, p.toDouble()))];
+}
+
+/// Crude KPIs (ENGINE_API.md 7.1, M9): true model values; masked or replaced by lab results in the plant views.
+@immutable
+class CrudeProductKpis {
+  /// Products in the order of [CrudeProduct]; vol % of crude at 15.6 C (sum 100 within 1e-4 at steady state).
+  final Float64List yieldVolPct;
+
+  /// m3/s at 15.6 C.
+  final Float64List productFlow;
+
+  /// K; naphtha..AGO (4 entries). In the plant views the last lab result (NaN before the first).
+  final Float64List d86p5, d86p50, d86p95;
+
+  /// K (D86 5 % heavy - 95 % light).
+  final double gapKeroNaphtha, gapDieselKero, gapAgoDiesel;
+
+  /// K
+  final double residueTbp5;
+
+  /// Stage 25 to 26 liquid, vol % of the crude (PHYSICS.md 9.2).
+  final double overflashVolPct;
+
+  /// K: stage 1, stage 26, stage 30, true COT.
+  final double topT, flashZoneT, bottomT, cot;
+
+  /// W, W, W, W, K, m3/s
+  final double qc, qcMax, qPa, qPaMax, paReturnT, paCirculation;
+
+  /// K, stage 1 (PHYSICS.md 9.3).
+  final double waterDewMargin;
+
+  /// Per side product (kero, diesel, ago): FC-31x cut by its stripper level (PHYSICS.md 9.4).
+  final List<bool> drawDry;
+  final bool condenserLimited, paDutyLimited;
+
+  /// Sim time (s) the lab sample was taken, in the plant views; NaN in the model view.
+  final double labSampleTime;
+  const CrudeProductKpis({
+    required this.yieldVolPct,
+    required this.productFlow,
+    required this.d86p5,
+    required this.d86p50,
+    required this.d86p95,
+    required this.gapKeroNaphtha,
+    required this.gapDieselKero,
+    required this.gapAgoDiesel,
+    required this.residueTbp5,
+    required this.overflashVolPct,
+    required this.topT,
+    required this.flashZoneT,
+    required this.bottomT,
+    required this.cot,
+    required this.qc,
+    required this.qcMax,
+    required this.qPa,
+    required this.qPaMax,
+    required this.paReturnT,
+    required this.paCirculation,
+    required this.waterDewMargin,
+    required this.drawDry,
+    required this.condenserLimited,
+    required this.paDutyLimited,
+    this.labSampleTime = double.nan,
+  });
+}
+
+/// One side stripper (ENGINE_API.md 7.1): stage temperatures, liquid and vapour flows (mol/s), boot level and the
+/// draw, product, vapour-return and steam flows (mol/s).
+@immutable
+class StripperSnapshot {
+  final Float64List t, l, v;
+  final double levelPct, draw, product, vaporReturn, steam;
+  const StripperSnapshot(
+      {required this.t,
+      required this.l,
+      required this.v,
+      required this.levelPct,
+      required this.draw,
+      required this.product,
+      required this.vaporReturn,
+      required this.steam});
 }

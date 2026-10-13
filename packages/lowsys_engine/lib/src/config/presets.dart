@@ -9,6 +9,7 @@ import '../data/presets/ac.dart';
 import '../data/presets/c4.dart';
 import '../data/presets/debut.dart';
 import '../data/presets/deprop.dart';
+import '../data/presets/crude.dart';
 import 'column_config.dart';
 
 /// Shipped column presets (ENGINE_API.md 4.1). M1: `bt` and `bt_custom_alpha`.
@@ -22,8 +23,9 @@ abstract final class Presets {
   static const String c4 = 'c4';
   static const String debut = 'debut';
   static const String deprop = 'deprop';
+  static const String crude = 'crude';
 
-  static const List<PresetId> ids = [bt, btCustomAlpha, mw, ew, ac, c4, debut, deprop, btPacked];
+  static const List<PresetId> ids = [bt, btCustomAlpha, mw, ew, ac, c4, debut, deprop, btPacked, crude];
 
   static final Map<PresetId, String> _json = {
     bt: btPresetJson,
@@ -35,6 +37,7 @@ abstract final class Presets {
     c4: c4PresetJson,
     debut: debutPresetJson,
     deprop: depropPresetJson,
+    crude: crudePresetJson,
   };
 
   /// Parses and validates the preset. Each call returns a fresh (immutable) config.

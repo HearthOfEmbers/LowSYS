@@ -77,6 +77,9 @@ class SolverHealth {
   int negativeClamps = 0;
   int stepRetries = 0;
   int pressureFallbacks = 0;
+
+  /// Crude (M9, PHYSICS.md 9.1): stages where H_j - h_j <= 0 in (4.6).
+  int negativeLatent = 0;
   bool thermoOutOfRange = false;
   bool fatal = false;
   String? fatalMessage;
@@ -88,6 +91,7 @@ class SolverHealth {
     ..negativeClamps = negativeClamps
     ..stepRetries = stepRetries
     ..pressureFallbacks = pressureFallbacks
+    ..negativeLatent = negativeLatent
     ..thermoOutOfRange = thermoOutOfRange
     ..fatal = fatal
     ..fatalMessage = fatalMessage;
