@@ -130,14 +130,17 @@ class InstrumentReading {
 
 /// One transmitter with the full PHYSICS.md 10.5 pipeline and its own random streams.
 class Instrument {
-  final InstrumentSpec spec;
+  InstrumentSpec spec;
   int seed;
   late Rng _rngS = Rng.stream(seed, 'inst:${spec.tag}:s');
   late Rng _rngE = Rng.stream(seed, 'inst:${spec.tag}:e');
   late Rng _rngSpike = Rng.stream(seed, 'inst:${spec.tag}:spike');
-  final OuNoise _ns;
+  OuNoise _ns;
 
   String? loopTag;
+
+  /// True for the Tier-2-only instruments while the column runs Tier 1 (PHYSICS.md 13.5).
+  bool hidden = false;
   InstrumentFault? fault;
 
   // pipeline state
@@ -224,6 +227,15 @@ class Instrument {
     _curSum = 0;
     _curSq = 0;
     _curN = 0;
+  }
+
+  /// Replaces the span and noise data (FT-103 changes quantity on a tier switch, PHYSICS.md 13.5) and restarts
+  /// every state at the true value [v] at time [t].
+  void retarget(InstrumentSpec s, double v, double t) {
+    spec = s;
+    _ns = OuNoise(s.sigmaS / 100 * (s.hi - s.lo), s.tauS);
+    typicalPct = null;
+    reset(v, t);
   }
 
   void reseed(int newSeed) {

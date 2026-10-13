@@ -71,6 +71,21 @@ class FaultManager {
     }
   }
 
+  /// Trap bypass (F14): once opened the condensate-backup severity falls to zero over 300 s.
+  double? _trapBypassSince;
+  bool get trapBypassOpen => _trapBypassSince != null;
+  void setTrapBypass(bool on, double time) {
+    if (on && _trapBypassSince == null) _trapBypassSince = time;
+    if (!on) _trapBypassSince = null;
+    onChange?.call();
+  }
+
+  double _trapFactor(double t) {
+    final s0 = _trapBypassSince;
+    if (s0 == null) return 1.0;
+    return (1 - (t - s0) / 300).clamp(0.0, 1.0);
+  }
+
   bool get antifoam => _antifoam;
   void setAntifoam(bool on, double time) {
     if (on && !_antifoam) _antifoamSince = time;
@@ -232,6 +247,29 @@ class FaultManager {
               }
             }
           }
+        case FaultType.feedThermal:
+          final dT = (f.spec.params['dT'] as num?)?.toDouble() ?? -40.0;
+          final dq = (f.spec.params['dq'] as num?)?.toDouble() ?? 0.3;
+          ep.feedDt += s * dT;
+          ep.feedDq += s * dq;
+        case FaultType.coolingLoss:
+          if ((f.spec.params['mode'] ?? 'flow') == 'temperature') {
+            ep.cwTempAdd += 15 * s;
+          } else {
+            ep.cwFlowScale *= 1 - s;
+          }
+        case FaultType.condenserFouling:
+          ep.condFoulS = math.max(ep.condFoulS, s);
+        case FaultType.nonCondensables:
+          ep.epsI += 1e-4 * s;
+        case FaultType.refluxPumpTrip:
+          ep.refluxCapScale *= 1 - s;
+        case FaultType.reboilerFouling:
+          ep.rebFoulS = math.max(ep.rebFoulS, s);
+        case FaultType.condensateBackup:
+          ep.fFlooded = math.max(ep.fFlooded, 0.8 * s * _trapFactor(t));
+        case FaultType.steamHeaderLoss:
+          ep.headerScale *= 1 - 0.6 * s;
         default:
           break;
       }
@@ -242,6 +280,7 @@ class FaultManager {
         'counter': _counter,
         'antifoam': _antifoam,
         'antifoamSince': _antifoamSince,
+        'trapBypassSince': _trapBypassSince,
         'faults': [
           for (final f in _faults)
             {'id': f.id, 'spec': f.spec.toJson(), 'cleared': f.cleared},
@@ -253,6 +292,7 @@ class FaultManager {
     _counter = (j['counter']! as num).toInt();
     _antifoam = j['antifoam']! as bool;
     _antifoamSince = (j['antifoamSince']! as num).toDouble();
+    _trapBypassSince = (j['trapBypassSince'] as num?)?.toDouble();
     for (final e in (j['faults']! as List<Object?>)) {
       final m = e! as Map<String, Object?>;
       final f = _Fault(m['id']! as String,

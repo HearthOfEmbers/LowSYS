@@ -10,6 +10,9 @@ enum ValveCharacteristic { linear, equalPercentage }
 class Valve {
   final String id;
 
+  /// True for the Tier-2-only valves while the column runs Tier 1.
+  bool hidden = false;
+
   /// Flow at 100 % (mol/s); for the steam valve of Tiers 2/3 the duty request scale (W).
   double fMax;
   final double tau;

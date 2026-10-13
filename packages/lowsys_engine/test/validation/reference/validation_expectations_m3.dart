@@ -112,3 +112,8 @@ const vc251 = (
 
 /// VC-26.3 scores.
 const vc263 = (guided: 64, drill: 96, drillNever: 20);
+
+/// VC-26.4 G6 (B-T Tier 1, E 0.5, L0 100, V_B 150): (N, feed tray, xD).
+/// The feed tray is the one a rebuild from 20 / 10 gives under PHYSICS.md
+/// §13.4 (floor(φ N' + 1e-9), φ = 0.5; spec decision 2026-10-12 #7).
+const vc264G6 = [(28, 14, 0.98056), (27, 13, 0.97761)];

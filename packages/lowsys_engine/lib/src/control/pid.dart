@@ -30,7 +30,10 @@ class ControlLoop {
   final LoopTag tag;
 
   /// Instrument tag of the PV, valve id (or `FC-103.sp` for a cascade master) of the MV.
-  final String pvTag;
+  String pvTag;
+
+  /// True for the Tier-2-only loops while the column runs Tier 1 (PHYSICS.md 13.5).
+  bool hidden = false;
   final String mvRef;
   final String? masterTag;
   final PidParams params;

@@ -4,9 +4,11 @@ library;
 
 import 'package:test/test.dart';
 
+import 'reference/cmo_steady_reference.dart';
 import 'reference/instrument_reference.dart';
 import 'reference/pid_reference.dart';
 import 'reference/prng_reference.dart';
+import 'reference/validation_expectations.dart';
 import 'reference/validation_expectations_m3.dart';
 
 void main() {
@@ -52,6 +54,20 @@ void main() {
     final g2 = Xoshiro128ss.stream(1, 'FT-102');
     expect(g2.uniform(), closeTo(vc203.uniform, 1e-15));
     expect(g2.normal(), closeTo(vc203.normal1, 1e-15));
+  });
+  test('reference: VC-26.4 G6 rows (independent CMO Newton and shooting, E 0.5)',
+      () {
+    for (final (n, feed, xd) in vc264G6) {
+      // the feed tray of a rebuild from 20 / 10 (PHYSICS.md §13.4)
+      expect(feed, (0.5 * n + 1e-9).floor());
+      final col = btDefault.copyWith(nTrays: n, feedTray: feed, e: 0.5);
+      expect(solveNewton(col).xD, closeTo(xd, 1e-4), reason: 'N $n');
+      expect(solveShooting(col).xD, closeTo(xd, 1e-4), reason: 'N $n');
+    }
+    // the old round-half-up feed tray 14 at N 27 misses the G6 row
+    expect(
+        solveNewton(btDefault.copyWith(nTrays: 27, feedTray: 14, e: 0.5)).xD,
+        isNot(closeTo(0.97761, 1e-4)));
   });
   test('reference: σ_disp table', () {
     expect(ft102.sigmaDisp, closeTo(0.409, 0.001));

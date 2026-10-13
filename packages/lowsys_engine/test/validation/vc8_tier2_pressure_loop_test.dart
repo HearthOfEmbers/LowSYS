@@ -298,4 +298,32 @@ void main() {
     expect(loopOf(s, 'FC-103').sp,
         isNot(closeTo(s.kpis.qr, 0))); // the SP moved; sanity only
   });
+
+  test(
+      'VC-16.3(c) enabling TC-101 at a Tier 2 steady state: SP = TI-114 reading, FC-103 SP moves < 0.1 kW in 60 s; disabling holds FC-103 SP',
+      () {
+    final sim = _t2Steady(); // noise off
+    final ti = reading(sim.snapshot(), 'TI-114').value;
+    final sp0 = loopOf(sim.snapshot(), 'FC-103').sp;
+    sim.setLever('tc101Enable', 1);
+    sim.step();
+    expect(loopOf(sim.snapshot(), 'TC-101').sp, closeTo(ti, 1e-6),
+        reason: 'TC-101 SP tracks the TI-114 reading at the switch');
+    var maxMove = (loopOf(sim.snapshot(), 'FC-103').sp - sp0).abs();
+    advanceSampling(sim, 60, 0.5, (t, s) {
+      maxMove = math.max(maxMove, (loopOf(s, 'FC-103').sp - sp0).abs());
+    });
+    expect(maxMove, lessThan(0.1 * kw), reason: 'FC-103 SP bump in 60 s');
+    // move the cascade so that "holds" is distinguishable from "reverts"
+    sim.control.setSp('TC-101', loopOf(sim.snapshot(), 'TC-101').sp + 0.5);
+    sim.advance(600);
+    final spCas = loopOf(sim.snapshot(), 'FC-103').sp;
+    expect((spCas - sp0).abs(), greaterThan(0.1 * kw),
+        reason: 'TC-101 moved the duty SP');
+    sim.setLever('tc101Enable', 0);
+    advanceSampling(sim, 300, 5, (t, s) {
+      expect(loopOf(s, 'FC-103').sp, closeTo(spCas, 1e-6 * spCas.abs()),
+          reason: 'FC-103 SP held at $t s after disabling');
+    });
+  });
 }

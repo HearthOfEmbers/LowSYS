@@ -89,6 +89,13 @@ class CondenserConfig {
   /// Pa
   final double pTopDesign, reliefSet;
   final double cwInletT, cwMaxFlow, uaClean, dvMax;
+
+  /// Vapour-product header pressure (partial condenser), vent header pressure and capacities (PHYSICS.md 7.1, 7.2);
+  /// null: P_design - 30 kPa, and 50 kPa below 3 bar design pressure else 1 atm.
+  final double? pDown, pVent;
+
+  /// Inert vent capacity at 50 kPa driving force (mol/s) and relief capacity (mol/s; 2 x the design V1).
+  final double ventMax, reliefMax;
   const CondenserConfig({
     this.type = CondenserType.total,
     this.drumVolume = 3.0,
@@ -99,7 +106,14 @@ class CondenserConfig {
     this.cwMaxFlow = 41.54,
     this.uaClean = 29900,
     this.dvMax = 0,
+    this.pDown,
+    this.pVent,
+    this.ventMax = 2.0,
+    this.reliefMax = 83.3333333333,
   });
+
+  double get pDownEff => pDown ?? pTopDesign - 30000;
+  double get pVentEff => pVent ?? (pTopDesign < 3e5 ? 50000.0 : 101325.0);
 
   factory CondenserConfig.fromJson(Map<String, Object?> j) {
     const d = CondenserConfig();
@@ -115,6 +129,10 @@ class CondenserConfig {
       cwMaxFlow: g('cwMaxFlow', d.cwMaxFlow),
       uaClean: g('uaClean', d.uaClean),
       dvMax: g('dvMax', d.dvMax),
+      pDown: (j['pDown'] as num?)?.toDouble(),
+      pVent: (j['pVent'] as num?)?.toDouble(),
+      ventMax: g('ventMax', d.ventMax),
+      reliefMax: g('reliefMax', d.reliefMax),
     );
   }
 
@@ -128,6 +146,10 @@ class CondenserConfig {
         'cwMaxFlow': cwMaxFlow,
         'uaClean': uaClean,
         'dvMax': dvMax,
+        if (pDown != null) 'pDown': pDown,
+        if (pVent != null) 'pVent': pVent,
+        'ventMax': ventMax,
+        'reliefMax': reliefMax,
       };
 }
 
@@ -183,6 +205,12 @@ class ControlConfig {
 
   /// Valve capacities (mol/s). Null: 2 x the design flow derived from the initial levers.
   final double? distillateMax, bottomsMax;
+
+  /// Instrumented trays (TI-1jj, PHYSICS.md 10.5); null: the B-T heights [1, 4, 7, 10, 12, 14, 17, 20] / 20 scaled to N.
+  final List<int>? temperatureTrays;
+
+  /// Tray whose temperature TC-101 controls.
+  final int tc101Tray;
   const ControlConfig({
     this.levelKc = 2.0,
     this.levelTi = 1800,
@@ -190,7 +218,24 @@ class ControlConfig {
     this.sumpLevelSp = 50,
     this.distillateMax,
     this.bottomsMax,
+    this.temperatureTrays,
+    this.tc101Tray = 14,
   });
+
+  static const List<int> _btTrays = [1, 4, 7, 10, 12, 14, 17, 20];
+
+  /// The instrumented trays for a column of [n] trays: each B-T entry keeps its fractional height, the result is
+  /// de-duplicated and the TC-101 tray is always included (PHYSICS.md 10.5).
+  List<int> trayList(int n) {
+    final base = temperatureTrays ??
+        [
+          for (final t in _btTrays)
+            n == 20 ? t : (t * n / 20).round().clamp(1, n),
+        ];
+    final out = <int>{for (final t in base) t.clamp(1, n)};
+    out.add(tc101Tray.clamp(1, n));
+    return out.toList()..sort();
+  }
 
   factory ControlConfig.fromJson(Map<String, Object?> j) {
     const d = ControlConfig();
@@ -202,6 +247,10 @@ class ControlConfig {
       sumpLevelSp: g('sumpLevelSp', d.sumpLevelSp),
       distillateMax: (j['distillateMax'] as num?)?.toDouble(),
       bottomsMax: (j['bottomsMax'] as num?)?.toDouble(),
+      temperatureTrays: (j['temperatureTrays'] as List<Object?>?)
+          ?.map((e) => (e! as num).toInt())
+          .toList(),
+      tc101Tray: (j['tc101Tray'] as num?)?.toInt() ?? 14,
     );
   }
 
@@ -213,6 +262,8 @@ class ControlConfig {
         'sumpLevelSp': sumpLevelSp,
         if (distillateMax != null) 'distillateMax': distillateMax,
         if (bottomsMax != null) 'bottomsMax': bottomsMax,
+        if (temperatureTrays != null) 'temperatureTrays': temperatureTrays,
+        'tc101Tray': tc101Tray,
       };
 }
 
