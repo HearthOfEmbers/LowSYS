@@ -31,7 +31,7 @@ FaultId _equip(Simulator sim, FaultType type, String id,
 void main() {
   group('VC-5 Tier 2', () {
     test(
-        '5.2 exact component conservation including the overhead inventory n_V,i (1e-8) over 4 h with a reflux step',
+        '5.2 exact component conservation including the overhead inventory n_V,i (1e-10) over 4 h with a reflux step',
         () {
       final sim = newSim(btT2());
       final nc = sim.config.nc;
@@ -58,7 +58,7 @@ void main() {
       }
       for (var i = 0; i < nc; i++) {
         final c = ((inv(i) - inv0[i]) - fin[i] + fout[i]).abs() / fin[i];
-        expect(c, lessThan(1e-8), reason: 'component $i closure $c');
+        expect(c, lessThan(1e-10), reason: 'component $i closure $c');
       }
     });
     test(
@@ -78,36 +78,104 @@ void main() {
     test(
         'F15 s 0.5: header 3.16 bar(a), T_st 135.4 °C, Q_max 1437 kW (no limit); limit starts at s ≈ 0.58; s 0.7 limits',
         () {
-      for (final (s, pBar, tSt, qMax) in f15) {
-        final sim = _steady();
+      // The §11 Q_max figures are UA_R (T_st − 110.4 °C): the VC-11 design
+      // point (E = 1, duty 1301.5 kW) at which §8.2 sizes UA_R, so the test
+      // runs there (the E = 0.7 default has T_B 109.6 °C: Q_max 1490 kW at
+      // s 0.5). Q_max is read in the first step after the fault (start-of-
+      // step T_B); once the duty is limited T_B falls and Q_max recovers
+      // (self-consistent), so "limited" is judged at onset: Q_max < SP.
+      for (final (s, pBar, tSt, qMax) in [
+        ...f15,
+        (0.55, double.nan, double.nan, double.nan),
+        (0.6, double.nan, double.nan, double.nan)
+      ]) {
+        final sim = vc11Sim()..runToSteadyState();
+        final tB0 = sim.snapshot().reboiler.tSump;
+        final sp = loopOf(sim.snapshot(), 'FC-103').sp;
+        expect(tB0 - 273.15, closeTo(110.386, 0.02));
         _equip(sim, FaultType.steamHeaderLoss, 'reboiler', severity: s);
+        sim.step();
+        var st = sim.snapshot();
+        final pHdr = (3.5e5 + 101325) * (1 - 0.6 * s);
+        expect(st.reboiler.steamP, closeTo(pHdr, 1), reason: 's=$s P_hdr');
+        expect(st.reboiler.qMax,
+            closeTo(st.reboiler.uaEff * (st.reboiler.steamT - tB0),
+                1e-4 * st.reboiler.qMax),
+            reason: 's=$s Q_max = UA_R (T_st − T_B)');
+        if (!pBar.isNaN) {
+          expect(st.reboiler.steamP / 1e5, closeTo(pBar, 0.01),
+              reason: 's=$s header bar(a)');
+          expect(st.reboiler.steamT - 273.15, closeTo(tSt, 0.1),
+              reason: 's=$s T_st');
+          expect(st.reboiler.qMax / kw, closeTo(qMax, 0.01 * qMax),
+              reason: 's=$s Q_max');
+        }
+        expect(st.reboiler.qMax < sp, s >= f15LimitS,
+            reason: 's=$s limited at onset? Q_max ${st.reboiler.qMax / kw} kW');
         sim.advance(300);
-        final st = sim.snapshot();
-        expect(reading(st, 'PT-201').value / 1e5, closeTo(pBar - 1.01325, 0.02),
-            reason: 's=$s header gauge pressure');
-        expect(st.reboiler.steamT - 273.15, closeTo(tSt, 0.2),
-            reason: 's=$s T_st');
-        expect(st.reboiler.qMax / kw, closeTo(qMax, 0.02 * qMax),
-            reason: 's=$s Q_max');
-        final limited =
-            hasAlarm(st, 'model.dutyLimited') || st.kpis.qr < 0.98 * 1300 * kw;
-        expect(limited, s >= f15LimitS, reason: 's=$s limited?');
+        st = sim.snapshot();
+        expect(reading(st, 'PT-201').value, closeTo(pHdr - 101325, 2000),
+            reason: 's=$s PT-201 header gauge pressure');
+        if (s >= f15LimitS) {
+          expect(loopOf(st, 'FC-103').op, greaterThanOrEqualTo(99.9),
+              reason: 's=$s steam valve wide open');
+          expect(st.kpis.qr, lessThan(sp - 2 * kw), reason: 's=$s duty < SP');
+        } else {
+          expect(st.kpis.qr, closeTo(sp, 0.005 * sp),
+              reason: 's=$s FC-103 recovers the SP');
+        }
       }
     });
     test(
-        'F11 non-condensables s 1: ≈ 10 mol inert/h into a ≈ 104 mol overhead; y_I ≈ 0.09, extra subcooling ≈ 5 K after 1 h; vent restores P within 10 min',
+        'F11 non-condensables s 1: 10 mol inert/h into the 104-mol overhead; CW saturates within 10–30 min, then P rises (1 h: ≈ 139 kPa, y_I ≈ 0.072, extra subcooling 20·3·y_I ≈ 4.3 K; the doc\'s 0.09 / 5 K assume P held); vent restores P within 10 min',
         () {
       final sim = _steady();
-      final t0 = reading(sim.snapshot(), 'TI-100').value;
+      final s0 = sim.snapshot();
+      final nTot0 = s0.condenser!.vaporMoles;
+      expect(nTot0, closeTo(f11.overheadMol, 1.5),
+          reason: 'overhead at 1 atm (ideal gas, 3 m³)');
       _equip(sim, FaultType.nonCondensables, 'condenser');
-      sim.advance(3600);
+      // P rises above SP while the CW valve still has room (PI lag), then the
+      // valve saturates: blanketing (f = 3 y_I) and the lower condensable
+      // partial pressure eat the +7.9 % reserve of the 50 % design at
+      // y_I ≈ 0.02 (≈ 15 min at s = 1).
+      double? tSat, pAtSat;
+      var pRiseBeforeSat = false;
+      advanceSampling(sim, 3600, 5, (t, s) {
+        final op = loopOf(s, 'PC-101').op;
+        if (tSat == null && s.kpis.pTop > 101325 + 300 && op < 95) {
+          pRiseBeforeSat = true;
+        }
+        if (tSat == null && op >= 99.9) {
+          tSat = t;
+          pAtSat = s.kpis.pTop;
+        }
+      });
       final s = sim.snapshot();
-      expect(s.condenser!.inertFraction, closeTo(f11.yI1h, 0.02));
-      expect(s.condenser!.vaporMoles, closeTo(f11.overheadMol, 15));
-      expect(t0 - reading(s, 'TI-100').value, closeTo(f11.subcool1h, 1.5),
-          reason: 'subcooling up (H2 ≥ 5 K)');
-      expect(s.kpis.pTop, greaterThan(101325 + 500),
+      final c = s.condenser!;
+      final yI = c.inertFraction;
+      final nI = c.vaporMoles * yI / (1 - yI);
+      expect(nI, closeTo(f11.inertPerHour, 0.1),
+          reason: 'ε_I F t = 1e-4 × 100 kmol/h × 1 h');
+      expect(pRiseBeforeSat, isTrue,
           reason: 'P up while the CW valve is not saturated at first');
+      expect(tSat, isNotNull, reason: 'CW valve saturates');
+      expect(tSat!, inInclusiveRange(600, 1800),
+          reason: 'valve saturates at ${tSat! / 60} min (P ${pAtSat! / 1000} kPa)');
+      expect(s.kpis.pTop, greaterThan(101325 + 20000),
+          reason: 'P rises once the valve is saturated (engine 139 kPa)');
+      // The §11 figures (104 mol, y_I 0.09, f 0.27, +5 K) assume P held at
+      // 1 atm; with P at ≈ 139 kPa the overhead holds ≈ 139 mol, y_I ≈ 0.072
+      // and the extra subcooling is 20 × 3 y_I ≈ 4.3 K (OPEN_ITEMS.md).
+      expect((nI + c.vaporMoles) * 8.314462618 * c.tCond / 3.0,
+          closeTo(s.kpis.pTop, 0.002 * s.kpis.pTop),
+          reason: 'P = (n_V + n_I) R T_0 / V_ovh');
+      expect(yI, inInclusiveRange(0.06, f11.yI1h + 0.005));
+      expect(c.subcooling, closeTo(20 * 3 * yI, 0.01),
+          reason: 'ΔT_sub = 20 f_blanket');
+      expect(c.tCond - reading(s, 'TI-100').value, closeTo(c.subcooling, 0.3),
+          reason: 'TI-100 shows the subcooled reflux');
+      expect(c.subcooling, greaterThan(4.0), reason: 'subcooling up');
       sim.setLever('inertVent', 100);
       final tBack = firstTime(
           sim, 600, (st) => (st.kpis.pTop - 101325).abs() < 500,
@@ -214,7 +282,58 @@ void main() {
       expect(s.reboiler.steamT, lessThan(tst0 - 5));
       expect(hasAlarm(s, 'model.dutyLimited') || hasAlarm(s, 'FC-103.OPSAT'),
           isTrue);
-      expect(s.kpis.qr, lessThan(0.9 * 1300 * kw));
+      // "Duty limited" is the evidence, not a size: as the duty falls the
+      // bottoms get lighter, T_B drops (≈ 103 °C) and Q_max = UA_R (T_st −
+      // T_B) recovers, so the self-consistent duty is ≈ 1200 kW, below SP.
+      expect(s.kpis.qr, lessThan(loopOf(s, 'FC-103').sp - 20 * kw));
+      expect(s.reboiler.qMax,
+          closeTo(s.reboiler.uaEff * (s.reboiler.steamT - s.reboiler.tSump),
+              1e-3 * s.reboiler.qMax));
+      expect(s.kpis.qr, lessThanOrEqualTo(s.reboiler.qMax * 1.001));
+    });
+    test(
+        'F09 pressure levels [P] at the VC-11 point: flow s 0.6 → 1.070, s 0.7 → 1.167 bar(a); temperature s 0.6 → 1.180, s 1 → 1.389 bar(a); CW 100 %',
+        () {
+      // Independent check of s 0.7 flow: 0.3 × 41.54 kg/s gives 29.9/(1 +
+      // 29.9/104.2) = 23.2 kW/K, so ≈ 1281 kW needs T_sat ≈ 85.2 °C, ≈ 1.165
+      // bar(a) for x_D ≈ 0.98. Engine (validator run): 1.0698, 1.1668,
+      // 1.1796, 1.3887.
+      for (final (mode, s, pBar) in [
+        ('flow', 0.6, 1.070),
+        ('flow', 0.7, 1.167),
+        ('temperature', 0.6, 1.180),
+        ('temperature', 1.0, 1.389)
+      ]) {
+        final sim = vc11Sim()..runToSteadyState();
+        _equip(sim, FaultType.coolingLoss, 'condenser',
+            severity: s, params: {'mode': mode});
+        sim.advance(4 * 3600);
+        final st = sim.snapshot();
+        expect(loopOf(st, 'PC-101').op, greaterThanOrEqualTo(99.9),
+            reason: '$mode s=$s CW valve');
+        expect(st.kpis.pTop / 1e5, closeTo(pBar, 0.005),
+            reason: '$mode s=$s P_top');
+      }
+    });
+    test(
+        'H1 F07 feed +0.1 benzene in Tier 2 (LV, fixed duty): tray 10 T down ≥ 1 K; D up ≥ 0.3 kmol/h',
+        () {
+      final sim = _steady();
+      final p0 = prof(sim);
+      sim.faults.inject(FaultSpec(
+          type: FaultType.feedComposition,
+          location: FaultLocation.feed(0),
+          severity: 1.0,
+          onset: sim.time,
+          ramp: 0,
+          params: const {
+            'dz': [0.1, -0.1]
+          }));
+      final p = runSteady(sim);
+      // engine (validator run): D 49.84 → 51.02, T10 92.05 → 87.40 °C
+      expect(tC(p.s, 10), lessThan(tC(p0.s, 10) - 1));
+      expect(p.dKmolh, greaterThan(p0.dKmolh + 0.3));
+      expect(p.s.kpis.qr, closeTo(p0.s.kpis.qr, 1), reason: 'duty fixed');
     });
     test(
         'F08 feed thermal upset (T_F −40 K): V and L change below the feed; q rises above 1',

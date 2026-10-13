@@ -101,22 +101,30 @@ const vc271 = (
 );
 
 /// VC-27.2 B-T pressure sweep at L0 100, D 50, E 0.7: P bar(a), Q_R, xD, xB, T_D, T_B, α feed tray.
+/// Re-pinned 2026-10-12 (perfect condenser, P held exactly); tolerances
+/// Q_R ± 0.3 %, x ± 2e-4, T ± 0.05 K, α ± 0.002.
 const vc272 = [
-  (0.50, 1352.5, 0.98617, 0.01290, 58.38, 86.19, 2.714),
-  (0.70, 1331.9, 0.98219, 0.01720, 68.11, 96.46, 2.607),
-  (1.01325, 1306.9, 0.97662, 0.02331, 79.60, 108.49, 2.498),
-  (2.00, 1253.5, 0.96080, 0.03800, 103.10, 132.79, 2.315),
-  (3.00, 1213.7, 0.94914, 0.05113, 119.19, 149.18, 2.211),
+  (0.50, 1349.6, 0.98766, 0.01234, 59.02, 86.94, 2.707),
+  (0.70, 1328.6, 0.98374, 0.01627, 68.86, 97.35, 2.601),
+  (1.01325, 1303.1, 0.97808, 0.02193, 80.54, 109.60, 2.491),
+  (2.00, 1247.7, 0.96299, 0.03700, 104.75, 134.66, 2.302),
+  (3.00, 1207.6, 0.95067, 0.04932, 121.19, 151.45, 2.197),
 ];
 
-/// VC-27.3 utility limits (kW): P, reboiler max at 3.5 bar(g), at 10 bar(g), condenser max CW 30 °C, CW 15 °C.
+/// VC-27.3 utility limits (kW), re-pinned with 27.2: P, reboiler max at 3.5 bar(g), at 10 bar(g), condenser max CW 30 °C, CW 15 °C.
 const vc273 = [
-  (0.50, 3559.0, 5636.0, 781.0, 1194.0),
-  (0.70, 2969.0, 5046.0, 1049.0, 1462.0),
-  (1.01325, 2277.0, 4354.0, 1365.0, 1778.0),
-  (2.00, 880.0, 2957.0, 2012.0, 2425.0),
-  (3.00, double.nan, 2015.0, 2455.0, 2868.0),
+  (0.50, 3516.0, 5593.0, 799.0, 1212.0),
+  (0.70, 2918.0, 4995.0, 1070.0, 1483.0),
+  (1.01325, 2214.0, 4290.0, 1391.0, 1804.0),
+  (2.00, 772.0, 2849.0, 2058.0, 2471.0),
+  (3.00, double.nan, 1884.0, 2510.0, 2923.0),
 ];
+
+/// VC-16.6c flash stability, CW 100 % at the VC-11 state. The doc's
+/// 0.966 bar(a) is what UA_clean = 28.5 kW/K (the v1.0 70 % design) gives;
+/// with the specified 29.9 kW/K the condenser needs T_sat ≈ 76.5 °C for
+/// ≈ 1281 kW, i.e. ≈ 0.906 bar(a) (validator re-derivation, OPEN_ITEMS.md).
+const vc166c = (pBarDoc: 0.966, pBar: 0.906);
 
 /// Condenser design (PHYSICS.md §7.2): UA 29.9 kW/K at 50 % CW, outlet 44.7 °C.
 const condenserDesign = (
@@ -153,6 +161,8 @@ const vc89 = (
 );
 
 /// F15 (§11): s = 0.5 → 3.16 bar(a), 135.4 °C, Q_max 1437 kW; limit at s ≈ 0.58; s = 0.7 → 2.62 bar(a), 129.0 °C, ≈ 1070; s = 1 → 1.81, 117.1, 384.
+/// The Q_max figures use T_B = 110.4 °C, i.e. the VC-11 design point (E = 1,
+/// the point §8.2 sizes UA_R at), not the E = 0.7 default (T_B 109.6 °C).
 const f15 = [
   (0.5, 3.16, 135.4, 1437.0),
   (0.7, 2.62, 129.0, 1070.0),
