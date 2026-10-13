@@ -4,6 +4,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 import '../app_scope.dart';
 import '../controllers/sim_controller.dart';
 import '../theme/lowsys_theme.dart';
+import 'drill_ui.dart';
 import 'time_bar.dart';
 
 /// Scenario list dialog (S3): pick a guided scenario, read the briefing (S4), start it.
@@ -27,10 +28,10 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
                 child: ListView(
                   shrinkWrap: true,
                   children: [
-                    for (final d in Scenarios.all)
+                    for (final d in [...Scenarios.all, for (final id in Scenarios.allIds.where((x) => !Scenarios.ids.contains(x))) Scenarios.byId(id)])
                       ListTile(
                         title: Text(
-                          '${d.id.split('_').first}  ${d.title}',
+                          '${d.id.split('_').first}  ${d.title}${d.isDrill ? '  (drill)' : ''}',
                           style: t.type.display.style(16, p.accent),
                         ),
                         subtitle: Text(
@@ -70,8 +71,16 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
             children: [
               Text(picked.briefing, style: t.type.label.style(14.5, p.ink)),
               const SizedBox(height: 12),
+              if (picked.isDrill)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'One fault is hidden in the plant and starts some minutes after you begin. Press Diagnose when you know the category and the location. You have ${picked.diagnosis?.attempts ?? 2} attempts; wrong ones cost points.',
+                    style: t.type.label.style(13.5, p.warn),
+                  ),
+                ),
               Text(
-                'GOALS',
+                picked.isDrill ? 'WHAT TO DO' : 'GOALS',
                 style: t.type.display.style(
                   13.5,
                   p.accent,
@@ -88,7 +97,9 @@ Future<void> showScenarioList(BuildContext context, SimController sim) async {
                 ),
               const SizedBox(height: 8),
               Text(
-                'Par time ${formatClock(picked.parTime)}, limit ${formatClock(picked.timeLimit)}.',
+                picked.isDrill
+                    ? 'Time limit ${formatClock(picked.timeLimit)}.'
+                    : 'Par time ${formatClock(picked.parTime)}, limit ${formatClock(picked.timeLimit)}.',
                 style: t.type.label.style(12.5, p.inkMuted),
               ),
             ],
@@ -179,6 +190,15 @@ class _ScenarioHudState extends State<ScenarioHud> {
                             ],
                           ),
                         ),
+                        if (open && def.isDrill)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'Find the hidden fault. Attempts left: ${r.diagnosisAttemptsLeft}',
+                              key: const ValueKey('drill-attempts'),
+                              style: t.type.label.style(13, p.ink),
+                            ),
+                          ),
                         if (open)
                           for (var i = 0; i < r.objectives.length; i++)
                             _objective(context, sim, def, r.objectives[i], t),
@@ -206,10 +226,19 @@ class _ScenarioHudState extends State<ScenarioHud> {
                                 ),
                               ),
                               const Spacer(),
+                              if (def.isDrill)
+                                TextButton(
+                                  key: const ValueKey('drill-diagnose'),
+                                  onPressed: () => showDiagnoseDialog(context, sim),
+                                  child: Text(
+                                    'Diagnose',
+                                    style: t.type.label.style(13.5, p.alarm, weight: FontWeight.w700),
+                                  ),
+                                ),
                               TextButton(
                                 onPressed: sim.finishScenario,
                                 child: Text(
-                                  'Finish',
+                                  def.isDrill ? 'Give up' : 'Finish',
                                   style: t.type.label.style(
                                     13.5,
                                     p.accent,
@@ -499,6 +528,7 @@ class _DebriefHostState extends State<DebriefHost> {
   void _show(BuildContext context, SimController sim, ScoreCard c) {
     final t = LowsysThemeScope.of(context);
     final p = t.palette;
+    final drill = sim.scenarioDef?.isDrill ?? false;
     final w = sim.scenarioDef?.guidedWeights;
     String pts(double v) => '${(100 * v).toStringAsFixed(0)} pts';
     showDialog<void>(
@@ -516,13 +546,13 @@ class _DebriefHostState extends State<DebriefHost> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  c.completed ? 'All goals met.' : 'Not all goals met.',
+                  c.completed ? (drill ? 'Diagnosed.' : 'All goals met.') : (drill ? 'Not diagnosed.' : 'Not all goals met.'),
                   style: t.type.display.style(15, c.completed ? p.ok : p.warn),
                 ),
                 const SizedBox(height: 8),
                 for (final row in [
                   (
-                    'Goals${w == null ? '' : ' (of ${(100 * w.objectives).round()})'}',
+                    (drill ? 'Category' : 'Goals') + '${w == null ? '' : ' (of ${(100 * w.objectives).round()})'}',
                     c.objectives,
                   ),
                   (
@@ -534,7 +564,7 @@ class _DebriefHostState extends State<DebriefHost> {
                     c.safety,
                   ),
                   (
-                    'Product quality${w == null ? '' : ' (of ${(100 * w.quality).round()})'}',
+                    (drill ? 'Location' : 'Product quality') + '${w == null ? '' : ' (of ${(100 * w.quality).round()})'}',
                     c.quality,
                   ),
                   if (c.hintCost > 0) ('Hints', -c.hintCost),
