@@ -698,7 +698,7 @@ Setup: the `crude` preset, Tier 2, full hydraulics, noise off, run to steady sta
 
 Also checked (all [I]):
 - Material: Σ products (mass) = crude (mass) within 1×10⁻⁴ relative, and water out = steam in (160.98 kmol/h).
-- Energy closure ≤ 1×10⁻³ relative.
+- Energy closure ≤ 1×10⁻³ relative to Q_C + Q_PA (the `energyResidual` denominator for `crude`, ruling 2026-10-13).
 - Every simulated gap is below the lumped bound of VC-15.3.
 - No `model.*` crude flag is set: drawDry, paDutyLimited, condenserLimited, waterCondensing.
 - No stage weeps.
@@ -717,11 +717,12 @@ The prototype's cold start reaches this state in 3.5 h of sim time. The engine r
 
 | Fault | Reference | Tolerance |
 |---|---|---|
-| F24 bottom steam, s = 1 | Residue 49.92 vol %; stage 30 +14.9 K, ≥ +12 K within 5 min; flash zone +1.75 K; Q_C −28 %; overflash 0; AGO 3.20 vol %, with FC-313 saturated and `model.drawDry` set | residue ± 0.5; T ± 2 K; Q_C ± 4 points; AGO ± 0.5 |
+| F24 bottom steam, s = 1 | Residue 49.92 vol %; stage 30 +14.9 K (prototype; it includes ≈ 0.9 K of clamp heating, and the vapour-free stage of PHYSICS.md §9.3 gives ≈ +14.0 K), ≥ +12 K within 5 min; flash zone +1.75 K; Q_C −28 %; overflash 0; AGO 3.20 vol %, with FC-313 saturated and `model.drawDry` set | residue ± 0.5; T ± 2 K; Q_C ± 4 points; AGO ± 0.5 |
 | F24 bottom steam, s = 0.5 | Residue +0.52 vol %; stage 30 +5.8 K; Q_C −12.6 %; no draw dry | ± 0.2; ± 1.5 K; ± 3 points |
+| F24 bottom steam, s = 0.5, then FC-321 SP 2000 → 4000 kg/h at 30 min | Delivered steam stays 1000 kg/h (the cap is fixed at onset, PHYSICS.md §11); FC-321 at 100 % OP; residue, stage 30 and Q_C as in the row above | steam ± 1 kg/h; others as above |
 | F24 `ss2`, s = 1 | Diesel D86 5 % 188.5 °C; D–K gap −55.5 K | ± 6 K; ± 8 K |
 | F25, s = 1 (trip) | Q_C 13.70 MW (+53 %), reached within 5 min; reflux 678 kmol/h; TI-341 peak ≥ +6 K within 10 min (prototype +13.2 K at 3 min), back within 1 K of the SP by 40 min; diesel D86 95 % above its start value from 2 to 10 min (prototype +56 K at 5 min); steady diesel D86 95 % 324.3 °C; max flood 88.6 % | Q_C ± 4 %; reflux ± 4 %; D95 ± 4 K; flood ± 5 points |
-| F25, s = 0.5 | Duty held at 5.00 MW (FC-314 not saturated); PA return 140.0 °C; every TI within 1 K of its start after 10 min | return ± 3 K |
+| F25, s = 0.5 | Duty held at 5.00 MW (FC-314 not saturated); PA return 140.0 °C; TI-341, TI-349 and TI-350 within 1 K of their start at 10 min. The trays around the PA do move: at the new steady state TI-344 −4.3 K, TI-345 +4.0 K, TI-346 +1.2 K (prototype −4.27 / +3.96 / +1.22; ruling 2026-10-13, v1.0 said "every TI within 1 K") | return ± 3 K; TI-344/345/346 ± 1.0 K |
 | F25, s = 0.85 | Cooler limit: PA duty 1.77 MW, return 120.0 °C, FC-314 saturated and `model.paDutyLimited` set; Q_C +34 %; reflux × 1.73 | duty ± 0.15 MW; Q_C ± 4 points |
 | F26, s = 1 (−15 K) | Flash zone −14.0 K, stage 30 −13.3 K; Q_C −9.2 %; overflash ≤ 0.2 %; AGO 5.15 vol %, with FC-313 saturated; AGO D86 95 % 459 °C; residue 46.55 vol %; TI-320 unchanged (reads the SP) | T ± 1.5 K; Q_C ± 2 points; AGO ± 0.15; D95 ± 15 K |
 | F26, s = 0.6 | Flash zone −8.0 K, stage 30 −7.5 K; Q_C −5.9 %; overflash 1.44 % | ± 1.5 K; ± 2 points; ± 0.5 |
@@ -735,6 +736,7 @@ The prototype's cold start reaches this state in 3.5 h of sim time. The engine r
   - SS2 steam 1000 kg/h alone meets them: kero 95 % 232.3, D–K +12.6, Q_C 9.72 MW.
   - Shifting the cut points alone does not (kero 10.7 %, diesel 17.7 %: kero 95 % 231.0 but D–K −7.1). Draws move cut points; internal reflux and stripping open gaps. This is the G16 lesson.
 - **Combined.** PA 3 MW with SS2 steam 1000 kg/h: D–K +12.9 K.
+- **o1 timing (ruling 2026-10-13).** o1 has no `steady` term. PA 3 MW at t = 0 completes o1 between 20 and 40 min of process time (engine: specs met from 19 min, plus the 600 s hold).
 - **Tolerances.** ± 3 K on every D86 value. Each "meets" or "fails" verdict must match the prototype. A row whose margin is under 3 K is exempt.
 
 **VC-15.7 Structure and robustness.**
@@ -751,7 +753,7 @@ The prototype's cold start reaches this state in 3.5 h of sim time. The engine r
   - bottom steam 0 and 5000 kg/h;
   - TC-301 SP 90 and 160 °C;
   - P_top 1.0 and 2.5 bar(a).
-- *Fault extremes.* For F24 s = 1, F25 s = 1 and F26 s = 1, `solverHealth.bubbleFallbacks` and `negativeLatent` stay 0.
+- *Fault extremes.* For F24 s = 1, F25 s = 1 and F26 s = 1, `solverHealth.bubbleFallbacks` and `negativeLatent` stay 0, and energy closure stays ≤ 1×10⁻³ relative to Q_C + Q_PA (F24 s = 1 runs stages 27–30 vapour-free, PHYSICS.md §9.3; so does the bottom-steam-0 lever extreme, which takes the same check). `negativeClamps` is recorded; a non-zero count goes to DEVIATIONS.md.
 - *No alternation.* No stage temperature alternates in sign between consecutive steps for more than 20 steps after any VC-15.5 onset. This checks the ỹ_w filter of PHYSICS.md §9.3.
 
 ## VC-16 Controllers [I] / [P]

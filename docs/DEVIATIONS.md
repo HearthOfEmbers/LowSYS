@@ -941,3 +941,32 @@ The coder's `test/m9_*` and the full engine suite pass: 814 pass, 4 skipped. **R
 - Alone, `m5_columns_validation_test.dart` passes 23 of 23. In the full suite it also passes.
 - dt 30 returns reached = false, D 16.248, P +142 Pa, `negativeClamps` 2570; the test asserts finiteness only for that branch.
 - No change was made. Coder: re-run on main and close item 12, or post the failing output.
+
+## Spec rulings M9 (2026-10-13)
+
+Rulings on "M9 validation" (1377203): spec items 1–5 and coder items C1–C3.
+
+1. **F25 s = 0.5 (VC-15.5).** The prototype is right and the v1.0 wording was wrong. New row: TI-341, TI-349 and TI-350 within 1 K at 10 min; at the new steady state TI-344 −4.3, TI-345 +4.0, TI-346 +1.2 K (± 1.0 K). PHYSICS.md §11 F25 and ENGINE_API.md §11.12 "Severity floors" now say the same. The engine already matches.
+2. **F24 cap against a fixed reference (PHYSICS.md §11).** Delivered steam = min(valve flow, (1 − s) W_ref). W_ref is the FC-32x SP at onset (the valve flow in MAN), frozen while the fault is active; s is the ramped value. Raising the SP no longer restores the steam, so H8 cannot be masked. A note was added to ENGINE_API.md §11.12, and VC-15.5 has a new row: s = 0.5, then SP 2000 → 4000 kg/h, and the steam stays 1000 kg/h. No reference number changes.
+3. **§9.4 cut law.** It is now the prototype's law, P_k × clamp((M_s2/M_SP − 0.2)/0.3, 0, 1): full product at 25 % level and above, none at 10 % and below. The engine already does this (checkpoint item 4).
+4. **G16 `o1`: `steady` is dropped** and the hold stays 600 s. The par stays 7200 s, and the time note now reads "o1 ≈ 29 min after PA 3 MW". VC-15.6 has an o1 timing line: 20–40 min of process time with PA 3 MW at t = 0. The level loops' 3.75 h tail teaches nothing here.
+5. **No bottom steam: vapour-free stage (PHYSICS.md §9.3; goes with C1).** When (4.6) gives V_HC ≤ 0 on a crude stage, set V_HC = 0 and take T from the stage energy balance, not the bubble point. The stage returns to bubble-point mode when T reaches T_bub. This is a modelled state, not counted as a clamp. It removes the ≈ 0.9 K of heating with no source and the 0.4 % energy error. The F24 s = 1 stage-30 reference stays +14.9 K (prototype) with the note "engine ≈ +14.0 K"; the ± 2 K tolerance covers both. VC-15.7 adds energy closure ≤ 1×10⁻³ at F24 s = 1 and at bottom steam 0.
+6. **Daubert constants (validator item 6).** No change. VC-15.2 already marks them as quoted from memory.
+- **C1.** In (4.6) each binding V ≥ 0 clamp now counts in `solverHealth.negativeClamps` in every preset (PHYSICS.md §4). For `crude` the clamp is replaced by item 5.
+- **C2 (spec was silent).** The semi-implicit outflow and the 5 % film floor are now in PHYSICS.md §9.2 "Holdup update". When the floor binds, L = max(0, In − Out − (M_film − M^n)/dt) and M follows from the mass balance, so mass closes exactly. The floor is not counted; the case L = 0 with M < M_film is counted.
+- **C3.** For `crude`, `energyResidual` is relative to Q_C + Q_PA (ENGINE_API.md `Kpis`; VC-15.4 closure ≤ 1×10⁻³ against it). Other presets are unchanged.
+
+**Coder actions:**
+- (a) F24: capture W_ref at onset, clear it with the fault, and test the SP-raise row.
+- (b) Implement the vapour-free stage; re-run VC-15.5 F24 s = 1 (stage 30 ≈ +14.0 K) and record the value.
+- (c) Count the (4.6) V clamp in every preset. If an existing test that asserts `negativeClamps` == 0 then fails, record it here rather than editing the test.
+- (d) Film-floor outflow recompute.
+- (e) `energyResidual` denominator Q_C + Q_PA for `crude`.
+- (f) G16 `o1`: drop `steady`, record the o1 time.
+- (g) Close or re-report checkpoint item 12 (m5 dt 30).
+
+**Validator actions:**
+- Update `m9_validation_test`: the F25 s = 0.5 row; the F24 SP-raise row; energy closure ≤ 1×10⁻³ at F24 s = 1 and at bottom steam 0, with the stage-30 rise in +12.9 … +16.9 K.
+- Check that `negativeClamps` counts a forced (4.6) clamp.
+- Check the film-floor mass closure on the F27 kero-16 % state.
+- Check G16 o1 at 20–40 min with PA 3 MW.
