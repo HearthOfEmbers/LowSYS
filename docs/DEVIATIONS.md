@@ -484,3 +484,32 @@ Decisions and deviations:
 8. **G13 hint player:** o1 is met at 14 400 s (par 21 600, limit 86 400) with the hint values; the three hint-state numbers match VC-9.8.
 9. **Performance (VC-19):** 40 trays x 7 components Tier 3 takes 165 us/step in the JIT test VM including the control layers (target 100 us desktop AOT); not yet measured in release.
 10. **Open spec points used as recommended:** column diameters unchanged at the B-T 1.2 m with `ideal` hydraulics (the 0.75 / 0.55 m diameters only matter for full hydraulics, not wired in yet; app/hydraulics decision pending); 852 degR DePriester limit kept as in the code, `thermoOutOfRange` set outside 365 to 852 degR / 14.7 to 870 psia.
+
+## Spec rulings M7 (2026-10-13)
+
+Rulings on the open items of "M7 checkpoint (engine, coder, 2026-10-13)" at eea0a5a.
+
+1. **`eq.fug.rigorous`** (item 5): ratified as the id of the FUG closing line (value N_act; N_R,act and R_act substituted). Added to PHYSICS.md §15 and the M7 excerpt. The `compute(snapshot, keys, {targets, thermo})` signature is accepted.
+2. **PC-101 per-preset gain** (item 1): ratified. `condenser.pcKc` (default 10) is PC-101's Kc on PV-101; `debut` 30, `deprop` 120, Ti 120 s, the OP/35 schedule on top. Rule: pcKc ≈ 10 × 0.29 / (preset process gain, % span per % OP at 50 % CW). PHYSICS.md §10.7 (table row and new paragraph), ENGINE_API.md §4 `CondenserConfig.pcKc`. The `deprop` +50 kPa overshoot (CW saturated) is the condenser's limit and is recorded, not asserted. New check VC-16.6d. Note: the checkpoint's "about 0.04 % span per % OP" does not give the stated ratio 12 (0.29 / 0.04 = 7.3); record the measured gains.
+3. **Pressure lever** (item 2): ratified as SCOPE.md §4.1 already reads: light-hydrocarbon presets (Tier-3 model DePriester: `c4`, `debut`, `deprop`) 3–25 bar(a), PC-101 SP limits the same. `c4`'s 0.2–5 bar was a code error (below its 7-bar default). The range may exceed the relief set (as B-T's does). PHYSICS.md §2.3 lever bullet.
+4. **H6 evidence** (item 7): engine right on all four; spec rows changed (VALIDATION.md §H and M7 excerpt):
+   - F07: D within 1 kmol/h of start 2 h after onset (steady 0.40), within 2.5 kmol/h throughout (engine 1.5 at 2600 s).
+   - F20: D ≥ 3.5 kmol/h above the healthy run at 2 h (engine 3.97, steady 4.1). C3a: not `fail` from event + 60 min, `ok` or `check` at 2 h. C3a has no drum-level term; with FV-102 stuck the extra vapour fills the drum until LC-101 (averaging tuning) raises D, so C3a `fail` right after the event is physics, not a meter symptom. The discriminator is C4:FV-102 with FT-102 flat. §14.6 fault table and the H6 F20 debrief (ENGINE_API.md §11.10) changed to match.
+   - F12: brackets now carry the engine's 2-h values (D 81.6, xDHeavy 0.40); thresholds unchanged.
+   - Rule 1 (σ ratio 1.2–1.8, weight 2): accepted as is.
+5. **852 °R DePriester limit** (item 10): final; no clamping, `thermoOutOfRange` informational only (PHYSICS.md §3.4.2). Near 25 bar the `debut` bottoms approach it.
+6. **Column diameters** (item 10, OPEN_ITEMS.md): ruled D_c 0.75 m `debut`, 0.55 m `deprop`; rest of the §5.1 geometry B-T (TS 0.9 m), sump/drum/overhead unchanged. Default hydraulics stay `ideal`. PHYSICS.md §2.3, ENGINE_API.md §11.10, VALIDATION.md VC-9.6 geometry note.
+7. Items 3, 4, 6, 8, 9 noted; no spec change.
+
+**Coder actions**
+- Ship `condenser.pcKc` 30 / 120 as ruled, re-tuned (±50 %) only if VC-16.6d fails **on the 0.75 / 0.55 m diameters**; record each preset's measured open-loop process gain.
+- Lever `pTop` and PC-101 SP limits 3–25 bar(a) for `c4`, `debut`, `deprop`, keyed on the DePriester family, not P_design.
+- Apply D_c 0.75 / 0.55 m (only D_c changes), then re-run `m7_*` tests: VC-9.6 in `ideal` unchanged; H6 timings, G13 hint player and PC-101 checks on the new holdups. One full-hydraulics steady run per preset (VC-9.6 geometry note); report flood %, Φ_min, ΔP.
+- H6 test asserts per the new rows (F07 2-h / 2.5 band, F20 ≥ 3.5 and C3a rule, report C5 (drum) for F20).
+- Update the F20 debrief text and the `eq.fug.rigorous` explain id as in the spec.
+
+**Validator actions**
+- VC-16.6d (a)–(d) on both presets; VC-9.6 geometry note (a) and (b).
+- H6 rows as changed: F07, F20 (C3a timing, C5 (drum) recorded), F12 brackets; rule 1 unchanged.
+- `c4` lever range 3–25 bar with the M5 `c4` tests still passing at 7 bar.
+- VC-21 covers `eq.fug.rigorous`; with `pTop` 25 bar on `debut`, `thermoOutOfRange` set and no NaN.

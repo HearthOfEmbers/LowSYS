@@ -252,7 +252,7 @@ class FeedTemperature extends FeedThermal { final double t; }     // Tiers 2/3, 
 class FeedVaporFraction extends FeedThermal { final double beta; }
 
 class CondenserConfig { final CondenserType type; final double drumVolume, overheadVolume,
-  pTopDesign, reliefSet, cwInletT, cwMaxFlow /*kg/s*/, uaClean /*W/K, from the preset*/, dvMax; }
+  pTopDesign, reliefSet, cwInletT, cwMaxFlow /*kg/s*/, uaClean /*W/K, from the preset*/, dvMax, pcKc /*PC-101 Kc, default 10; M7*/; }
 class ReboilerConfig { final ReboilerType type; final double sumpHeight, sumpArea,
   steamHeaderPressure, uaClean /*W/K, from the preset*/; final ThermosyphonGeometry? thermosyphon; }
 // M6. SI units; B-T defaults of PHYSICS.md §8.3.1. With a thermosyphon, the kettle's uaClean is not used and
@@ -298,6 +298,7 @@ All JSON values are SI (mol/s, K, Pa, m, kg/s, W). The UI converts for display.
 - `condenser.cwOpPartial`: 30 (%). The `cwOP` value when a partial condenser is built (PHYSICS.md §7.2).
 - `condenser.pDown`: `pTopDesign` − 30 000 Pa.
 - `condenser.ventMax`: 2.0 mol/s.
+- `condenser.pcKc`: PC-101's Kc on PV-101 (default 10; `debut` 30, `deprop` 120; ratified 2026-10-13, PHYSICS.md §10.7 "Per-preset PC-101 gain"). Ti and the OP schedule are unchanged; PV-102 keeps 2.0.
 - `condenser.pVent`: 50 000 Pa if `pTopDesign` < 3×10⁵ Pa, else 101 325 Pa.
 - `condenser.reliefMax`: 2 × the design V₁ (mol/s; B-T 83.3).
 - `reboiler.steamHeaderPressure`: absolute, Pa (B-T 451 325 = 3.5 bar(g)).
@@ -1747,7 +1748,7 @@ Notes:
 ### 11.10 Drill H6 "Off-spec overhead" (M7)
 
 Frame:
-- `debut` in Tier 3 (locked) with **ideal** hydraulics. The preset has the B-T tray geometry and would weep with full hydraulics (PHYSICS.md §2.3, M7 rules).
+- `debut` in Tier 3 (locked) with **ideal** hydraulics. The preset has D_c 0.75 m (PHYSICS.md §2.3, M7 rules, ruled 2026-10-13); the drill stays in `ideal` hydraulics, and its timings are taken on that diameter.
 - `plantCalc` view, because a feed candidate is present (SCOPE.md §6.2). Noise on; all loops in AUTO.
 - A planning event at 45 min raises F, L₀ and Q_R by 8 % together, like H10's. Uniform scaling keeps every steady composition, so the event cannot trip the off-spec test by itself (VALIDATION.md §H, H6 "none" row). It is what turns a quietly stuck FV-102 into a heavy overhead.
 - Severity ranges, dz and the event sizes come from the M7 prototype (VALIDATION.md §H).
@@ -1775,7 +1776,7 @@ Frame:
     {"id": "fv102_stuck", "weight": 2,
      "fault": {"type": "valve", "location": {"tag": "FV-102"}, "params": {"kind": "stuck"}, "severityRange": [1.0, 1.0], "ramp": 0},
      "answer": {"category": "valve", "location": "valve:FV-102"},
-     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** Nothing showed until planning raised the rates at 45 min. Then the feed and the duty went up, FC-102's set point went up and its OP ran to 100 %, but the reflux flow did not move. The meter was honest (C3a green); only C4 for FV-102 failed. More vapour with the same reflux meant more distillate and a heavier overhead. Open `bypass.FV-102` and set the reflux by hand."}
+     "debrief": "**The reflux valve FV-102 stuck at {fault.onset:time}.** Nothing showed until planning raised the rates at 45 min. Then the feed and the duty went up, FC-102's set point went up and its OP ran to 100 %, but the reflux flow did not move. The meter was honest: C3a only showed the drum filling and came back as LC-101 caught up, while C4 for FV-102 stayed red. More vapour with the same reflux meant more distillate and a heavier overhead. Open `bypass.FV-102` and set the reflux by hand."}
   ],
   "events": [
     {"id": "planning", "at": 2700, "action": "setSp", "tag": "FC-101", "delta": 2.22222,
