@@ -26,7 +26,7 @@ const LowsysTheme paperTheme = LowsysTheme(
     vapor: Color(0xFF9AA0A6),
     hot: Color(0xFFC0392B),
     cold: Color(0xFF2B6CB0),
-    ok: Color(0xFF2E7D32),
+    ok: Color(0xFF1E5020),
     warn: Color(0xFFB7791F),
     alarm: Color(0xFFC0392B),
     info: Color(0xFF1F6F8B),

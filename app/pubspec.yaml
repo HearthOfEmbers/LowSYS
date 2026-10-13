@@ -52,3 +52,17 @@ flutter:
     - family: Source Sans 3
       fonts:
         - asset: assets/fonts/SourceSans3-VF.ttf
+    - family: Cinzel
+      fonts:
+        - asset: assets/fonts/Cinzel-VF.ttf
+    - family: IM Fell English
+      fonts:
+        - asset: assets/fonts/IMFeENrm28P.ttf
+    - family: Courier Prime
+      fonts:
+        - asset: assets/fonts/CourierPrime-Regular.ttf
+        - asset: assets/fonts/CourierPrime-Bold.ttf
+          weight: 700
+    - family: VT323
+      fonts:
+        - asset: assets/fonts/VT323-Regular.ttf

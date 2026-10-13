@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../lowsys_theme.dart';
 
 /// T-4 Brass, "Steamworks Refinery" (SCOPE.md 7.1): walnut background, parchment ink, brass accents and a riveted
-/// bevelled shell with dial gauges. "Cinzel", "IM Fell English" and "Courier Prime" are not bundled (no downloads,
-/// docs/DEVIATIONS.md "M9 app"), so the serif and monospace fallbacks apply. Charts sit on a parchment inset
+/// bevelled shell with dial gauges. Cinzel, IM Fell English and Courier Prime are bundled (M10, OFL). Charts sit on a parchment inset
 /// ([brassParchment], [brassSepia]) with a thin brass frame.
 const LowsysTheme brassTheme = LowsysTheme(
   id: 'brass',
