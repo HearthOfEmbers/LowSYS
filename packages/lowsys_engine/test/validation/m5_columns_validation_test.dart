@@ -420,9 +420,9 @@ void main() {
   group('dt 30 s after a large step (ac E 1, condenser ×2, L0 150 → 300, duty ×1.8)', () {
     // VALIDATION.md §0 / PHYSICS.md §12.5 dt-30 contract (ruling 2044f1a, 2026-10-13): dt 30 is a steady-state
     // robustness step. In this case (doubled condenser = doubled PC-101 gain) assert at dt 30 only: no NaN, no fatal,
-    // and reached == false or a state within 0.05 kmol/h / 0.5 kPa of dt 2; negativeClamps is recorded, not asserted.
-    // At dt 2 and 10 s it settles (D 16.32 ± 0.05, P at SP ± 0.5 kPa); negativeClamps == 0 at dt 2.
-    final res = <double, (bool, double, double, double, int, double)>{};
+    // and reached == false or a state within 0.05 kmol/h / 0.5 kPa of dt 2; negativeClamps is bounded (below).
+    // At dt 2 and 10 s it settles (D 16.32 ± 0.05, P at SP ± 0.5 kPa); negativeClamps == 0 at dt 2 and 10.
+    final res = <double, (bool, double, double, double, int, double, double)>{};
     setUpAll(() {
       for (final dt in [2.0, 10.0, 30.0]) {
         final m = _sim('ac',
@@ -439,10 +439,10 @@ void main() {
         final r = m.runToSteadyState(fastForward: false, maxSimSeconds: 300000);
         final q = m.snapshot();
         res[dt] = (r.reached, _k(q.kpis.d), q.kpis.pTop, q.kpis.energyResidual,
-            q.solverHealth.negativeClamps - c0, m.lever('pTop'));
+            q.solverHealth.negativeClamps - c0, m.lever('pTop'), r.simSeconds);
       }
       print('dt 2: ${res[2.0]}; dt 10: ${res[10.0]}; dt 30: ${res[30.0]} '
-          '(reached, D, P, energy residual, negativeClamps after the step, P SP)');
+          '(reached, D, P, energy residual, negativeClamps after the step, P SP, s run)');
     });
     test('dt 2 and 10 s settle: D 16.32 ± 0.05 kmol/h, P at SP ± 0.5 kPa; negativeClamps == 0 at dt 2', () {
       for (final dt in [2.0, 10.0]) {
@@ -453,6 +453,20 @@ void main() {
         expect(a.$4, lessThan(1e-6), reason: 'dt $dt energy residual');
       }
       expect(res[2.0]!.$5, 0, reason: 'negative clamps at dt 2');
+      expect(res[10.0]!.$5, 0, reason: 'negative clamps at dt 10');
+    });
+    // negativeClamps at dt 30 (validation of the M9-coder episode ruling, 2026-10-13): 1388 episodes in 300000 s,
+    // all at one site, the overhead component inventory n_V,1 (PHYSICS.md 7.1; found by a site probe of
+    // SolverHealth). The update is explicit with the condensate at y_c, and dt 30 is 12 times the overhead residence
+    // n_V/V_1 ≈ 2.5 s. In the PC-101 limit cycle at dt 30 (doubled condenser = doubled gain; P 101.4-101.8 kPa),
+    // net condensation over one step removes more of component 1 than the inventory holds. The step is halved
+    // (12.7) and n_V,1 is clamped. This is the expected large-step behaviour, not a defect. The rate is steady:
+    // 11-21 per hour, mean 16.7, with no growth over 83 h. The bound is 24 per simulated hour. Per-step counting
+    // of one bound site would give 120 per hour, and per-trial counting about 15 times that.
+    test('dt 30: negativeClamps after the step <= 24 per simulated hour (steady n_V,i clamp rate, episodes)', () {
+      final b = res[30.0]!;
+      expect(b.$5, lessThanOrEqualTo(24 * b.$7 / 3600),
+          reason: '${b.$5} episodes in ${b.$7} s; a growing rate is a defect');
     });
     test('dt 30: finite, no false "steady": reached == false, or within 0.05 kmol/h / 0.5 kPa of dt 2 (clamps recorded)',
         () {

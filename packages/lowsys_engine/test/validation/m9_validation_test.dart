@@ -40,6 +40,7 @@ void main() {
   final th = CrudeThermo();
   // steady states with vapour-free stages 27-30 (spec rulings M9 item 5), filled by the tests that run them
   final vapourFree = <String, SimSnapshot>{};
+  final e0s = <double>[]; // bottom steam 0 energy residual, for the VC-15.7 strict test
 
   group('VC-15.1-15.3 [I]: engine = independent reference = printed', () {
     test('E.3 #1: PC1 / PC5 / PC9 T_b, MW, omega, dH_vap(T_b); whole 9.1 table within the VC-15.1 tolerances', () {
@@ -334,9 +335,8 @@ void main() {
       expect(q.kpis.balanceResidual.abs(), lessThan(1e-4));
       expect(q.solverHealth.bubbleFallbacks, 0);
       expect(q.solverHealth.negativeLatent, 0);
-      // VC-15.7 asks <= 1e-3; the engine gives about 2e-3 (film-floor mass, DEVIATIONS "Spec rulings M9 (coder)" (b),
-      // spec-pending). The interim bound is the coder's 3e-3; the strict check is the skipped test below.
-      expect(e0.abs(), lessThan(3e-3));
+      // VC-15.7 1e-3 (spec rulings M9-coder/M10 1): checked by the strict test below
+      e0s.add(e0);
     });
 
     test('VC-15.6: PA 3 MW with SS2 steam 1000 kg/h: D-K +12.9 K, meets both specs, residue TBP 5 % >= 355 C', () {
@@ -405,7 +405,7 @@ void main() {
     });
 
     // spec rulings M9: film floor (C2) mass closure at F27 kero 16 %; F24 s = 1 vapour-free stages (ruling 5): stage-30
-    // rise +12.9 ... +16.9 K (prototype +14.9, engine ~ +14.0), energy closure (VC-15.7 1e-3, spec-pending, see below)
+    // rise +12.9 ... +16.9 K (prototype +14.9, engine ~ +14.0), energy closure (VC-15.7 1e-3, strict test below)
     final e24 = <double>[];
     test('closure at dry-draw states (5 % film floor): F27 kero 16 % and F24 bottom s = 1; F24 s = 1 stage 30 +12.9..+16.9 K',
         () {
@@ -441,8 +441,7 @@ void main() {
       expect(kb.yieldVolPct[4], closeTo(49.92, 0.5));
       expect(kb.yieldVolPct[3], closeTo(3.20, 0.5));
       expect(100 * (kb.qc / base.qc - 1), closeTo(-28, 4));
-      expect(rel[1].abs(), lessThan(3e-3), reason: 'interim bound (coder 2.3e-3); VC-15.7 strict 1e-3 is the skipped test');
-      e24.add(rel[1]);
+      e24.add(rel[1]); // VC-15.7 1e-3: the strict test below
       vapourFree['F24 s = 1'] = b.snapshot();
     });
     test('ruling 5 physical sense: a vapour-free stage has no heat source, so stages 27-30 stay within 0.1 K of the flash '
@@ -469,10 +468,10 @@ void main() {
         }
       });
     });
-    test('VC-15.7 strict: energy closure <= 1e-3 at F24 s = 1 and at bottom steam 0',
-        skip: 'spec-pending (STATUS next step 3, DEVIATIONS "Spec rulings M9 (coder)" (b)): the engine closes to ~2.3e-3; the '
-            'film-floor mass on the dry stages 26-29 is not balanced. Recorded by the two tests above', () {
-      expect(e24.single.abs(), lessThanOrEqualTo(1e-3));
+    // un-skipped after the M9-coder rulings (96ab285): both close to ~3e-10
+    test('VC-15.7 strict: energy closure <= 1e-3 at F24 s = 1 and at bottom steam 0', () {
+      expect(e24.single.abs(), lessThanOrEqualTo(1e-3), reason: 'F24 s = 1');
+      expect(e0s.single.abs(), lessThanOrEqualTo(1e-3), reason: 'bottom steam 0');
     });
 
     test('VC-15.5 F24 bottom s = 0.5, then FC-321 SP 2000 -> 4000 kg/h at 30 min (ruling 2): steam stays 1000 +- 1 kg/h, '
@@ -553,6 +552,9 @@ void main() {
         'V_sump ${(q.stages.vaporUp[q.layout.nTrays + 1] * 3.6).toStringAsFixed(3)} kmol/h)');
     expect(c0, 0, reason: 'no clamp at the healthy Tier-2 state');
     expect(c1, greaterThan(0));
+    // episodes (spec rulings M9-coder/M10 3): one per V_j site as the vapour dies (22 on 96ab285), with room for a
+    // site to re-bind once; per-step counting gave ~15 per step from the pressure-solve trial sweeps
+    expect(c1, lessThanOrEqualTo(2 * (q.layout.nTrays + 1)), reason: 'clamps counted per step or per pressure trial');
     expect(q.stages.vaporUp[q.layout.nTrays + 1], greaterThanOrEqualTo(0));
   });
 }
