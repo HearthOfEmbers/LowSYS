@@ -86,6 +86,32 @@ class SolverHealth {
 
   SolverHealth();
 
+  // negativeClamps counts episodes (PHYSICS.md 12.7, spec ruling M9-coder 2026-10-13): one bit per clamp site, not saved.
+  final Set<int> _clampPrev = <int>{};
+  final Set<int> _clampNow = <int>{};
+
+  /// Marks the clamp site ([kind], [index]) as binding on the current step.
+  void clampSite(int kind, int index) => _clampNow.add((kind << 24) | index);
+
+  /// Forgets this step's marks of one site kind (a sweep that is re-run within a step marks again).
+  void clearClampKind(int kind) {
+    if (_clampNow.isNotEmpty) _clampNow.removeWhere((k) => (k >> 24) == kind);
+  }
+
+  /// Closes an accepted step: a site that binds now and did not bind on the previous step adds one episode.
+  void commitClamps() {
+    for (final k in _clampNow) {
+      if (!_clampPrev.contains(k)) negativeClamps++;
+    }
+    _clampPrev
+      ..clear()
+      ..addAll(_clampNow);
+    _clampNow.clear();
+  }
+
+  /// A rejected step (it is retried) leaves no marks.
+  void discardClamps() => _clampNow.clear();
+
   SolverHealth copy() => SolverHealth()
     ..bubbleFallbacks = bubbleFallbacks
     ..negativeClamps = negativeClamps
