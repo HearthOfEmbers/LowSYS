@@ -190,6 +190,10 @@ class ControlSystem {
   double tsLevelPct = 50, tsSumpHeight = 2.4, tsRfK = 0, tsFFlooded = 0, tsKInAdd = 0, tsKOutAdd = 0;
   double tsInletOp = 100, modelTsIs = 0;
 
+  /// Steam-chest buffer Q_st (W): first-order lag (tau 10 s) of Q_k; FT-103 measures it (spec ruling M6 item 1).
+  double qSt = 0;
+  static const double tauSt = 10.0;
+
   /// PC-101 gain schedule: Kc is scaled by OP / [pcScheduleOp] below that opening (never below [pcScheduleMin]).
   static const double pcScheduleOp = 35.0, pcScheduleMin = 0.1;
 
@@ -858,6 +862,8 @@ class ControlSystem {
         f2 = loop.q;
         f2col = loop.qDelivered;
         fv103.flow = f2;
+        qSt += (deltaC / tauSt) * (f2 - qSt);
+        f2 = qSt;
         modelTsIs = loop.iS;
       }
       ft103.update(deltaC, f2, tk);
@@ -1385,6 +1391,7 @@ class ControlSystem {
         'cwScale': cwScale,
         if (ts != null) 'ts': ts!.toJson(),
         'tsInletOp': tsInletOp,
+        'qSt': qSt,
         if (partial) 'cwManualOp': cwManualOp,
         if (partial) 'cwValve': cwValve.toJson(),
         'loops': {for (final l in loops) l.tag: l.toJson()},
@@ -1414,6 +1421,7 @@ class ControlSystem {
     if (ts != null && j['ts'] != null) {
       ts!.loadJson(j['ts']! as Map<String, Object?>);
       modelTsIs = ts!.iS;
+      qSt = (j['qSt'] as num?)?.toDouble() ?? ts!.q;
     }
     tsInletOp = (j['tsInletOp'] as num?)?.toDouble() ?? 100;
     if (partial) {

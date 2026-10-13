@@ -579,10 +579,11 @@ const String g14Json = r'''
   "parTime": 3600,
   "briefing": "This column has a thermosyphon reboiler: nothing pumps the liquid round the loop, the density difference does. The sump is being held at 15 % with the inlet valve pinched to 8 %, which keeps the loop calm but costs duty.\n\nAt the start the outside operator opens the inlet valve fully. Open the Equipment tab and watch what the loop does. Then restore a stable boilup without losing more than 10 % of the duty.",
   "objectives": [
-    {"id": "o1", "text": "Stop the surging: oscillation below 2 %, the instability index below 1, and at least 1170 kW delivered.",
+    {"id": "o1", "text": "Stop the surging: oscillation below 2 %, the instability index below 1, and at least 1260 kW delivered with FC-103 not saturated.",
      "when": {"all": [{"metric": "reboiler.oscAmplitude", "op": "<", "value": 0.02},
                       {"metric": "reboiler.instabilityIndex", "op": "<", "value": 1.0},
-                      {"metric": "kpi.qr", "op": ">=", "value": 1170000}]},
+                      {"metric": "kpi.qr", "op": ">=", "value": 1260000},
+                      {"metric": "loop[FC-103].op", "op": "<", "value": 99}]},
      "holdFor": 300, "latch": true},
     {"id": "o2", "text": "Throttling the inlet valve calms a thermosyphon because...", "after": "o1",
      "answer": {"type": "choice",
@@ -594,7 +595,7 @@ const String g14Json = r'''
     {"when": {"metric": "reboiler.oscAmplitude", "op": ">=", "value": 0.05},
      "text": "Raise the LC-102 set point to 40 %. More head means more circulation, an exit quality below 0.3 and I_s below 1."},
     {"when": {"metric": "objective[o1].met", "op": "==", "value": true},
-     "text": "At 15 % level the inlet valve could only trade surge for duty: 16 % open still surged (I_s about 1.08), and 8 % open lost about 16 % of the duty."}
+     "text": "At 15 % level the inlet valve could only trade surge for duty: 16 % open still surged, and every opening that calmed it left FC-103 wide open and short of its set point."}
   ],
   "events": [
     {"id": "open_inlet", "at": 0, "action": "setLever", "lever": "tsInletValve", "value": 100,

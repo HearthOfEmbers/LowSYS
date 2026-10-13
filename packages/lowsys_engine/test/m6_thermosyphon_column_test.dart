@@ -130,7 +130,7 @@ void main() {
       final peak = bins.reduce(math.max), low = bins.reduce(math.min);
       // VC-14.2.2 asks for <= 2 %; the loop's own steam-side Q_k swings 8 % at 15 % level (mist-flow limit, loop alone
       // 1192 to 1300 kW), so the engine gives 8 %. Reported in docs/DEVIATIONS.md "M6 checkpoint"; bounded here.
-      expect((peak - low) / peak, lessThanOrEqualTo(0.10), reason: 'FT-103 5-s bins');
+      expect((peak - low) / peak, lessThanOrEqualTo(0.02), reason: 'FT-103 5-s bins');
     });
 
     test('14.2.2 period of the boilup oscillation is 5 to 15 s', () {
@@ -243,6 +243,8 @@ void main() {
         if (hint2 && iSBelow1Level.isNaN && ts.iS < 1) iSBelow1Level = s.snapshot().kpis.sumpLevelPct;
       }
       expect(s.scenario!.objectives[0].achieved, isTrue, reason: 'o1 at ${s.time}');
+      expect(s.control.fc103.op, lessThan(99), reason: 'FC-103 not saturated at o1');
+      expect(s.snapshot().kpis.qr, greaterThanOrEqualTo(1260000));
       expect(s.submitAnswer('o2', 0).correct, isTrue);
       final card = s.finishScenario();
       expect(card.score, greaterThanOrEqualTo(80));
@@ -268,7 +270,7 @@ void main() {
       s2.advance(3600);
       expect(s2.control.ts!.amplitude, lessThan(0.005));
       // ignore: avoid_print
-      print('G14 inlet 10 %: qr ${(s2.snapshot().kpis.qr / 1000).round()} kW (spec: < 1170, so o1 not met by throttling)');
+      print('G14 inlet 10 %: qr ${(s2.snapshot().kpis.qr / 1000).round()} kW (o1 not met: FC-103 saturated or duty < 1260)');
     }, timeout: const Timeout(Duration(minutes: 10)));
   });
 }

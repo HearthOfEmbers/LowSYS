@@ -884,6 +884,7 @@ class Stepper {
           rfK: control.tsRfK, fFlooded: control.tsFFlooded, kInAdd: control.tsKInAdd, kOutAdd: control.tsKOutAdd);
     }
     control.modelTsIs = ts.iS;
+    control.qSt = ts.q;
   }
 
   double _t2FeedEnthalpy(Float64List z) {
