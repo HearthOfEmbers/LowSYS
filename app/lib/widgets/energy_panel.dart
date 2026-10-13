@@ -128,15 +128,26 @@ class _Row extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Expanded(child: Text(label, style: t.type.label.style(13.5, p.inkMuted))),
-          Text(
-            value,
-            style: t.type.number.style(14, valueColor ?? p.ink, weight: FontWeight.w600),
+          Expanded(
+            flex: 3,
+            child: Text(label, overflow: TextOverflow.ellipsis, style: t.type.label.style(13.5, p.inkMuted)),
+          ),
+          Flexible(
+            flex: 3,
+            child: Text(
+              value,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: t.type.number.style(14, valueColor ?? p.ink, weight: FontWeight.w600),
+            ),
           ),
           if (sub != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 6),
-              child: Text(sub!, style: t.type.number.style(12, p.inkMuted)),
+            Flexible(
+              flex: 4,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Text(sub!, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right, style: t.type.number.style(12, p.inkMuted)),
+              ),
             ),
         ],
       ),

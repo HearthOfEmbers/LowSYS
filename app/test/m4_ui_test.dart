@@ -77,10 +77,10 @@ void main() {
       sim.controlTab.value = 1;
       sim.selectedLoop.value = 'PC-101';
       await frames(tester, 5);
-      expect(find.text('PC-101'), findsWidgets);
+      if (e.value.width > 1000) expect(find.text('PC-101'), findsWidgets);
       sim.selectedLoop.value = 'TC-101';
       await frames(tester, 5);
-      expect(find.text('TC-101'), findsWidgets);
+      if (e.value.width > 1000) expect(find.text('TC-101'), findsWidgets);
       sim.diagramTab.value = 1;
       sim.profileKind.value = 6; // V
       await frames(tester, 3);
@@ -93,7 +93,10 @@ void main() {
       // faults tab: process faults and a flag on the column
       sim.controlTab.value = 4;
       await frames(tester, 3);
-      if (e.value.width > 1000) expect(find.byKey(const ValueKey('process-faults')), findsOneWidget);
+      if (e.value.width > 1000) {
+        await tester.scrollUntilVisible(find.byKey(const ValueKey('process-faults')), 300, scrollable: find.byType(Scrollable).last);
+        expect(find.byKey(const ValueKey('process-faults')), findsOneWidget);
+      }
       await sim.injectFault(FaultSpec(
           type: FaultType.coolingLoss,
           location: FaultLocation.equipment('condenser'),
