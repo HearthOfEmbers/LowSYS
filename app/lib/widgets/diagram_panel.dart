@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
 import '../painters/profile_painter.dart';

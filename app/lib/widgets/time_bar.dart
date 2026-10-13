@@ -18,16 +18,16 @@ String formatClock(double t) {
 String speedLabel(double v) => v == 0 ? 'Pause' : '${v.toStringAsFixed(0)}×';
 
 const Map<String, String> kPresetNames = {
-  Presets.bt: 'Benzene–toluene (textbook)',
-  Presets.mw: 'Methanol–water',
-  Presets.btCustomAlpha: 'Custom α',
-  Presets.ew: 'Ethanol–water',
-  Presets.ac: 'Acetone–chloroform',
-  Presets.c4: 'Isobutane–n-butane (C4 splitter)',
-  Presets.debut: 'Debutanizer (6 components)',
-  Presets.deprop: 'Depropanizer (6 components)',
-  Presets.btPacked: 'Benzene–toluene, packed (2 × 4.5 m)',
-  Presets.crude: 'Crude unit (20 000 bbl/d)',
+  Presets.bt: S.benzeneTolueneTextbook,
+  Presets.mw: S.methanolWater,
+  Presets.btCustomAlpha: S.custom,
+  Presets.ew: S.ethanolWater,
+  Presets.ac: S.acetoneChloroform,
+  Presets.c4: S.isobutaneNButaneC4,
+  Presets.debut: S.debutanizer6Components,
+  Presets.deprop: S.depropanizer6Components,
+  Presets.btPacked: S.benzeneToluenePacked2,
+  Presets.crude: S.crudeUnit20000,
 };
 
 /// Pause, clock, speed, steady indicator, run-to-steady and the preset menu (SCOPE.md 3.2).
@@ -91,7 +91,7 @@ class TimeBar extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: 'Run to steady state (S)',
+                tooltip: S.runToSteadyState,
                 style: dense
                     ? IconButton.styleFrom(
                         minimumSize: const Size(44, 48),
@@ -119,7 +119,7 @@ class _SpeedMenu extends StatelessWidget {
     final t = LowsysThemeScope.of(context);
     final p = t.palette;
     return PopupMenuButton<double>(
-      tooltip: 'Simulation speed (+ / -)',
+      tooltip: S.simulationSpeed,
       initialValue: sim.speed,
       onSelected: sim.setSpeed,
       itemBuilder: (_) => [
@@ -169,9 +169,9 @@ class _TierBadge extends StatelessWidget {
   const _TierBadge({required this.sim});
 
   static const _tips = {
-    ThermoTier.t1: 'Tier 1: constant relative volatility and molar overflow.',
-    ThermoTier.t2: 'Tier 2: ideal VLE (Raoult) with energy balances.',
-    ThermoTier.t3: 'Tier 3: non-ideal VLE (NRTL or DePriester K) with energy balances.',
+    ThermoTier.t1: S.tier1ConstantRelative,
+    ThermoTier.t2: S.tier2IdealVLE,
+    ThermoTier.t3: S.tier3NonIdeal,
   };
 
   @override

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 
 import '../app_scope.dart';
 import '../painters/effects/blueprint_grid.dart';
@@ -297,7 +298,7 @@ class _MediumState extends State<_Medium> {
                 child: Row(
                   children: [
                     Text(
-                      'CONTROLS',
+                      S.controls,
                       style: t.type.display.style(
                         14,
                         p.accent,

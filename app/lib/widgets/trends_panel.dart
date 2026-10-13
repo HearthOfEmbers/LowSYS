@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -22,10 +23,10 @@ class _TrendsPanelState extends State<TrendsPanel> {
   bool showOp = false;
 
   static const spans = [
-    (600.0, '10 min'),
-    (1800.0, '30 min'),
-    (3600.0, '1 h'),
-    (7200.0, '2 h'),
+    (600.0, S.n10Min),
+    (1800.0, S.n30Min),
+    (3600.0, S.n1H),
+    (7200.0, S.n2H),
   ];
 
   @override
@@ -90,7 +91,7 @@ class _TrendsPanelState extends State<TrendsPanel> {
                 FilterChip(
                   visualDensity: VisualDensity.compact,
                   label: Text(
-                    'OP',
+                    S.op,
                     style: t.type.label.style(12, showOp ? p.bgAlt : p.ink),
                   ),
                   selected: showOp,
@@ -354,7 +355,7 @@ class TrendPainter extends CustomPainter {
       '-${(bins * TrendBuffer.binSeconds / 60).round()} min',
       Offset(area.left, size.height - 12),
     );
-    label('now', Offset(area.right - 22, size.height - 12));
+    label(S.now, Offset(area.right - 22, size.height - 12));
   }
 
   @override

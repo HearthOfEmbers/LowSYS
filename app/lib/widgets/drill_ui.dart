@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../controllers/sim_controller.dart';
@@ -7,42 +8,42 @@ import '../theme/lowsys_theme.dart';
 /// Display names of the diagnosis vocabulary (ENGINE_API.md 11.2, with the M6 additions).
 String diagnosisLabel(String id) {
   const names = {
-    'cooling': 'Cooling water',
-    'fouling': 'Fouling',
-    'inerts': 'Non-condensables',
-    'foaming': 'Foaming',
-    'trayDamage': 'Tray damage',
-    'instrument': 'Instrument',
-    'valve': 'Valve',
-    'feedUpset': 'Feed upset',
-    'steam': 'Steam supply',
-    'thermosyphon': 'Thermosyphon',
-    'maldistribution': 'Maldistribution',
-    'none': 'Nothing is wrong',
-    'restriction': 'Restriction',
-    'condensate': 'Condensate / steam trap',
-    'condenser': 'Condenser',
-    'reboiler': 'Reboiler',
-    'rectifying': 'Rectifying section',
-    'stripping': 'Stripping section',
-    'feed': 'Feed',
-    'packedBed': 'Packed bed',
-    'packingDamage': 'Packing damage (crushed)',
-    'flooding': 'Flooding (operating limit)',
-    'steamLoss': 'Stripping steam loss',
-    'pumparound': 'Pumparound',
-    'furnace': 'Furnace / COT',
-    'column': 'Whole column',
-    'steamSupply': 'Steam supply',
-    'tsInletLine': 'Reboiler inlet line',
-    'tsOutletLine': 'Reboiler outlet line',
-    'bias': 'Bias',
-    'drift': 'Drift',
-    'stuck': 'Stuck',
-    'signalLoss': 'Signal loss',
-    'plugged': 'Plugged line',
-    'spiking': 'Spiking',
-    'coated': 'Coated',
+    'cooling': S.coolingWater,
+    'fouling': S.fouling,
+    'inerts': S.nonCondensables,
+    'foaming': S.foaming,
+    'trayDamage': S.trayDamage,
+    'instrument': S.instrument,
+    'valve': S.valve,
+    'feedUpset': S.feedUpset,
+    'steam': S.steamSupply,
+    'thermosyphon': S.thermosyphon,
+    'maldistribution': S.maldistribution,
+    'none': S.nothingIsWrong,
+    'restriction': S.restriction,
+    'condensate': S.condensateSteamTrap,
+    'condenser': S.condenser,
+    'reboiler': S.reboiler,
+    'rectifying': S.rectifyingSection,
+    'stripping': S.strippingSection,
+    'feed': S.feed,
+    'packedBed': S.packedBed,
+    'packingDamage': S.packingDamageCrushed,
+    'flooding': S.floodingOperatingLimit,
+    'steamLoss': S.strippingSteamLoss,
+    'pumparound': S.pumparound,
+    'furnace': S.furnaceCOT,
+    'column': S.wholeColumn,
+    'steamSupply': S.steamSupply,
+    'tsInletLine': S.reboilerInletLine,
+    'tsOutletLine': S.reboilerOutletLine,
+    'bias': S.bias,
+    'drift': S.drift,
+    'stuck': S.stuck,
+    'signalLoss': S.signalLoss,
+    'plugged': S.pluggedLine,
+    'spiking': S.spiking,
+    'coated': S.coated,
   };
   if (id.startsWith('instrument:')) return 'Instrument ${id.substring(11)}';
   if (id.startsWith('valve:')) return 'Valve ${id.substring(6)}';
@@ -53,10 +54,10 @@ String diagnosisLabel(String id) {
 
 /// Display name of a crude steam injection point (M9): bottom, ss1, ss2, ss3.
 String steamLabel(String point) => switch (point) {
-      'bottom' => 'Bottom stripping steam (FC-321)',
-      'ss1' => 'Kero stripper steam (FC-322)',
-      'ss2' => 'Diesel stripper steam (FC-323)',
-      'ss3' => 'AGO stripper steam (FC-324)',
+      'bottom' => S.bottomStrippingSteamFc,
+      'ss1' => S.keroStripperSteamFc,
+      'ss2' => S.dieselStripperSteamFc,
+      'ss3' => S.agoStripperSteamFc,
       _ => 'Steam $point',
     };
 
@@ -103,7 +104,7 @@ Future<void> showDiagnoseDialog(BuildContext context, SimController sim) async {
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setS) => AlertDialog(
-        title: Text('Diagnose', style: t.type.display.style(19, p.ink)),
+        title: Text(S.diagnose, style: t.type.display.style(19, p.ink)),
         content: SizedBox(
           width: 420,
           child: SingleChildScrollView(
@@ -111,7 +112,7 @@ Future<void> showDiagnoseDialog(BuildContext context, SimController sim) async {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('What kind of fault is it?', style: t.type.label.style(14, p.inkMuted)),
+                Text(S.whatKindOfFault, style: t.type.label.style(14, p.inkMuted)),
                 Wrap(spacing: 6, runSpacing: 4, children: [
                   for (final c in dg.categories)
                     ChoiceChip(
@@ -122,7 +123,7 @@ Future<void> showDiagnoseDialog(BuildContext context, SimController sim) async {
                     ),
                 ]),
                 const SizedBox(height: 10),
-                Text('Where is it?', style: t.type.label.style(14, p.inkMuted)),
+                Text(S.whereIsIt, style: t.type.label.style(14, p.inkMuted)),
                 Wrap(spacing: 6, runSpacing: 4, children: [
                   for (final l in locations)
                     ChoiceChip(
@@ -134,7 +135,7 @@ Future<void> showDiagnoseDialog(BuildContext context, SimController sim) async {
                 ]),
                 if (dg.modes.isNotEmpty && category == 'instrument') ...[
                   const SizedBox(height: 10),
-                  Text('How did it fail? (optional)', style: t.type.label.style(14, p.inkMuted)),
+                  Text(S.howDidItFail, style: t.type.label.style(14, p.inkMuted)),
                   Wrap(spacing: 6, runSpacing: 4, children: [
                     for (final m in dg.modes)
                       ChoiceChip(
@@ -149,13 +150,13 @@ Future<void> showDiagnoseDialog(BuildContext context, SimController sim) async {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(S.cancel)),
           FilledButton(
             key: const ValueKey('diag-submit'),
             onPressed: category == null || location == null
                 ? null
                 : () => Navigator.pop(ctx, Diagnosis(category: category!, location: location!, mode: mode)),
-            child: const Text('Submit'),
+            child: const Text(S.submit),
           ),
         ],
       ),
@@ -164,12 +165,7 @@ Future<void> showDiagnoseDialog(BuildContext context, SimController sim) async {
   if (res == null) return;
   final r = await sim.submitDiagnosis(res);
   if (!context.mounted) return;
-  final msg = r.fullyCorrect
-      ? 'Correct.'
-      : (r.categoryOk
-          ? 'The category is right, the location is not.'
-          : (r.locationOk ? 'The location is right, the category is not.' : 'Not it.')) +
-          (r.attemptsLeft > 0 ? ' ${r.attemptsLeft} attempt${r.attemptsLeft == 1 ? '' : 's'} left.' : ' No attempts are left.');
+  final msg = S.diagnosisResult(r.fullyCorrect, r.categoryOk, r.locationOk, r.attemptsLeft);
   ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(msg)));
   if (r.fullyCorrect || r.attemptsLeft <= 0) await sim.finishScenario();
 }

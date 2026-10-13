@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import '../l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -180,10 +181,10 @@ class CrudeFlowsheetPainter extends CustomPainter {
         pipe);
     _text(canvas, 'Naphtha ${k.yieldVolPct[0].toStringAsFixed(1)} %', Offset(g.drum.right + 4, g.drum.center.dy), _num(fs, p.ink),
         anchor: Alignment.centerLeft);
-    _text(canvas, 'Reflux', Offset(g.drum.left + 14, (g.drum.bottom + refluxY) / 2), _num(fs - 1, p.inkMuted));
+    _text(canvas, S.reflux, Offset(g.drum.left + 14, (g.drum.bottom + refluxY) / 2), _num(fs - 1, p.inkMuted));
     _text(canvas, '${_t(s.kpis.crude!.topT)} ${units.value.symbol(Quantity.temperature)} · ${(k.qc / 1e6).toStringAsFixed(1)} MW', Offset(g.condenser.dx, 2),
         _num(fs - 1, p.inkMuted), anchor: Alignment.topCenter);
-    if (k.condenserLimited) _text(canvas, 'Q_C limit', Offset(g.condenser.dx - g.condR - 4, g.condenser.dy), _num(fs - 1, p.alarm), anchor: Alignment.centerRight);
+    if (k.condenserLimited) _text(canvas, S.qcLimit, Offset(g.condenser.dx - g.condR - 4, g.condenser.dy), _num(fs - 1, p.alarm), anchor: Alignment.centerRight);
 
     // ---- strippers
     const names = ['Kero', 'Diesel', 'AGO'];
@@ -283,7 +284,7 @@ class CrudeFlowsheetPainter extends CustomPainter {
       canvas.drawCircle(c0, r, Paint()..color = p.accent..style = PaintingStyle.stroke..strokeWidth = 2);
       final ang = math.pi * (0.8 + 1.4 * needle.value);
       canvas.drawLine(c0, c0 + Offset(math.cos(ang), math.sin(ang)) * (r - 3), Paint()..color = p.hot..strokeWidth = 2);
-      _text(canvas, 'COT', c0 + Offset(0, r * 0.45), _num(fs - 2, p.inkMuted), anchor: Alignment.center);
+      _text(canvas, S.cot, c0 + Offset(0, r * 0.45), _num(fs - 2, p.inkMuted), anchor: Alignment.center);
     }
   }
 

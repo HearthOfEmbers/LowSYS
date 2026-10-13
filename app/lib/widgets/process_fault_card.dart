@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -67,8 +68,8 @@ class _ProcessFaultCardState extends State<ProcessFaultCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Feed and utility faults (Tier 2)', style: t.type.display.style(14.5, p.accent, weight: FontWeight.w700)),
-              Text('F08 to F15. Their symptoms are on the Energy and Balance tabs.', style: t.type.label.style(12.5, p.inkMuted)),
+              Text(S.feedAndUtilityFaults, style: t.type.display.style(14.5, p.accent, weight: FontWeight.w700)),
+              Text(S.f08ToF15Their, style: t.type.label.style(12.5, p.inkMuted)),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 6,
@@ -111,7 +112,7 @@ class _ProcessFaultCardState extends State<ProcessFaultCard> {
                 ),
               Row(
                 children: [
-                  SizedBox(width: 70, child: Text('Severity', style: t.type.label.style(13, p.inkMuted))),
+                  SizedBox(width: 70, child: Text(S.severity, style: t.type.label.style(13, p.inkMuted))),
                   Expanded(
                     child: Slider(
                       value: severity.clamp(0.1, 1.0),
@@ -130,10 +131,10 @@ class _ProcessFaultCardState extends State<ProcessFaultCard> {
               Wrap(
                 spacing: 6,
                 children: [
-                  for (final r in <(double, String)>[(0.0, 'step'), (60.0, '1 min'), (1800.0, '30 min'), (6 * 3600.0, '6 h')])
+                  for (final r in <(double, String)>[(0.0, S.step), (60.0, S.n1Min), (1800.0, S.n30Min), (6 * 3600.0, '6 h')])
                     ChoiceChip(
                       visualDensity: VisualDensity.compact,
-                      label: Text('ramp ${r.$2}', style: t.type.label.style(12.5, rampS == r.$1 ? p.bgAlt : p.ink)),
+                      label: Text(S.rampLabel(r.$2), style: t.type.label.style(12.5, rampS == r.$1 ? p.bgAlt : p.ink)),
                       selected: rampS == r.$1,
                       selectedColor: p.accent,
                       onSelected: (_) => setState(() => ramp = r.$1),
@@ -147,7 +148,7 @@ class _ProcessFaultCardState extends State<ProcessFaultCard> {
                     if (trap)
                       TextButton(
                         onPressed: sim.openTrapBypass,
-                        child: Text('Open trap bypass', style: t.type.label.style(13.5, p.ok, weight: FontWeight.w700)),
+                        child: Text(S.openTrapBypass, style: t.type.label.style(13.5, p.ok, weight: FontWeight.w700)),
                       ),
                     TextButton(
                       key: const ValueKey('inject-process-fault'),
@@ -159,7 +160,7 @@ class _ProcessFaultCardState extends State<ProcessFaultCard> {
                         ramp: rampS,
                         params: d.type == FaultType.coolingLoss ? {'mode': mode} : const {},
                       )),
-                      child: Text('Inject ${d.id}', style: t.type.label.style(13.5, p.warn, weight: FontWeight.w700)),
+                      child: Text(S.injectOn(d.id), style: t.type.label.style(13.5, p.warn, weight: FontWeight.w700)),
                     ),
                   ],
                 ),

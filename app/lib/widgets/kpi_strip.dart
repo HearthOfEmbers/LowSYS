@@ -64,13 +64,13 @@ class KpiStrip extends StatelessWidget {
               target: const ExplainCondenser(),
             ),
             _Item(
-              'Drum',
+              S.drum,
               (k, u) => k.drumLevelPct.toStringAsFixed(1),
               (u) => '%',
               target: const ExplainCondenser(),
             ),
             _Item(
-              'Sump',
+              S.sumpCap,
               (k, u) => k.sumpLevelPct.toStringAsFixed(1),
               (u) => '%',
               target: const ExplainReboiler(),
@@ -108,7 +108,7 @@ class KpiStrip extends StatelessWidget {
               (u) => u.symbol(Quantity.pressureDelta),
             ),
             _Item(
-              'Flood',
+              S.floodCap,
               (k, u) => k.maxFloodPct.isNaN || k.maxFloodPct <= 0
                   ? '—'
                   : k.maxFloodPct.toStringAsFixed(0),
@@ -198,50 +198,50 @@ List<_Item> _crudeItems(ThemePalette pal) {
   String y(double v) => v.isNaN ? '—' : v.toStringAsFixed(1);
   return [
     mk(
-      'Naphtha',
+      S.naphtha,
       (c, k, u) => y(c.yieldVolPct[0]),
       (u) => '%',
       target: const ExplainProduct(0),
     ),
     mk(
-      'Kero',
+      S.kero,
       (c, k, u) => y(c.yieldVolPct[1]),
       (u) => '%',
       target: const ExplainProduct(1),
     ),
     mk(
-      'Diesel',
+      S.diesel,
       (c, k, u) => y(c.yieldVolPct[2]),
       (u) => '%',
       target: const ExplainProduct(2),
     ),
     mk(
-      'AGO',
+      S.ago,
       (c, k, u) => y(c.yieldVolPct[3]),
       (u) => '%',
       target: const ExplainProduct(3),
     ),
     mk(
-      'Residue',
+      S.residue,
       (c, k, u) => y(c.yieldVolPct[4]),
       (u) => '%',
       target: const ExplainProduct(4),
     ),
     mk(
-      'Overflash',
+      S.overflash,
       (c, k, u) => y(c.overflashVolPct),
       (u) => '%',
       target: const ExplainOverflash(),
     ),
     mk(
-      'Kero D86 95',
+      S.keroD86P95,
       (c, k, u) => temp(c.d86p95[1], u),
       (u) => u.symbol(Quantity.temperature),
       target: const ExplainProduct(1),
       tone: (c, p) => c.d86p95[1] > 508.15 ? p.warn : p.ok,
     ),
     mk(
-      'D–K gap',
+      S.dieselKeroGap,
       (c, k, u) => c.gapDieselKero.isNaN
           ? '—'
           : u
@@ -252,7 +252,7 @@ List<_Item> _crudeItems(ThemePalette pal) {
       tone: (c, p) => c.gapDieselKero >= 0 ? p.ok : p.warn,
     ),
     mk(
-      'Res TBP 5',
+      S.resTbp5,
       (c, k, u) => temp(c.residueTbp5, u),
       (u) => u.symbol(Quantity.temperature),
       target: const ExplainProduct(4),
@@ -266,13 +266,13 @@ List<_Item> _crudeItems(ThemePalette pal) {
       tone: (c, p) => c.condenserLimited ? p.alarm : null,
     ),
     mk(
-      'Drum',
+      S.drum,
       (c, k, u) => k.drumLevelPct.toStringAsFixed(0),
       (u) => '%',
       target: const ExplainCondenser(),
     ),
     mk(
-      'Flood',
+      S.floodCap,
       (c, k, u) => k.maxFloodPct.isNaN ? '—' : k.maxFloodPct.toStringAsFixed(0),
       (u) => '%',
       tone: (c, p) => c.condenserLimited ? null : null,

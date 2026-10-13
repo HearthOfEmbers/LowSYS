@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -83,9 +84,9 @@ class FugPanel extends StatelessWidget {
     if (r == null || !r.valid) {
       final why = switch (r?.reason) {
         FugInvalidReason.notAdjacent =>
-          'The keys are not adjacent in volatility: Fenske and Underwood need the light key and heavy key next to each other.',
+          S.theKeysAreNot,
         FugInvalidReason.noSplit =>
-          'These recoveries do not split the keys: the light key must go to D and the heavy key to B.',
+          S.theseRecoveriesDoNot,
         null => s?.view.isPlant == true
             ? 'Not available on a real plant view: the panel needs model compositions.'
             : 'Waiting for the first result.',
@@ -94,22 +95,22 @@ class FugPanel extends StatelessWidget {
     } else {
       final rNote = (tg?.rOverRmin == null) ? 'live L0 / D' : 'R = ${tg!.rOverRmin} R_min';
       body.addAll([
-        row('alpha (LK/HK)', f1(r.alpha[keys.lk], 3), note: 'mean of top and bottom'),
-        row('N_min (Fenske)', f1(r.nMin), note: 'stages incl. reboiler', k: const ValueKey('fug-nmin')),
-        row('R_min (Underwood)', f1(r.rMin), k: const ValueKey('fug-rmin')),
-        row('R used', f1(r.r), note: rNote),
-        row('N (Gilliland)', f1(r.nGilliland), k: const ValueKey('fug-n')),
-        row('N_R above feed (Kirkbride)', f1(r.nR), note: 'N_R/N_S ${f1(r.nrOverNs, 3)}'),
+        row(S.alphaLKHK, f1(r.alpha[keys.lk], 3), note: S.meanOfTopAnd),
+        row(S.nMinFenske, f1(r.nMin), note: S.stagesInclReboiler, k: const ValueKey('fug-nmin')),
+        row(S.rMinUnderwood, f1(r.rMin), k: const ValueKey('fug-rmin')),
+        row(S.rUsed, f1(r.r), note: rNote),
+        row(S.nGilliland, f1(r.nGilliland), k: const ValueKey('fug-n')),
+        row(S.nRAboveFeed, f1(r.nR), note: 'N_R/N_S ${f1(r.nrOverNs, 3)}'),
         if (r.belowRmin)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Text('R is below R_min: no finite column reaches these recoveries.',
+            child: Text(S.rBelowRmin,
                 key: const ValueKey('fug-below-rmin'), style: t.type.label.style(13.5, p.warn)),
           ),
         const Divider(height: 14),
-        row('Rigorous: N_act', f1(r.nActual), note: 'sum of E, plus reboiler', k: const ValueKey('fug-nact')),
-        row('N_R,act above feed', f1(r.nRActual)),
-        row('R_act', f1(r.rActual)),
+        row(S.rigorousNAct, f1(r.nActual), note: S.sumOfEPlus, k: const ValueKey('fug-nact')),
+        row(S.nRActAbove, f1(r.nRActual)),
+        row(S.rAct, f1(r.rActual)),
       ]);
     }
     return Container(
@@ -122,10 +123,10 @@ class FugPanel extends StatelessWidget {
           Text('FUG shortcut: $lk / $hk', style: t.type.display.style(16, p.accent)),
           const SizedBox(height: 6),
           Wrap(runSpacing: 6, children: [
-            chip('Live column', tg == null, () => sim.setFugTargets(null), const ValueKey('fug-live')),
-            chip('Targets 98 %', tg != null && tg.rOverRmin == null, () => sim.setFugTargets(const FugTargets(0.98, 0.98)),
+            chip(S.liveColumn, tg == null, () => sim.setFugTargets(null), const ValueKey('fug-live')),
+            chip(S.targets98, tg != null && tg.rOverRmin == null, () => sim.setFugTargets(const FugTargets(0.98, 0.98)),
                 const ValueKey('fug-target')),
-            chip('98 %, R = 1.3 R_min', tg?.rOverRmin != null, () => sim.setFugTargets(const FugTargets(0.98, 0.98, 1.3)),
+            chip(S.n98R13, tg?.rOverRmin != null, () => sim.setFugTargets(const FugTargets(0.98, 0.98, 1.3)),
                 const ValueKey('fug-target-k')),
           ]),
           const SizedBox(height: 8),
@@ -187,7 +188,7 @@ class GcLists extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('GC analysers (mole fractions)', style: t.type.display.style(15, p.ink)),
+        Text(S.gcAnalysers, style: t.type.display.style(15, p.ink)),
         const SizedBox(height: 4),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (final i in at) ...[col(i), if (i != at.last) const SizedBox(width: 6)],

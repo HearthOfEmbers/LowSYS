@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -29,7 +30,7 @@ class EnergyPanel extends StatelessWidget {
             children: [
               if (header != null) header!,
               Text(
-                'Tier 1 has no energy balance: the vapour flow is the same on every tray and the heat duties are not modelled. Switch to Tier 2 with the T1/T2 badge to see the condenser, the reboiler and the column energy balance.',
+                S.tier1NoEnergyBalance,
                 key: const ValueKey('energy-t1'),
                 style: t.type.label.style(14, p.inkMuted),
               ),
@@ -219,33 +220,33 @@ class _CondenserCard extends StatelessWidget {
     final blanket = c.inertFraction.isNaN ? 0.0 : (3 * c.inertFraction).clamp(0.0, 0.95);
     return _Card(
       cardKey: const ValueKey('energy-condenser'),
-      title: 'CONDENSER',
+      title: S.condenserHeading,
       t: t,
       rows: [
-        _Row('Duty Q_C', _kw(u, c.qC), t),
+        _Row(S.dutyQC, _kw(u, c.qC), t),
         if (!plant) ...[
-          _Row('UA effective / clean', _ua(u, c.uaEff), t, sub: '/ ${_ua(u, c.uaClean)}'),
+          _Row(S.uaEffectiveClean, _ua(u, c.uaEff), t, sub: '/ ${_ua(u, c.uaClean)}'),
           _Bar(c.uaEff, c.uaClean, t, color: c.uaEff < 0.97 * c.uaClean ? p.warn : null),
         ],
-        _Row('Cooling water in / out', _temp(u, c.tCwIn), t, sub: '→ ${_temp(u, c.tCwOut)}'),
-        _Row('CW valve PV-101', c.cwOp.isNaN ? '—' : '${c.cwOp.toStringAsFixed(1)} %', t,
+        _Row(S.coolingWaterInOut, _temp(u, c.tCwIn), t, sub: '→ ${_temp(u, c.tCwOut)}'),
+        _Row(S.cwValvePv101, c.cwOp.isNaN ? '—' : '${c.cwOp.toStringAsFixed(1)} %', t,
             valueColor: c.cwOp >= 99.5 ? p.warn : null),
         if (!plant) ...[
-          _Row('Condensing temperature', _temp(u, c.tCond), t),
-          _Row('Reflux subcooling', _dT(u, c.subcooling), t, sub: 'reflux ${_temp(u, c.tReflux)}'),
-          _Row('Inerts y_I', '${(100 * c.inertFraction).toStringAsFixed(1)} %', t,
+          _Row(S.condensingTemperature, _temp(u, c.tCond), t),
+          _Row(S.refluxSubcooling, _dT(u, c.subcooling), t, sub: 'reflux ${_temp(u, c.tReflux)}'),
+          _Row(S.inertsYI, '${(100 * c.inertFraction).toStringAsFixed(1)} %', t,
               sub: blanket > 0.005 ? 'tubes blanketed ${(100 * blanket).toStringAsFixed(0)} %' : null,
               valueColor: c.inertFraction > 0.02 ? p.warn : null),
-          _Row('Top pressure', _bar(u, s.kpis.pTop), t),
+          _Row(S.topPressure, _bar(u, s.kpis.pTop), t),
           if (c.partial)
             _Row(
-              'Vapour product PV-102',
+              S.vapourProductPv102,
               '${u.fromSI(Quantity.molarFlow, c.vaporProduct).toStringAsFixed(1)} ${u.symbol(Quantity.molarFlow)}',
               t,
             ),
-          if (c.nRelief > 1e-6) _Row('Relief valve', 'LIFTING', t, valueColor: p.alarm),
+          if (c.nRelief > 1e-6) _Row(S.reliefValve, 'LIFTING', t, valueColor: p.alarm),
         ] else
-          _Row('Reflux temperature TI-100', _temp(u, c.tReflux), t),
+          _Row(S.refluxTemperatureTi100, _temp(u, c.tReflux), t),
       ],
     );
   }
@@ -264,18 +265,18 @@ class _ReboilerCard extends StatelessWidget {
     final p = t.palette;
     return _Card(
       cardKey: const ValueKey('energy-reboiler'),
-      title: 'REBOILER',
+      title: S.reboilerHeading,
       t: t,
       flag: r.dutyLimited ? 'DUTY LIMITED' : null,
       flagColor: p.warn,
       rows: [
-        _Row('Duty delivered', _kw(u, r.qDelivered), t, sub: plant || r.qMax.isNaN ? null : 'of ${_kw(u, r.qMax)} max'),
+        _Row(S.dutyDelivered, _kw(u, r.qDelivered), t, sub: plant || r.qMax.isNaN ? null : 'of ${_kw(u, r.qMax)} max'),
         if (!plant) _Bar(r.qDelivered, r.qMax, t, color: r.dutyLimited ? p.warn : null),
-        if (!plant) _Row('UA effective / clean', _ua(u, r.uaEff), t, sub: '/ ${_ua(u, r.uaClean)}'),
-        _Row('Steam header', _bar(u, r.steamP), t, sub: 'T_st ${_temp(u, r.steamT)}'),
-        _Row('Steam valve FV-103', r.steamValveOp.isNaN ? '—' : '${r.steamValveOp.toStringAsFixed(1)} %', t,
+        if (!plant) _Row(S.uaEffectiveClean, _ua(u, r.uaEff), t, sub: '/ ${_ua(u, r.uaClean)}'),
+        _Row(S.steamHeader, _bar(u, r.steamP), t, sub: 'T_st ${_temp(u, r.steamT)}'),
+        _Row(S.steamValveFv103, r.steamValveOp.isNaN ? '—' : '${r.steamValveOp.toStringAsFixed(1)} %', t,
             valueColor: r.steamValveOp >= 99.5 ? p.warn : null),
-        _Row('Sump temperature', _temp(u, r.tSump), t),
+        _Row(S.sumpTemperature, _temp(u, r.tSump), t),
       ],
     );
   }
@@ -313,21 +314,21 @@ class _BalanceCard extends StatelessWidget {
 
     return _Card(
       cardKey: const ValueKey('energy-balance'),
-      title: 'COLUMN ENERGY BALANCE',
+      title: S.columnEnergyBalanceHeading,
       t: t,
       rows: [
         if (!plant && e != null) ...[
-          _Row('In: feed + reboiler', _kw(u, e.feed + e.reboiler), t, sub: '${_kw(u, e.feed)} + ${_kw(u, e.reboiler)}'),
-          _Row('Out: condenser + products', _kw(u, e.condenser + e.distillate + e.bottoms + e.vaporProduct), t,
+          _Row(S.inFeedReboiler, _kw(u, e.feed + e.reboiler), t, sub: '${_kw(u, e.feed)} + ${_kw(u, e.reboiler)}'),
+          _Row(S.outCondenserProducts, _kw(u, e.condenser + e.distillate + e.bottoms + e.vaporProduct), t,
               sub: '${_kw(u, e.condenser)} + ${_kw(u, e.distillate + e.bottoms)}${e.vaporProduct != 0 ? " + ${_kw(u, e.vaporProduct)} vapour" : ""}'),
-          _Row('Residual', _kw(u, e.residual), t,
+          _Row(S.residual, _kw(u, e.residual), t,
               sub: s.kpis.energyResidual.isNaN ? null : '${(100 * s.kpis.energyResidual).toStringAsExponential(1)} % of Q_R'),
         ],
         checkRow('C3a', 'C3a  Condenser duty vs reflux + distillate'),
         checkRow('C3b', 'C3b  Energy balance from the readings'),
         if (plant)
           Text(
-            'On a real plant only the readings are known: FT-201, TI-201, TI-202, PT-201 and FT-103.',
+            S.plantReadingsKnown,
             style: t.type.label.style(12, p.inkMuted),
           ),
       ],
@@ -356,15 +357,15 @@ class _ThermosyphonCard extends StatelessWidget {
     if (plant && !calc) {
       return _Card(
         cardKey: const ValueKey('energy-thermosyphon'),
-        title: 'THERMOSYPHON',
+        title: S.thermosyphonHeading,
         t: t,
         rows: [
           _LoopSchematic(r: r, t: t, show: false, surging: false),
-          _Row('Inlet valve', '${r.inletValve.toStringAsFixed(0)} % open', t),
+          _Row(S.inletValve, '${r.inletValve.toStringAsFixed(0)} % open', t),
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(
-              'The circulation, exit quality and surge index are not observable on a real plant. Watch the boilup and the bottom temperatures for a ripple of 5 to 20 s.',
+              S.thermosyphonNotObservable,
               style: t.type.label.style(13, p.inkMuted),
             ),
           ),
@@ -384,15 +385,15 @@ class _ThermosyphonCard extends StatelessWidget {
             sub: r.exitQuality > 0.30 ? 'above 0.30: mist flow' : null,
             valueColor: r.exitQuality > 0.30 ? p.warn : null),
         _Row('Riser quality x_r$tag', num2(r.riserQuality, '', 3), t),
-        _Row('Surge index I_s$tag', num2(r.instabilityIndex, '', 2), t, sub: 'limit 1.00', valueColor: surging ? p.alarm : null),
+        _Row('Surge index I_s$tag', num2(r.instabilityIndex, '', 2), t, sub: S.limit100, valueColor: surging ? p.alarm : null),
         _Bar(r.instabilityIndex.isNaN ? 0 : r.instabilityIndex, 1.0, t, color: surging ? p.alarm : p.ok),
         _Row('Oscillation$tag', r.oscAmplitude.isNaN ? '—' : '${(100 * r.oscAmplitude).toStringAsFixed(1)} %', t,
             sub: r.oscAmplitude > 0.005 ? 'period ${r.oscPeriod.toStringAsFixed(1)} s' : null,
             valueColor: r.oscAmplitude > 0.02 ? p.alarm : null),
         _Row('Inlet line dP$tag', _bar(u, r.inletLineDp), t),
         _Row('Outlet line dP$tag', _bar(u, r.outletLineDp), t),
-        _Row('Inlet valve', '${r.inletValve.toStringAsFixed(0)} % open', t),
-        _Row('Steam-side duty (FT-103)', _kw(u, r.steamSideDuty), t, sub: 'mean of the loop duty'),
+        _Row(S.inletValve, '${r.inletValve.toStringAsFixed(0)} % open', t),
+        _Row(S.steamSideDutyFt, _kw(u, r.steamSideDuty), t, sub: S.meanOfTheLoop),
       ],
     );
   }
@@ -489,11 +490,11 @@ class _LoopPainter extends CustomPainter {
       ..close();
     canvas.drawPath(vp, Paint()..color = (palette.ok as Color).withValues(alpha: (valve / 100).clamp(0.1, 1.0)));
     canvas.drawPath(vp, line);
-    _label(canvas, 'sump', Offset(x0 - 14, yTop - 12));
+    _label(canvas, S.sump, Offset(x0 - 14, yTop - 12));
     _label(canvas, 'inlet ${valve.toStringAsFixed(0)} %', Offset(x0 - 10, h - 14));
-    _label(canvas, 'heater', Offset(x1 + 4, h - 14));
+    _label(canvas, S.heater, Offset(x1 + 4, h - 14));
     _label(canvas, xe == null ? 'riser' : 'riser x_e ${xe!.toStringAsFixed(2)}', Offset(x2 + 4, yTop - 12));
-    _label(canvas, 'column', Offset(x3 - 18, h - 14));
+    _label(canvas, S.column, Offset(x3 - 18, h - 14));
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -95,9 +96,9 @@ class _GlyphPainter extends CustomPainter {
 }
 
 String stateLabel(AlarmState s) => switch (s) {
-  AlarmState.unack => 'UNACK',
-  AlarmState.acked => 'ACK',
-  AlarmState.rtnUnack => 'RTN',
+  AlarmState.unack => S.alarmUnack,
+  AlarmState.acked => S.ack,
+  AlarmState.rtnUnack => S.alarmRtn,
 };
 
 /// One-line alarm banner (ISA-18.2 style): the newest unacknowledged alarm of the highest priority, with the
@@ -138,7 +139,7 @@ class AlarmBar extends StatelessWidget {
                 Expanded(
                   child: Text(
                     top == null
-                        ? '${alarms.length} active, all acknowledged'
+                        ? S.alarmsAllAcked(alarms.length)
                         : '${shown.id}  ${shown.message}',
                     overflow: TextOverflow.ellipsis,
                     style: t.type.label.style(
@@ -150,7 +151,7 @@ class AlarmBar extends StatelessWidget {
                 ),
                 Text(
                   unack > 0
-                      ? '$unack new / ${alarms.length}'
+                      ? S.alarmsNewOf(unack, alarms.length)
                       : '${alarms.length}',
                   style: t.type.number.style(12.5, p.inkMuted),
                 ),
@@ -161,7 +162,7 @@ class AlarmBar extends StatelessWidget {
                   ),
                   onPressed: sim.acknowledgeAll,
                   child: Text(
-                    'ACK',
+                    S.ack,
                     style: t.type.display.style(
                       13,
                       p.accent,
@@ -202,13 +203,13 @@ Future<void> showAlarmList(BuildContext context) {
                     children: [
                       Expanded(
                         child: Text(
-                          'Alarms',
+                          S.alarms,
                           style: t.type.display.style(20, p.ink),
                         ),
                       ),
                       TextButton(
                         onPressed: sim.acknowledgeAll,
-                        child: const Text('Acknowledge all'),
+                        child: const Text(S.acknowledgeAll),
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(ctx),
@@ -221,7 +222,7 @@ Future<void> showAlarmList(BuildContext context) {
                         ? Padding(
                             padding: const EdgeInsets.all(12),
                             child: Text(
-                              'No active alarms.',
+                              S.noActiveAlarms,
                               style: t.type.label.style(14, p.inkMuted),
                             ),
                           )
@@ -243,7 +244,7 @@ Future<void> showAlarmList(BuildContext context) {
                                     ),
                                   ),
                                   subtitle: Text(
-                                    '${stateLabel(a.state)} · since ${formatTimeOfDay(a.raisedAt)}',
+                                    S.alarmSince(stateLabel(a.state), formatTimeOfDay(a.raisedAt)),
                                     style: t.type.label.style(12.5, p.inkMuted),
                                   ),
                                   trailing: a.state == AlarmState.acked
@@ -251,7 +252,7 @@ Future<void> showAlarmList(BuildContext context) {
                                       : TextButton(
                                           onPressed: () =>
                                               sim.acknowledge(a.id),
-                                          child: const Text('Ack'),
+                                          child: const Text(S.ackButton),
                                         ),
                                 ),
                             ],

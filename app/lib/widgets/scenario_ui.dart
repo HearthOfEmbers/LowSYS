@@ -265,7 +265,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
                                   key: const ValueKey('drill-diagnose'),
                                   onPressed: () => showDiagnoseDialog(context, sim),
                                   child: Text(
-                                    'Diagnose',
+                                    S.diagnose,
                                     style: t.type.label.style(13.5, p.alarm, weight: FontWeight.w700),
                                   ),
                                 ),
@@ -372,7 +372,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
                       ),
                       onPressed: () => _answer(context, sim, od, answer),
                       child: Text(
-                        'Answer…',
+                        S.answer,
                         style: t.type.label.style(
                           12.5,
                           p.accent,
@@ -414,7 +414,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
                 signed: true,
               ),
               decoration: InputDecoration(
-                labelText: 'Your answer',
+                labelText: S.yourAnswer,
                 suffixText: u.symbol(spec.quantity),
               ),
             ),
@@ -455,7 +455,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: const Text(S.cancel),
             ),
             FilledButton(
               onPressed: () {
@@ -470,7 +470,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
                     if (st != null) Navigator.pop(ctx, st);
                 }
               },
-              child: const Text('Submit'),
+              child: const Text(S.submit),
             ),
           ],
         ),
@@ -482,11 +482,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(
         content: Text(
-          r.correct
-              ? 'Correct.'
-              : (r.attemptsLeft > 0
-                    ? 'Not quite. ${r.attemptsLeft} attempts left.'
-                    : 'Not correct, and no attempts are left.'),
+          S.answerResult(r.correct, r.attemptsLeft),
         ),
       ),
     );
@@ -501,7 +497,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
         builder: (ctx, setS) {
           final cur = sim.scenario ?? r;
           return AlertDialog(
-            title: Text('Hints', style: t.type.display.style(18, p.ink)),
+            title: Text(S.hints, style: t.type.display.style(18, p.ink)),
             content: SizedBox(
               width: 420,
               child: ListView(
@@ -509,7 +505,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
                 children: [
                   if (!cur.hints.any((h) => h.unlocked))
                     Text(
-                      'No hints yet. They unlock as you work.',
+                      S.noHintsYetThey,
                       style: t.type.label.style(14, p.ink),
                     ),
                   for (final h in cur.hints.where((h) => h.unlocked))
@@ -553,7 +549,7 @@ class _ScenarioHudState extends State<ScenarioHud> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
+                child: const Text(S.close),
               ),
             ],
           );
@@ -601,7 +597,7 @@ class _DebriefHostState extends State<DebriefHost> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          '${sim.scenarioDef?.title ?? 'Scenario'} — ${c.score} / 100',
+          S.debriefTitle(sim.scenarioDef?.title ?? S.scenarioWord, c.score),
           style: t.type.display.style(19, p.ink),
         ),
         content: SizedBox(
@@ -612,28 +608,28 @@ class _DebriefHostState extends State<DebriefHost> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  c.completed ? (drill ? 'Diagnosed.' : 'All goals met.') : (drill ? 'Not diagnosed.' : 'Not all goals met.'),
+                  S.debriefVerdict(c.completed, drill),
                   style: t.type.display.style(15, c.completed ? p.ok : p.warn),
                 ),
                 const SizedBox(height: 8),
                 for (final row in [
                   (
-                    (drill ? 'Category' : 'Goals') + '${w == null ? '' : ' (of ${(100 * w.objectives).round()})'}',
+                    S.scoreRow(drill ? S.category : S.goalsWord, w == null ? null : (100 * w.objectives).round()),
                     c.objectives,
                   ),
                   (
-                    'Time${w == null ? '' : ' (of ${(100 * w.time).round()})'}',
+                    S.scoreRow(S.timeWord, w == null ? null : (100 * w.time).round()),
                     c.time,
                   ),
                   (
-                    'Safety${w == null ? '' : ' (of ${(100 * w.safety).round()})'}',
+                    S.scoreRow(S.safetyWord, w == null ? null : (100 * w.safety).round()),
                     c.safety,
                   ),
                   (
-                    (drill ? 'Location' : 'Product quality') + '${w == null ? '' : ' (of ${(100 * w.quality).round()})'}',
+                    S.scoreRow(drill ? S.location : S.productQuality, w == null ? null : (100 * w.quality).round()),
                     c.quality,
                   ),
-                  if (c.hintCost > 0) ('Hints', -c.hintCost),
+                  if (c.hintCost > 0) (S.hints, -c.hintCost),
                 ])
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
@@ -665,14 +661,14 @@ class _DebriefHostState extends State<DebriefHost> {
               final d = sim.scenarioDef;
               if (d != null) sim.startScenario(d);
             },
-            child: const Text('Retry'),
+            child: const Text(S.retry),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               sim.leaveScenario();
             },
-            child: const Text('Back to sandbox'),
+            child: const Text(S.backToSandbox),
           ),
         ],
       ),

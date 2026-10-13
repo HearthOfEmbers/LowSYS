@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'l10n/strings.dart';
 
 import 'app_scope.dart';
 import 'controllers/sim_controller.dart';
@@ -41,7 +42,7 @@ class _LowsysAppState extends State<LowsysApp> {
       builder: (context, id, _) {
         final theme = id == widget.theme.id ? widget.theme : themeById(id);
         return MaterialApp(
-          title: 'LowSYS',
+          title: S.appTitle,
           debugShowCheckedModeBanner: false,
           theme: materialThemeFor(theme),
           builder: (context, child) => LowsysThemeScope(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -59,7 +60,7 @@ class _CrudeFaultPanelState extends State<CrudeFaultPanel> {
           children: [
             if (widget.header != null) widget.header!,
             if (s.visibleFaults.isEmpty)
-              Padding(padding: const EdgeInsets.only(top: 8), child: Text('No fault is active.', style: t.type.label.style(13.5, p.inkMuted))),
+              Padding(padding: const EdgeInsets.only(top: 8), child: Text(S.noFaultIsActive, style: t.type.label.style(13.5, p.inkMuted))),
             for (final f in s.visibleFaults)
               Container(
                 margin: const EdgeInsets.only(top: 8),
@@ -68,17 +69,17 @@ class _CrudeFaultPanelState extends State<CrudeFaultPanel> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text('${f.description}\nseverity ${(100 * f.severity).toStringAsFixed(0)} % (final ${(100 * f.finalSeverity).toStringAsFixed(0)} %)',
+                      child: Text(S.faultSeverityLine(f.description, f.severity, f.finalSeverity),
                           style: t.type.label.style(13, p.ink)),
                     ),
-                    TextButton(onPressed: () => sim.clearFault(f.id), child: Text('Clear', style: t.type.label.style(13.5, p.ok, weight: FontWeight.w700))),
+                    TextButton(onPressed: () => sim.clearFault(f.id), child: Text(S.clear, style: t.type.label.style(13.5, p.ok, weight: FontWeight.w700))),
                   ],
                 ),
               ),
             card(
               const ValueKey('fault-f24'),
-              'Stripping steam loss',
-              'F24: the steam delivered at one injection point is cut. Its FC saturates. The bottom steam shifts the stage-30 temperature up; stripper steam lightens that product.',
+              S.strippingSteamLoss,
+              S.f24TheSteamDelivered,
               [
                 Wrap(spacing: 6, children: [
                   for (final e in labels.entries)
@@ -89,31 +90,31 @@ class _CrudeFaultPanelState extends State<CrudeFaultPanel> {
                       onSelected: (_) => setState(() => point = e.key),
                     ),
                 ]),
-                slider('Loss', sSteam, 0.1, 1, (x) => sSteam = x, (v) => '${(100 * v).round()} %'),
+                slider(S.loss, sSteam, 0.1, 1, (x) => sSteam = x, (v) => '${(100 * v).round()} %'),
               ],
-              'Cut the steam',
+              S.cutTheSteam,
               () => sim.injectFault(FaultSpec(type: FaultType.strippingSteamLoss, location: FaultLocation.steam(point), severity: sSteam, onset: s.time, ramp: 60)),
             ),
             card(
               const ValueKey('fault-f25'),
-              'Pumparound circulation loss',
-              'F25: the pump delivers (1 − s) of its flow; s = 1 is a trip. The heat the pumparound removed goes up the column to the condenser.',
-              [slider('Loss', sPa, 0.1, 1, (x) => sPa = x, (v) => '${(100 * v).round()} %')],
-              'Slow the pump',
+              S.pumparoundCirculationLoss,
+              S.f25ThePumpDelivers,
+              [slider(S.loss, sPa, 0.1, 1, (x) => sPa = x, (v) => '${(100 * v).round()} %')],
+              S.slowThePump,
               () => sim.injectFault(FaultSpec(type: FaultType.pumparoundTrip, location: const FaultLocation.equipment('pumparound'), severity: sPa, onset: s.time)),
             ),
             card(
               const ValueKey('fault-f26'),
-              'Furnace outlet upset',
-              'F26: the crude arrives colder than TC-320 thinks (true COT = SP + s × −15 K); TI-320 keeps reading the SP. Raise the SP to compensate.',
-              [slider('Severity', sCot, 0.1, 1, (x) => sCot = x, (v) => '${(-15 * v).toStringAsFixed(1)} K')],
-              'Upset the furnace',
+              S.furnaceOutletUpset,
+              S.f26TheCrudeArrives,
+              [slider(S.severity, sCot, 0.1, 1, (x) => sCot = x, (v) => '${(-15 * v).toStringAsFixed(1)} K')],
+              S.upsetTheFurnace,
               () => sim.injectFault(FaultSpec(
                   type: FaultType.cotUpset, location: const FaultLocation.equipment('furnace'), severity: sCot, onset: s.time, ramp: 300, params: const {'dT': -15})),
             ),
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text('F27 (draw tray dry) is not injectable: raise the kero draw above about 15.5 % or the PA duty above about 7.5 MW and watch the product flows.',
+              child: Text(S.f27NotInjectable,
                   style: t.type.label.style(12.5, p.inkFaint)),
             ),
           ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -91,7 +92,7 @@ class _DiagramShellState extends State<DiagramShell> {
                 if (paper)
                   IconButton(
                     key: const ValueKey('export-figure'),
-                    tooltip: 'Export figure (PNG)',
+                    tooltip: S.exportFigurePNG,
                     visualDensity: VisualDensity.compact,
                     icon: Icon(Icons.image_outlined,
                         color: p.inkMuted, size: 20),
@@ -113,7 +114,7 @@ class _DiagramShellState extends State<DiagramShell> {
                     decoration:
                         BoxDecoration(border: Border.all(color: p.warn, width: 1)),
                     child: Text(
-                      'Tier 1 cannot represent this system: constant alpha has no azeotrope. Switch to Tier 3.',
+                      S.tier1CannotRepresent,
                       style: t.type.label.style(12, p.warn),
                     ),
                   );
@@ -130,7 +131,7 @@ class _DiagramShellState extends State<DiagramShell> {
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          'Not available on a real plant. The analysers show xD and xB, and the Balance tab checks the meters against each other.',
+                          S.notAvailableOnPlant,
                           textAlign: TextAlign.center,
                           style: t.type.label.style(14, p.inkMuted),
                         ),

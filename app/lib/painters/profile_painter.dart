@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import '../l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
@@ -11,9 +12,9 @@ enum ProfileKind { dp, flood, weep, holdup, composition, components, temperature
 extension ProfileKindLabel on ProfileKind {
   String get label => switch (this) {
         ProfileKind.dp => 'dP',
-        ProfileKind.flood => 'Flood',
-        ProfileKind.weep => 'Weeping',
-        ProfileKind.holdup => 'Holdup',
+        ProfileKind.flood => S.floodCap,
+        ProfileKind.weep => S.weepingCap,
+        ProfileKind.holdup => S.holdup,
         ProfileKind.composition => 'x',
         ProfileKind.components => 'x(i)',
         ProfileKind.temperature => 'T',
@@ -170,7 +171,7 @@ class ProfilePainter extends CustomPainter {
       return;
     }
     if ((kind == ProfileKind.dp || kind == ProfileKind.flood || kind == ProfileKind.weep) && !full) {
-      _text(canvas, 'ideal hydraulics: no tray hydraulics (switch to Full)', plot.center, lab.style(13, p.warn), Alignment.center, maxWidth: plot.width - 12);
+      _text(canvas, S.idealHydraulicsNoTray, plot.center, lab.style(13, p.warn), Alignment.center, maxWidth: plot.width - 12);
       return;
     }
     final rowH = plot.height / N;
@@ -225,9 +226,9 @@ class ProfilePainter extends CustomPainter {
             ..strokeWidth = 1.2);
     }
     final key = switch (kind) {
-      ProfileKind.dp => 'bar = total dP, tick = dry dP',
-      ProfileKind.flood => 'bar = jet flood / froth fill, tick = downcomer',
-      ProfileKind.composition => 'bar = liquid x, tick = vapour y',
+      ProfileKind.dp => S.barTotalDPTick,
+      ProfileKind.flood => S.barJetFloodFroth,
+      ProfileKind.composition => S.barLiquidXTick,
       ProfileKind.temperature => s.tier == ThermoTier.t1 ? 'T*, ideal (Raoult) bubble point, display only: constant alpha has no temperatures' : 'bubble-point temperature of each tray',
       ProfileKind.vapour || ProfileKind.liquid => ghost?.value == null
           ? (s.tier == ThermoTier.t1 ? 'constant molar overflow: V and L are flat in each section' : 'Tier 2: V and L change with the latent heats')
@@ -235,7 +236,7 @@ class ProfilePainter extends CustomPainter {
       _ => '',
     };
     if (key.isNotEmpty) _text(canvas, key, Offset(plot.left, plot.top - 4), lab.style(12, p.inkMuted), Alignment.bottomLeft, maxWidth: plot.width);
-    _text(canvas, 'tray', Offset(plot.left - 8, plot.top - 4), lab.style(12, p.inkMuted), Alignment.bottomRight);
+    _text(canvas, S.trayLower, Offset(plot.left - 8, plot.top - 4), lab.style(12, p.inkMuted), Alignment.bottomRight);
   }
 
   /// Component profile chart (M7): x_i against tray for every component. Component i uses series (i mod 6) with its
@@ -285,7 +286,7 @@ class ProfilePainter extends CustomPainter {
       final r = Rect.fromLTRB(plot.left - 2, plot.top + (sel - 1) * rowH, plot.right, plot.top + sel * rowH);
       canvas.drawRect(r, Paint()..color = p.selection.withValues(alpha: 0.18));
     }
-    _text(canvas, 'tray', Offset(plot.left - 8, plot.top - 4), theme.type.label.style(12, p.inkMuted), Alignment.bottomRight);
+    _text(canvas, S.trayLower, Offset(plot.left - 8, plot.top - 4), theme.type.label.style(12, p.inkMuted), Alignment.bottomRight);
   }
 
   static void _drawDashed(Canvas canvas, Path path, Paint paint, List<double> dash) {

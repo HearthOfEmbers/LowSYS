@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -43,7 +44,7 @@ class CrudeProductsPanel extends StatelessWidget {
                 ),
               ),
             _Titled(
-              title: 'TBP curves',
+              title: S.tbpCurves,
               child: SizedBox(
                 height: compact ? 170 : 210,
                 child: CustomPaint(
@@ -54,7 +55,7 @@ class CrudeProductsPanel extends StatelessWidget {
                     u: u,
                     curves: [for (var i = 0; i < data.tbp.length; i++) if (data.tbp[i].isNotEmpty) (i == 0 ? 'Feed' : kCrudeProductNames[i - 1], i, data.tbp[i])],
                     ticks: data.idealCutT,
-                    xLabel: 'vol % distilled',
+                    xLabel: S.volDistilled,
                     markers: false,
                   ),
                 ),
@@ -72,14 +73,14 @@ class CrudeProductsPanel extends StatelessWidget {
                     u: u,
                     curves: [for (var i = 0; i < data.d86.length; i++) (kCrudeProductNames[i], i + 1, data.d86[i])],
                     ticks: null,
-                    xLabel: 'vol % evaporated',
+                    xLabel: S.volEvaporated,
                     markers: plant,
                   ),
                 ),
               ),
             ),
-            _Titled(title: '5–95 gaps (D86 5 % heavy minus 95 % light)', child: _GapBars(gaps: data.gaps, t: t, u: u)),
-            _Titled(title: 'Yields (vol % of crude)', child: _YieldTable(k: k, data: data, t: t, u: u)),
+            _Titled(title: S.n595GapsD86, child: _GapBars(gaps: data.gaps, t: t, u: u)),
+            _Titled(title: S.yieldsVolOfCrude, child: _YieldTable(k: k, data: data, t: t, u: u)),
           ],
         );
       },
@@ -290,7 +291,7 @@ class _YieldTable extends StatelessWidget {
         );
     return Column(
       children: [
-        Row(children: [cell('', head: true, a: TextAlign.left), cell('actual', head: true), cell('ideal', head: true), cell('cut ${u.symbol(Quantity.temperature)}', head: true)]),
+        Row(children: [cell('', head: true, a: TextAlign.left), cell(S.actual, head: true), cell(S.ideal, head: true), cell('cut ${u.symbol(Quantity.temperature)}', head: true)]),
         for (var i = 0; i < 5; i++)
           Row(
             key: ValueKey('yield-$i'),
@@ -303,9 +304,9 @@ class _YieldTable extends StatelessWidget {
           ),
         const SizedBox(height: 4),
         Row(children: [
-          cell('Overflash', a: TextAlign.left),
+          cell(S.overflash, a: TextAlign.left),
           cell('${k.overflashVolPct.toStringAsFixed(2)} %'),
-          cell('Residue TBP 5 %', a: TextAlign.right),
+          cell(S.residueTbp5, a: TextAlign.right),
           cell('${u.fromSI(Quantity.temperature, k.residueTbp5).toStringAsFixed(1)} ${u.symbol(Quantity.temperature)}'),
         ]),
       ],

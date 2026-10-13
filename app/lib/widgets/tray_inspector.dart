@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -31,7 +32,7 @@ class TrayInspector extends StatelessWidget {
           child: sel == null
               ? Center(
                   child: Text(
-                    'Tap a tray on the column or a stage on the diagram to inspect it.',
+                    S.tapTrayToInspect,
                     style: t.type.label.style(12.5, p.inkMuted),
                     textAlign: TextAlign.center,
                   ),
@@ -62,7 +63,7 @@ class TrayInspector extends StatelessWidget {
     final p = t.palette;
     if (s.view.isPlant) {
       return Text(
-        'Not observable on a real plant: tray compositions and flows are not measured. Use the Loops, Balance and Trends tabs.',
+        S.trayNotObservable,
         style: t.type.label.style(13, p.inkMuted),
       );
     }
@@ -76,8 +77,8 @@ class TrayInspector extends StatelessWidget {
     String flow(double v) =>
         '${u.fromSI(Quantity.molarFlow, v).toStringAsFixed(1)} ${u.symbol(Quantity.molarFlow)}';
     String section() {
-      if (j == 0) return 'condenser drum';
-      if (j == N + 1) return 'sump and reboiler (equilibrium stage)';
+      if (j == 0) return S.condenserDrum;
+      if (j == N + 1) return S.sumpAndReboilerEquilibrium;
       if (j == feed) return packed ? 'feed, top of the bed' : 'feed tray';
       return j < feed ? 'rectifying section' : 'stripping section';
     }
@@ -97,7 +98,7 @@ class TrayInspector extends StatelessWidget {
         ),
       if (!t2 && st.idealT && st.t[j].isFinite)
         (
-          'T* (ideal)',
+          S.tStarIdeal,
           '${Fmt.value(Quantity.temperature, st.t[j], u)} ${u.symbol(Quantity.temperature)}',
         ),
       if (t2)
@@ -120,27 +121,27 @@ class TrayInspector extends StatelessWidget {
           'dP',
           '${u.fromSI(Quantity.pressureDelta, st.dp[j]).toStringAsFixed(u == UnitSystem.si ? 0 : 3)} ${u.symbol(Quantity.pressureDelta)}',
         ),
-      if (full && packed) ('flood', '${(100 * st.packFlood[j]).toStringAsFixed(0)} %'),
-      if (packed) ('HETP', '${st.hetp[j].toStringAsFixed(3)} m'),
-      if (packed) ('liquid holdup', '${(100 * st.packHoldup[j]).toStringAsFixed(1)} %'),
-      if (packed) ('wetted', '${(100 * st.wetFrac[j]).toStringAsFixed(0)} %'),
+      if (full && packed) (S.flood, '${(100 * st.packFlood[j]).toStringAsFixed(0)} %'),
+      if (packed) (S.hetp, '${st.hetp[j].toStringAsFixed(3)} m'),
+      if (packed) (S.liquidHoldup, '${(100 * st.packHoldup[j]).toStringAsFixed(1)} %'),
+      if (packed) (S.wetted, '${(100 * st.wetFrac[j]).toStringAsFixed(0)} %'),
       if (full && j >= 1 && j <= N && !packed)
         (
           'dP',
           '${u.fromSI(Quantity.pressureDelta, st.dp[j]).toStringAsFixed(u == UnitSystem.si ? 2 : 3)} ${u.symbol(Quantity.pressureDelta)}',
         ),
       if (full && j >= 1 && j <= N && !packed)
-        ('flood', '${(100 * st.jetFlood[j]).toStringAsFixed(0)} %'),
+        (S.flood, '${(100 * st.jetFlood[j]).toStringAsFixed(0)} %'),
       if (full && j >= 1 && j <= N && !packed)
-        ('downcomer', '${(100 * st.dcFlood[j]).toStringAsFixed(0)} %'),
+        (S.downcomer, '${(100 * st.dcFlood[j]).toStringAsFixed(0)} %'),
       if (full && j >= 1 && j <= N && !packed && st.weepFrac[j] > 0)
-        ('weeping', '${(100 * st.weepFrac[j]).toStringAsFixed(0)} %'),
+        (S.weeping, '${(100 * st.weepFrac[j]).toStringAsFixed(0)} %'),
       if (full && j >= 1 && j <= N && !packed)
         (
           'froth',
           '${u.fromSI(Quantity.smallLength, st.froth[j]).toStringAsFixed(u == UnitSystem.si ? 0 : 1)} ${u.symbol(Quantity.smallLength)}',
         ),
-      if (j == 0) ('reflux L0', flow(s.streams[StreamId.reflux]!.flow)),
+      if (j == 0) (S.refluxL0, flow(s.streams[StreamId.reflux]!.flow)),
       if (j == 0) ('D', flow(s.kpis.d)),
       if (j == N + 1) ('B', flow(s.kpis.b)),
     ];
@@ -203,7 +204,7 @@ class TrayInspector extends StatelessWidget {
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          'Equations',
+                          S.equations,
                           overflow: TextOverflow.ellipsis,
                           style: t.type.label.style(
                             13.5,
@@ -224,7 +225,7 @@ class TrayInspector extends StatelessWidget {
           height: 40,
           child: IconButton(
             padding: EdgeInsets.zero,
-            tooltip: 'Close',
+            tooltip: S.close,
             icon: Icon(Icons.close, size: 18, color: p.inkMuted),
             onPressed: () => sim.selectStage(null),
           ),

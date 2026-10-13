@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../app_scope.dart';
@@ -24,7 +25,7 @@ class TxyChart extends StatelessWidget {
             builder: (context, sub, _) => Row(
               children: [
                 const SizedBox(width: 6),
-                for (final (i, name) in [(0, 'T-x-y'), (1, 'x-y')])
+                for (final (i, name) in [(0, S.txy), (1, S.xy)])
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: InkWell(

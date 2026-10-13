@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import '../l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
@@ -90,7 +91,7 @@ class _OverlayBody extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(child: Text(r?.title ?? '…', style: t.type.display.style(17, p.ink, weight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis)),
                   if (r != null) Text('t = ${_clock(r.time)}', style: t.type.number.style(12, p.inkMuted)),
-                  IconButton(tooltip: 'Close', icon: Icon(Icons.close, color: p.inkMuted), onPressed: onClose),
+                  IconButton(tooltip: S.close, icon: Icon(Icons.close, color: p.inkMuted), onPressed: onClose),
                 ]),
               ),
             ),
@@ -112,7 +113,7 @@ class _OverlayBody extends StatelessWidget {
                           if (r.notes.isNotEmpty) ...[
                             Padding(
                               padding: const EdgeInsets.only(top: 16, bottom: 4),
-                              child: Text('WHAT THIS SIMPLIFICATION HIDES', style: t.type.display.style(13, p.inkMuted, weight: FontWeight.w700)),
+                              child: Text(S.whatThisHides, style: t.type.display.style(13, p.inkMuted, weight: FontWeight.w700)),
                             ),
                             for (final n in r.notes)
                               Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('• $n', style: t.type.label.style(13, p.inkMuted))),
