@@ -9,6 +9,9 @@ typedef FaultId = String;
 
 enum ThermoTier { t1, t2, t3 }
 
+/// Tier-3 model of a system (PHYSICS.md 1.3, 3.4): NRTL, DePriester K or the Tier-2 Raoult model itself.
+enum Tier3Model { nrtl, dePriester, sameAsTier2 }
+
 enum HydraulicsMode { ideal, full }
 
 enum TrayType { sieve, valve }

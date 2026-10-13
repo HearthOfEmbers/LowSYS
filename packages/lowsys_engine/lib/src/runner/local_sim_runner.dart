@@ -165,6 +165,9 @@ class LocalSimRunner implements SimRunner {
   ThermoModel get thermo => sim.thermo;
 
   @override
+  ThermoModel get idealThermo => sim.tier2Thermo;
+
+  @override
   ColumnConfig get config => sim.config;
 
   @override

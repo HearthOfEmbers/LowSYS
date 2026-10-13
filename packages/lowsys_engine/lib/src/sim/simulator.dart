@@ -26,7 +26,9 @@ import '../snapshot/sim_snapshot.dart';
 import '../thermo/component.dart';
 import '../thermo/thermo_model.dart';
 import '../thermo/tier1_constant_alpha.dart';
+import '../thermo/thermo_factory.dart';
 import '../thermo/tier2_raoult.dart';
+import '../thermo/tier3_depriester.dart';
 import 'lever_spec.dart';
 import 'stepper.dart';
 
@@ -147,6 +149,12 @@ class Simulator {
 
   late Tier1ConstantAlpha _thermo;
   late Tier2Raoult _t2;
+
+  /// Tier-3 model (NRTL, DePriester, or Raoult again for `sameAsTier2`), PHYSICS.md 3.4.
+  late Tier2Raoult _t3;
+
+  /// The energy-balance model of the active tier (Tier 2 Raoult or the Tier-3 model).
+  Tier2Raoult get _active => _tier == ThermoTier.t3 ? _t3 : _t2;
   late ColumnState _state;
   late StepInputs _inputs;
   late ControlSystem _control;
@@ -223,9 +231,6 @@ class Simulator {
   void _build(ColumnConfig config, _Carry? carry) {
     final problems = config.validate();
     if (problems.isNotEmpty) throw ConfigException(problems.join('; '));
-    if (config.tier == ThermoTier.t3) {
-      throw ConfigException('Tier 3 arrives with M5');
-    }
     _config = config;
     _tier = config.tier;
     _hydraulics = config.hydraulics;
@@ -233,6 +238,7 @@ class Simulator {
     final N = config.trayCount;
     _thermo = Tier1ConstantAlpha.fromConfig(config);
     _t2 = Tier2Raoult.fromConfig(config);
+    _t3 = ThermoFactory.buildTier3(config);
     final feed = config.feeds.first;
     final lev = config.initialLevers;
 
@@ -332,9 +338,9 @@ class Simulator {
       ep: _ep,
       faults: _faults,
       full: config.hydraulics == HydraulicsMode.full,
-      tier2: config.tier == ThermoTier.t2,
+      tier2: config.tier != ThermoTier.t1,
       refluxCapacity: l0,
-      t2: _t2,
+      t2: _active,
       cond: config.condenser,
       reb: config.reboiler,
       thermo: _thermo,
@@ -350,7 +356,7 @@ class Simulator {
     );
     _stepper.initializeCold();
     _initControl();
-    if (_tier == ThermoTier.t2) _enterTier2Control(_dutyLever);
+    if (_tier != ThermoTier.t1) _enterTier2Control(_dutyLever);
     _levers = _buildLevers();
     _carry = 0;
     _halted = false;
@@ -1352,7 +1358,7 @@ class Simulator {
   T2CheckContext? _t2Context() => _tier == ThermoTier.t1
       ? null
       : T2CheckContext(
-          thermo: _t2,
+          thermo: _active,
           feedT: _inputs.feedT,
           refluxSubLever: _inputs.refluxSub,
           uaRebClean: _config.reboiler.uaClean,
@@ -1701,22 +1707,22 @@ class Simulator {
     final p = inp.pTopInit;
     final health = SolverHealth();
     final y = Float64List(nc), k = Float64List(nc), x = Float64List(nc);
-    final tb = _t2.bubbleT(p, z, 0, y, k, health);
+    final tb = _active.bubbleT(p, z, 0, y, k, health);
     final q = th is FeedQ ? th.q : 1 - (th as FeedVaporFraction).beta;
     if (q == 1) return tb;
     if (q > 1) {
-      final lam = _t2.hV(tb, y) - _t2.hL(tb, z);
-      return tb - (q - 1) * lam / _t2.cpL(tb, z);
+      final lam = _active.hV(tb, y) - _active.hL(tb, z);
+      return tb - (q - 1) * lam / _active.cpL(tb, z);
     }
-    final td = _t2.dewT(p, z, tb + 5, x, health);
+    final td = _active.dewT(p, z, tb + 5, x, health);
     if (q <= 0) {
-      final lam = _t2.hV(td, z) - _t2.hL(td, x);
-      return td - q * lam / _t2.cpL(td, z) * 0.5;
+      final lam = _active.hV(td, z) - _active.hL(td, x);
+      return td - q * lam / _active.cpL(td, z) * 0.5;
     }
     var lo = tb, hi = td;
     for (var i = 0; i < 60; i++) {
       final mid = 0.5 * (lo + hi);
-      if (_t2.flashBeta(mid, p, z) < 1 - q) {
+      if (_active.flashBeta(mid, p, z) < 1 - q) {
         lo = mid;
       } else {
         hi = mid;
@@ -1739,8 +1745,8 @@ class Simulator {
 
   /// Runtime tier switch (PHYSICS.md 13.5): the state X is kept, only the model of the derived quantities changes.
   void setTier(ThermoTier tier) {
-    if (tier == ThermoTier.t3) {
-      throw UnsupportedError('Tier t3 arrives with M5');
+    if (!_config.availableTiers.contains(tier)) {
+      throw UnsupportedError('Tier ${tier.name} is not available for ${_config.presetId}');
     }
     if (tier == _tier) return;
     if (tier == ThermoTier.t1 && _control.partial) {
@@ -1750,14 +1756,23 @@ class Simulator {
     final N = s.nTrays;
     final nc = s.nc;
     final inp = _inputs;
-    if (tier == ThermoTier.t2) {
-      // top vapour V1 and D continuous: Q_R from the steady energy balance with Tier-2 enthalpies
+    if (tier != ThermoTier.t1 && _tier != ThermoTier.t1) {
+      // T2 <-> T3 (PHYSICS.md 13.5): only the K model changes, the duty SP is kept
+      _tier = tier;
+      _config = _config.copyWith(tier: tier);
+      _stepper.t2 = _active;
+      _stepper.t2Thermo(s.pTop);
+      _stepper.t2RescaleInventory();
+      _levers = _buildLevers();
+    } else if (tier != ThermoTier.t1) {
+      // top vapour V1 and D continuous: Q_R from the steady energy balance with Tier-2/3 enthalpies
       final v1 = s.vapor[1];
       final dFlow = _debug.dt > 0 ? _debug.distillateFlow : _control.lv101.flow;
       final bFlow = _debug.dt > 0 ? _debug.bottomsFlow : _control.lv102.flow;
       final fFlow = _debug.dt > 0 ? _debug.feedFlow : s.feedAct;
-      _tier = ThermoTier.t2;
-      _config = _config.copyWith(tier: ThermoTier.t2);
+      _tier = tier;
+      _config = _config.copyWith(tier: tier);
+      _stepper.t2 = _active;
       _stepper.tier2 = true;
       s.pTop = inp.pTopInit;
       s.nI = 0;
@@ -1789,7 +1804,7 @@ class Simulator {
       final f = _debug.dt > 0 ? _debug.feedFlow : s.feedAct;
       var q = 1.0;
       try {
-        q = _t2.qOfFeed(_stepper.feedTemp > 0 ? _stepper.feedTemp : inp.feedT,
+        q = _active.qOfFeed(_stepper.feedTemp > 0 ? _stepper.feedTemp : inp.feedT,
             s.pStage[inp.feedStage], _ep.zEff);
       } catch (_) {}
       q = q.clamp(-0.5, 1.5).toDouble();
@@ -1858,7 +1873,7 @@ class Simulator {
       hyd: _hyd,
       ep: _ep,
       thermo: _thermo,
-      t2: _tier == ThermoTier.t1 ? null : _t2,
+      t2: _tier == ThermoTier.t1 ? null : _active,
       control: _control,
       full: _stepper.full,
     ).explain(target);
@@ -1929,6 +1944,27 @@ class Simulator {
         condenser: CondenserConfig.fromJson(
             {...cur.condenser.toJson(), 'type': type.name}),
         initialLevers: lev));
+  }
+
+  /// `thermoOutOfRange` (PHYSICS.md 2.2, 3.4.2): an Antoine component outside 0.1 to 5 bar, or a DePriester stage outside
+  /// 365 to 852 degR and 14.7 to 870 psia. Evaluated on the present state, not sticky.
+  bool _thermoOutOfRange() {
+    if (_tier == ThermoTier.t1) return false;
+    final s = _state;
+    var pMin = double.infinity, pMax = 0.0, tMin = double.infinity, tMax = 0.0;
+    for (var j = 1; j < s.n; j++) {
+      pMin = math.min(pMin, s.pStage[j]);
+      pMax = math.max(pMax, s.pStage[j]);
+      tMin = math.min(tMin, s.t[j]);
+      tMax = math.max(tMax, s.t[j]);
+    }
+    if (_active is Tier3DePriester) {
+      return 1.8 * tMin < 365 || 1.8 * tMax > 852 || pMin < 14.7 * 6894.757 || pMax > 870 * 6894.757;
+    }
+    for (final c in _active.comps) {
+      if (c.vpKind == VaporPressureKind.antoineLog10MmHgC && (pMin < 1e4 || pMax > 5e5)) return true;
+    }
+    return false;
   }
 
   final SolverHealth _displayHealth = SolverHealth();
@@ -2127,7 +2163,7 @@ class Simulator {
     var feedQLive = nan;
     if (t2) {
       try {
-        feedQLive = _t2.qOfFeed(_stepper.feedTemp > 0 ? _stepper.feedTemp : _inputs.feedT,
+        feedQLive = _active.qOfFeed(_stepper.feedTemp > 0 ? _stepper.feedTemp : _inputs.feedT,
             s.pStage[_inputs.feedStage], zEff);
       } catch (_) {}
     }
@@ -2383,7 +2419,7 @@ class Simulator {
       alarms: alarms,
       kpis: kpisOut,
       steady: SteadyInfo(_steady, _residual),
-      solverHealth: _health.copy(),
+      solverHealth: _health.copy()..thermoOutOfRange = _thermoOutOfRange(),
       visibleFaults: plant ? const [] : _faults.activeAt(s.time),
       levers: {for (final l in _levers) l.id: lever(l.id)},
       feedQ: _inputs.feedQ,
@@ -2416,13 +2452,16 @@ class Simulator {
   }
 
   /// The thermo model of the active tier for diagram builders.
-  ThermoModel get thermo => _tier == ThermoTier.t1 ? _thermo : _t2;
+  ThermoModel get thermo => _tier == ThermoTier.t1 ? _thermo : _active;
 
   /// The Tier 1 model (relative volatilities).
   ConstantAlphaThermo get tier1Thermo => _thermo;
 
-  /// The Tier 2 Raoult model.
+  /// The Tier 2 Raoult model (the display-only T* of Tier 1 and the ideal curves of the T-x-y tab come from it).
   Tier2Raoult get tier2Thermo => _t2;
+
+  /// The Tier 3 model of the system (Raoult itself for `sameAsTier2`).
+  Tier2Raoult get tier3Thermo => _t3;
 
   /// Component data for the configured components.
   List<Component> get componentData {

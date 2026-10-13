@@ -7,6 +7,7 @@ const String mwPresetJson = r'''
   "displayName": "Methanol–water",
   "components": ["methanol", "water"],
   "tier": "t1",
+  "tier3Model": "nrtl",
   "tier1Alpha": [3.5, 1.0],
   "tier1Props": {"rhoL": 850, "rhoV": 1.0, "sigma": 0.040},
   "liquidViscosity": 0.00035,

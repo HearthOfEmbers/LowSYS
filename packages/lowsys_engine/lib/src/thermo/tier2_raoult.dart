@@ -45,19 +45,32 @@ class Tier2Raoult implements ThermoModel {
 
   // ---------------------------------------------------------------- K values
 
-  @override
-  void kValues(double t, double p, Float64List x, Float64List kOut) {
+  /// True when K depends on the liquid composition (NRTL): dew points and flashes then iterate on x.
+  bool get xDependent => false;
+
+  /// K-values at (T, P) for the liquid [x] (at [xo]), written to [kOut] at [ko]. Raoult: P_sat(T)/P.
+  void kAt(double t, double p, Float64List x, int xo, Float64List kOut, int ko) {
     for (var i = 0; i < comps.length; i++) {
-      kOut[i] = comps[i].vaporPressure(t) / p;
+      kOut[ko + i] = comps[i].vaporPressure(t) / p;
     }
   }
 
-  @override
-  void dLnKdT(double t, double p, Float64List x, Float64List out) {
+  /// d ln K_i / dT with the activity coefficients held constant (PHYSICS.md 3.6.1).
+  void dLnKAt(double t, double p, Float64List x, int xo, Float64List out, int oo) {
     for (var i = 0; i < comps.length; i++) {
-      out[i] = comps[i].dLnPsatDt(t);
+      out[oo + i] = comps[i].dLnPsatDt(t);
     }
   }
+
+  late final Float64List _dl = Float64List(comps.length);
+
+  @override
+  void kValues(double t, double p, Float64List x, Float64List kOut) =>
+      kAt(t, p, x, 0, kOut, 0);
+
+  @override
+  void dLnKdT(double t, double p, Float64List x, Float64List out) =>
+      dLnKAt(t, p, x, 0, out, 0);
 
   // ---------------------------------------------------------------- bubble and dew points
 
@@ -68,6 +81,21 @@ class Tier2Raoult implements ThermoModel {
       t += x[xo + i] * comps[i].tb;
     }
     return t;
+  }
+
+  /// K-values at [t] into [kOut]; returns S = sum K x and leaves sum K x dlnK/dT in [lastDen].
+  double _sumKx(double t, double p, Float64List x, int xo, Float64List kOut, int ko) {
+    final n = comps.length;
+    kAt(t, p, x, xo, kOut, ko);
+    dLnKAt(t, p, x, xo, _dl, 0);
+    var s = 0.0, den = 0.0;
+    for (var i = 0; i < n; i++) {
+      final kx = kOut[ko + i] * x[xo + i];
+      s += kx;
+      den += kx * _dl[i];
+    }
+    lastDen = den;
+    return s;
   }
 
   /// Bubble point (PHYSICS.md 3.6.1) of the liquid [x] at [xo] at pressure [p]. Fills [yOut] (normalised, at [yo])
@@ -81,16 +109,8 @@ class Tier2Raoult implements ThermoModel {
     var ok = false;
     var s = 1.0, den = 1.0;
     for (var it = 0; it < 20; it++) {
-      s = 0;
-      den = 0;
-      for (var i = 0; i < n; i++) {
-        final c = comps[i];
-        final ki = c.vaporPressure(t) / p;
-        kOut[ko + i] = ki;
-        final kx = ki * x[xo + i];
-        s += kx;
-        den += kx * c.dLnPsatDt(t);
-      }
+      s = _sumKx(t, p, x, xo, kOut, ko);
+      den = lastDen;
       if (!(s > 0)) break;
       final g = math.log(s);
       if (g.abs() < 1e-13) {
@@ -101,17 +121,9 @@ class Tier2Raoult implements ThermoModel {
       if (dT > 30) dT = 30;
       if (dT < -30) dT = -30;
       t += dT;
-      if (dT.abs() < 1e-6) {
-        s = 0;
-        den = 0;
-        for (var i = 0; i < n; i++) {
-          final c = comps[i];
-          final ki = c.vaporPressure(t) / p;
-          kOut[ko + i] = ki;
-          final kx = ki * x[xo + i];
-          s += kx;
-          den += kx * c.dLnPsatDt(t);
-        }
+      if (dT.abs() < 1e-9) {
+        s = _sumKx(t, p, x, xo, kOut, ko);
+        den = lastDen;
         ok = true;
         break;
       }
@@ -124,9 +136,10 @@ class Tier2Raoult implements ThermoModel {
       }
       for (var it = 0; it < 80; it++) {
         final mid = 0.5 * (lo + hi);
+        kAt(mid, p, x, xo, _tmp1, 0);
         var sm = 0.0;
         for (var i = 0; i < n; i++) {
-          sm += comps[i].vaporPressure(mid) / p * x[xo + i];
+          sm += _tmp1[i] * x[xo + i];
         }
         if (sm < 1) {
           lo = mid;
@@ -135,16 +148,8 @@ class Tier2Raoult implements ThermoModel {
         }
       }
       t = 0.5 * (lo + hi);
-      s = 0;
-      den = 0;
-      for (var i = 0; i < n; i++) {
-        final c = comps[i];
-        final ki = c.vaporPressure(t) / p;
-        kOut[ko + i] = ki;
-        final kx = ki * x[xo + i];
-        s += kx;
-        den += kx * c.dLnPsatDt(t);
-      }
+      s = _sumKx(t, p, x, xo, kOut, ko);
+      den = lastDen;
     }
     lastS = s;
     lastDen = den;
@@ -159,9 +164,8 @@ class Tier2Raoult implements ThermoModel {
           Float64List kOut, SolverHealth health) =>
       bubbleAt(p, x, 0, tGuess, yOut, 0, kOut, 0, health);
 
-  /// Dew point (PHYSICS.md 3.6.2) of the vapour [y]; fills [xOut] (normalised).
-  @override
-  double dewT(double p, Float64List y, double tGuess, Float64List xOut,
+  /// Temperature at which sum y_i / K_i(T, [x]) = 1 for a fixed liquid composition [x] (Newton, bisection fallback).
+  double _dewInner(double p, Float64List y, Float64List x, double tGuess,
       SolverHealth health) {
     final n = comps.length;
     var t = (tGuess.isFinite && tGuess > 150 && tGuess < 900)
@@ -169,12 +173,13 @@ class Tier2Raoult implements ThermoModel {
         : coldGuess(y, 0);
     var ok = false;
     for (var it = 0; it < 30; it++) {
+      kAt(t, p, x, 0, _tmp1, 0);
+      dLnKAt(t, p, x, 0, _dl, 0);
       var s = 0.0, den = 0.0;
       for (var i = 0; i < n; i++) {
-        final ki = comps[i].vaporPressure(t) / p;
-        final r = y[i] / ki;
+        final r = y[i] / _tmp1[i];
         s += r;
-        den += r * comps[i].dLnPsatDt(t);
+        den += r * _dl[i];
       }
       final g = math.log(s);
       if (g.abs() < 1e-10) {
@@ -198,9 +203,10 @@ class Tier2Raoult implements ThermoModel {
       }
       for (var it = 0; it < 80; it++) {
         final mid = 0.5 * (lo + hi);
+        kAt(mid, p, x, 0, _tmp1, 0);
         var sm = 0.0;
         for (var i = 0; i < n; i++) {
-          sm += y[i] * p / comps[i].vaporPressure(mid);
+          sm += y[i] / _tmp1[i];
         }
         if (sm > 1) {
           lo = mid;
@@ -210,54 +216,94 @@ class Tier2Raoult implements ThermoModel {
       }
       t = 0.5 * (lo + hi);
     }
-    var s = 0.0;
+    return t;
+  }
+
+  /// Dew point (PHYSICS.md 3.6.2) of the vapour [y]; fills [xOut] (normalised). With a composition-dependent K
+  /// (NRTL) x is iterated by successive substitution (max 30, tolerance 1e-9 on x).
+  @override
+  double dewT(double p, Float64List y, double tGuess, Float64List xOut,
+      SolverHealth health) {
+    final n = comps.length;
+    final xc = Float64List(n);
     for (var i = 0; i < n; i++) {
-      xOut[i] = y[i] / (comps[i].vaporPressure(t) / p);
-      s += xOut[i];
+      xc[i] = y[i];
     }
-    for (var i = 0; i < n; i++) {
-      xOut[i] /= s;
+    var t = tGuess;
+    final outer = xDependent ? 30 : 1;
+    for (var k = 0; k < outer; k++) {
+      t = _dewInner(p, y, xc, t, health);
+      kAt(t, p, xc, 0, _tmp1, 0);
+      var s = 0.0;
+      for (var i = 0; i < n; i++) {
+        xOut[i] = y[i] / _tmp1[i];
+        s += xOut[i];
+      }
+      var diff = 0.0;
+      for (var i = 0; i < n; i++) {
+        xOut[i] /= s;
+        diff = math.max(diff, (xOut[i] - xc[i]).abs());
+        xc[i] = xOut[i];
+      }
+      if (diff < 1e-9) break;
     }
     return t;
   }
 
   // ---------------------------------------------------------------- flash and feed condition
 
-  /// Vapour fraction by Rachford-Rice (PHYSICS.md 3.14); fills [xOut], [yOut] if given.
+  /// Vapour fraction by Rachford-Rice (PHYSICS.md 3.14); fills [xOut], [yOut] if given. With a composition-dependent K
+  /// (NRTL) the liquid composition is iterated: x_i = z_i / (1 + beta (K_i - 1)), K(T, x), max 50 passes, tolerance 1e-9.
   double flashBeta(double t, double p, Float64List z,
       [Float64List? xOut, Float64List? yOut]) {
     final n = comps.length;
-    for (var i = 0; i < n; i++) {
-      _k[i] = comps[i].vaporPressure(t) / p;
-    }
-    double f(double b) {
-      var s = 0.0;
-      for (var i = 0; i < n; i++) {
-        s += z[i] * (_k[i] - 1) / (1 + b * (_k[i] - 1));
-      }
-      return s;
-    }
-
-    double beta;
-    if (f(0) < 0) {
-      beta = 0;
-    } else if (f(1) > 0) {
-      beta = 1;
-    } else {
-      var lo = 0.0, hi = 1.0;
-      beta = 0.5;
-      for (var it = 0; it < 100; it++) {
-        beta = 0.5 * (lo + hi);
-        final v = f(beta);
-        if (v > 0) {
-          lo = beta;
-        } else {
-          hi = beta;
+    final xc = xDependent ? Float64List.fromList(z) : z;
+    double beta = 0;
+    final outer = xDependent ? 50 : 1;
+    for (var pass = 0; pass < outer; pass++) {
+      kAt(t, p, xc, 0, _k, 0);
+      double f(double b) {
+        var s = 0.0;
+        for (var i = 0; i < n; i++) {
+          s += z[i] * (_k[i] - 1) / (1 + b * (_k[i] - 1));
         }
-        if (hi - lo < 1e-14) break;
+        return s;
       }
+
+      if (f(0) < 0) {
+        beta = 0;
+      } else if (f(1) > 0) {
+        beta = 1;
+      } else {
+        var lo = 0.0, hi = 1.0;
+        beta = 0.5;
+        for (var it = 0; it < 100; it++) {
+          beta = 0.5 * (lo + hi);
+          final v = f(beta);
+          if (v > 0) {
+            lo = beta;
+          } else {
+            hi = beta;
+          }
+          if (hi - lo < 1e-14) break;
+        }
+      }
+      if (!xDependent) break;
+      var sx = 0.0;
+      for (var i = 0; i < n; i++) {
+        _tmp2[i] = z[i] / (1 + beta * (_k[i] - 1));
+        sx += _tmp2[i];
+      }
+      var diff = 0.0;
+      for (var i = 0; i < n; i++) {
+        final xi = _tmp2[i] / sx;
+        diff = math.max(diff, (xi - xc[i]).abs());
+        xc[i] = xi;
+      }
+      if (diff < 1e-9) break;
     }
     if (xOut != null || yOut != null) {
+      kAt(t, p, xc, 0, _k, 0);
       for (var i = 0; i < n; i++) {
         final xi = z[i] / (1 + beta * (_k[i] - 1));
         xOut?[i] = xi;

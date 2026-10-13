@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import '../core/quantity.dart';
 import '../snapshot/sim_snapshot.dart';
 import '../thermo/tier2_raoult.dart';
+import '../thermo/tier3_depriester.dart';
+import '../thermo/tier3_nrtl.dart';
 import 'explain_engine.dart' show texNum;
 import 'explain_types.dart';
 
@@ -45,8 +47,35 @@ class ExplainT2 {
     final hF = th.feedEnthalpy(feed.temperature, st.p[fs], feed.composition);
     final fF = j == fs ? feed.flow : 0.0;
     final num = lUp * (hUp - hj) + vBelow * (hVb - hj) + fF * (hF - hj);
-    return [
-      EquationLine(
+    final EquationLine eqLine;
+    final model = th;
+    if (model is Tier3Nrtl) {
+      final g = model.gammas(st.t[j], x);
+      eqLine = EquationLine(
+        id: 'eq.nrtl',
+        physicsRef: 'PHYSICS.md (3.7, 3.8)',
+        texSymbolic:
+            r'K_i = \frac{\gamma_i P_i^{sat}(T_j)}{P_j},\quad \ln\gamma_i = \frac{\sum_j x_j\tau_{ji}G_{ji}}{\sum_k x_k G_{ki}} + \sum_j \frac{x_j G_{ij}}{\sum_k x_k G_{kj}}\Big(\tau_{ij} - \frac{\sum_m x_m\tau_{mj}G_{mj}}{\sum_k x_k G_{kj}}\Big),\quad \tau_{ij}=a_{ij}+\frac{b_{ij}}{T}',
+        texSubstituted:
+            'T_{$j} = ${texNum(st.t[j])}\\ \\mathrm{K},\\ \\gamma_1 = ${texNum(g[0])},\\ \\gamma_2 = ${texNum(g[1])},\\ K_1 = ${texNum(k[0])},\\ \\sum K x = ${texNum(s)},\\ y^*_1 = ${texNum(ys)}',
+        value: ys,
+        note:
+            'NRTL activity coefficients (non-ideal liquid); the stage temperature is the bubble point with the activity coefficients held constant in dlnK/dT (PHYSICS.md 3.6.1).',
+      );
+    } else if (model is Tier3DePriester) {
+      eqLine = EquationLine(
+        id: 'eq.depriester',
+        physicsRef: 'PHYSICS.md (3.9)',
+        texSymbolic:
+            r'\ln K_i = \frac{a_{T1}}{T_R^2} + \frac{a_{T2}}{T_R} + a_{T6} + a_{p1}\ln p + \frac{a_{p2}}{p^2} + \frac{a_{p3}}{p},\quad y^*_i = \frac{K_i x_i}{\sum_k K_k x_k}',
+        texSubstituted:
+            'T_R = ${texNum(1.8 * st.t[j])}\\ \\mathrm{^\\circ R},\\ p = ${texNum(st.p[j] / 6894.757)}\\ \\mathrm{psia},\\ K_1 = ${texNum(k[0])},\\ \\sum K x = ${texNum(s)},\\ y^*_1 = ${texNum(ys)}',
+        value: ys,
+        note:
+            'DePriester K-values (McWilliams fit): they depend on T and P only, not on composition.',
+      );
+    } else {
+      eqLine = EquationLine(
         id: 'eq.equilibrium.T2',
         physicsRef: 'PHYSICS.md (3.2, 4.2)',
         texSymbolic:
@@ -56,7 +85,10 @@ class ExplainT2 {
         value: ys,
         note:
             'Raoult\'s law with the stage temperature from the bubble point (PHYSICS.md 3.6.1).',
-      ),
+      );
+    }
+    return [
+      eqLine,
       EquationLine(
         id: 'eq.vapourFlow.energy',
         physicsRef: 'PHYSICS.md (4.6)',

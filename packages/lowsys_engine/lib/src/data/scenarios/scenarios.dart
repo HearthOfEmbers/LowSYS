@@ -449,6 +449,113 @@ const String g8Json = r'''
   "events": [],
   "scoring": {"objectives": 0.6, "time": 0.2, "safety": 0.1, "quality": 0.1,
               "qualitySpec": {"metric": "kpi.xD", "op": ">=", "value": 0.95}},
-  "debrief": "alpha at x = 0.5 falls from 2.60 at 0.7 bar to 2.49 at 1 atm, 2.30 at 2 bar and 2.20 at 3 bar. The same reflux and duty therefore give a worse separation at higher pressure, and to hold the 1 atm purities at 2 bar you had to raise the reflux and the duty.\n\nThe utilities set limits too: at 0.5 bar the condenser cannot condense even with 15 degC water, and above about 2 bar the 3.5 bar(g) steam is too cool for the reboiler."
+  "debrief": "alpha at x = 0.5 falls from 2.60 at 0.7 bar to 2.49 at 1 atm, 2.30 at 2 bar and 2.20 at 3 bar. The same reflux and duty therefore give a worse separation at higher pressure, and to hold the 1 atm purities at 2 bar you had to raise the reflux and the duty.\n\nThe utilities set limits too: at 0.5 bar the condenser cannot condense even with 15 degC water, and above about 2 bar the 3.5 bar(g) steam is too cool for the reboiler.
+
+Why did the sweep start at 0.7 bar and not 0.5? At 0.5 bar(a) the distillate condenses near 60 degC. Even with 15 degC water the condenser can remove only about 1.2 MW, less than the reboiler puts in, so PC-101 cannot hold the pressure there (VC-27.3). An operator would turn the feed down, which G9 does."
+}
+''';
+
+/// G9, the azeotrope wall (M5, ENGINE_API.md 11.8): ethanol-water in Tier 3 stalls below the azeotrope at 1 atm;
+/// Tier 1 "beats" it; at 0.5 bar(a) the azeotrope has moved. Reference numbers: VALIDATION.md VC-28.8.
+const String g9Json = r'''
+{
+  "id": "G9_azeotrope_wall",
+  "kind": "guided",
+  "title": "The azeotrope wall",
+  "milestone": 5,
+  "topic": "thermo",
+  "preset": "ew",
+  "overrides": {"tier": "t3", "murphree": 1.0, "hydraulics": "ideal"},
+  "start": "steady",
+  "noise": false,
+  "levers": {
+    "set": {},
+    "lock": ["feedStage", "nTrays", "murphree", "hydraulics"],
+    "show": ["refluxFlow", "reboilerDuty", "feedFlow", "pTop"]
+  },
+  "timeLimit": 172800,
+  "parTime": 57600,
+  "briefing": "Ethanol and water form a minimum-boiling azeotrope near x = 0.8956 at 1 atm. The column starts in Tier 3, with NRTL activity coefficients, producing about 0.887 ethanol in the distillate.\n\nPush the reflux ratio as high as the condenser allows and see how far the distillate purity goes. Then switch to Tier 1 (constant relative volatility) and see what happens. Finally, change the pressure.",
+  "objectives": [
+    {"id": "o1", "text": "In Tier 3, run at a reflux ratio of 15 or more, steady.",
+     "when": {"all": [{"metric": "tier", "op": "==", "value": 3},
+                      {"metric": "kpi.refluxRatio", "op": ">=", "value": 15},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o2", "text": "What x_D does the column seem to approach?", "after": "o1",
+     "answer": {"type": "number", "correct": 0.8956, "tolerance": 0.01}},
+    {"id": "o3", "text": "Switch to Tier 1 and reach x_D of 0.95 or more, steady.", "after": "o2",
+     "when": {"all": [{"metric": "tier", "op": "==", "value": 1},
+                      {"metric": "kpi.xD", "op": ">=", "value": 0.95},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o4", "text": "Tier 1 went past 0.8956. Why?", "after": "o3",
+     "answer": {"type": "choice",
+                "options": ["constant alpha cannot represent an azeotrope", "Tier 1 has more stages", "Tier 1 ignores the reflux", "the feed changed"],
+                "correct": 0}},
+    {"id": "o5", "text": "Back in Tier 3, run at 0.5 bar(a) or lower with x_D of 0.897 or more, steady.", "after": "o4",
+     "when": {"all": [{"metric": "tier", "op": "==", "value": 3},
+                      {"metric": "lever.pTop", "op": "<=", "value": 50500},
+                      {"metric": "kpi.xD", "op": ">=", "value": 0.897},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o6", "text": "Lower pressure moved the azeotrope to...", "after": "o5",
+     "answer": {"type": "choice",
+                "options": ["more ethanol", "less ethanol", "nowhere: it is fixed", "it disappeared"],
+                "correct": 0}}
+  ],
+  "hints": [
+    {"after": 0, "text": "The condenser is near its limit, so keep the duty and raise R by cutting D: set reflux to 105 kmol/h (D falls to about 6, R to about 17.6)."},
+    {"when": {"metric": "objective[o1].met", "op": "==", "value": true}, "text": "Switch to Tier 1 with the badge and run to steady state."},
+    {"when": {"metric": "objective[o3].met", "op": "==", "value": true}, "text": "Switch back to Tier 3. Then, together: feed 60 kmol/h, reflux 60 kmol/h, duty 748 kW, P_top 0.5 bar(a). At 0.5 bar(a) the condenser carries only about 840 kW, so the feed has to come down."}
+  ],
+  "events": [],
+  "scoring": {"objectives": 0.6, "time": 0.2, "safety": 0.1, "quality": 0.1,
+              "qualitySpec": {"metric": "kpi.xD", "op": ">=", "value": 0.897}},
+  "debrief": "At 1 atm Tier 3 stalled below 0.8956 however high R went (about 0.890 at R 17.6). Tier 1's constant alpha has no azeotrope, so it 'beat' it. At 0.5 bar(a) you reached x_D {kpi.xD:0.0000}, past the 1-atm azeotrope, because there it sits at 0.911: this is how vacuum and pressure-swing distillation get past it."
+}
+''';
+
+/// G10, the other azeotrope (M5): acetone-chloroform, a maximum-boiling azeotrope that collects in the bottoms.
+const String g10Json = r'''
+{
+  "id": "G10_other_azeotrope",
+  "kind": "guided",
+  "title": "The other azeotrope",
+  "milestone": 5,
+  "topic": "thermo",
+  "preset": "ac",
+  "overrides": {"tier": "t3", "murphree": 1.0, "hydraulics": "ideal"},
+  "start": "steady",
+  "noise": false,
+  "levers": {
+    "set": {},
+    "lock": ["feedStage", "nTrays", "murphree", "hydraulics"],
+    "show": ["refluxFlow", "reboilerDuty", "feedFlow"]
+  },
+  "timeLimit": 86400,
+  "parTime": 28800,
+  "briefing": "Acetone and chloroform form a maximum-boiling azeotrope near x = 0.333 acetone. The column makes nearly pure acetone at the top and leaves chloroform-rich liquid at the bottom.\n\nKeep the duty and draw more distillate by lowering the reflux. Where does the azeotrope end up?",
+  "objectives": [
+    {"id": "o1", "text": "Draw 47 kmol/h of distillate or more, steady.",
+     "when": {"all": [{"metric": "tier", "op": "==", "value": 3},
+                      {"metric": "kpi.d", "op": ">=", "value": 13.06},
+                      {"metric": "steady", "op": "==", "value": true}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o2", "text": "D rose by 10 kmol/h. Where does the azeotrope leave the column?", "after": "o1",
+     "answer": {"type": "choice",
+                "options": ["in the distillate", "in the bottoms", "split between both", "it never forms in a column"],
+                "correct": 1}},
+    {"id": "o3", "text": "Read the azeotrope's acetone mole fraction off the T-x-y tab.", "after": "o2",
+     "answer": {"type": "number", "correct": 0.333, "tolerance": 0.02}}
+  ],
+  "hints": [
+    {"after": 0, "text": "Keep the duty and lower the reflux to 140 kmol/h: D rises to about 48 kmol/h."},
+    {"when": {"metric": "objective[o1].met", "op": "==", "value": true}, "text": "x_B moved only from 0.378 to 0.363 while x_D fell from 0.96 to 0.86: the bottoms are pinned near a limit."},
+    {"when": {"metric": "objective[o2].met", "op": "==", "value": true}, "text": "Open the T-x-y tab: the azeotrope is where the bubble and dew curves touch at a temperature maximum (the diamond)."}
+  ],
+  "events": [],
+  "scoring": {"objectives": 0.7, "time": 0.2, "safety": 0.1, "quality": 0.0},
+  "debrief": "A maximum-boiling azeotrope is the heaviest thing in the column, so it collects in the bottoms: x_B can approach 0.333 from above but never cross it, and drawing more distillate only dilutes the top."
 }
 ''';
