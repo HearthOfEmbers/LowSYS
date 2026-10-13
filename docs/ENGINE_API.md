@@ -1665,7 +1665,7 @@ The `debrief` strings are the required content; the wording may be polished. Sev
     {"id": "reb_foul", "weight": 1,
      "fault": {"type": "reboilerFouling", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 5400},
      "answer": {"category": "fouling", "location": "reboiler"},
-     "debrief": "**The reboiler was fouling** from {fault.onset:time}. The steam valve crept open for about three quarters of an hour and then saturated, and only then did the duty fall short. The header pressure (PT-201) stayed normal."},
+     "debrief": "**The reboiler was fouling** from {fault.onset:time}. For most of an hour nothing showed: the exchanger still had capacity to spare, so FC-103 held the duty with the steam valve where it was. Once the fouling ate that margin, the valve ran to 100 % within minutes, the duty fell short and the duty-limited alarm came on. The header pressure (PT-201) stayed normal. On a real plant the valve would creep open over that hour as the steam-chest pressure rose; LowSYS does not model the chest pressure."},
     {"id": "trap", "weight": 1,
      "fault": {"type": "condensateBackup", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 60},
      "answer": {"category": "condensate", "location": "reboiler"},
