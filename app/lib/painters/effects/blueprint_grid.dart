@@ -41,6 +41,15 @@ class BlueprintBackdropPainter extends CustomPainter {
         canvas.drawCircle(Offset(rnd.nextDouble() * size.width, rnd.nextDouble() * size.height), 0.7, dot);
       }
     }
+    if (theme.effects.scanlines) {
+      // CRT raster: a dark line every 3 px (Phosphor)
+      final line = Paint()
+        ..color = Colors.black.withValues(alpha: 0.22)
+        ..strokeWidth = 1;
+      for (var y = 0.0; y < size.height; y += 3) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), line);
+      }
+    }
     if (theme.effects.vignette) {
       final shader = RadialGradient(
         center: Alignment.center,

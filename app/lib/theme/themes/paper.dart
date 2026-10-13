@@ -39,6 +39,7 @@ const LowsysTheme paperTheme = LowsysTheme(
     diagonal: Color(0xFFA8A29A),
     pseudoEq: Color(0xFF57606A),
     marker: Color(0xFF1F2328),
+    seriesDash: kSolidDash,
     series: [
       Color(0xFF2B6CB0),
       Color(0xFF1F2328),

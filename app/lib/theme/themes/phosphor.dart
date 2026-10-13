@@ -1,0 +1,77 @@
+import 'package:flutter/material.dart';
+
+import '../lowsys_theme.dart';
+
+/// T-3 Phosphor, "Green Screen CRT" (SCOPE.md 7.2). A single hue: the series are told apart by dash pattern and
+/// intensity (seriesDash1..6), amber is only the selection cursor and warn, and alarm is inverse video (a green
+/// block with black text, blinking). "VT323" is not bundled (no downloads, docs/DEVIATIONS.md A1), so the monospace
+/// fallbacks apply.
+const LowsysTheme phosphorTheme = LowsysTheme(
+  id: 'phosphor',
+  name: 'Phosphor',
+  palette: ThemePalette(
+    bg: Color(0xFF031A09),
+    bgAlt: Color(0xFF02140A),
+    surface: Color(0xFF06240F),
+    surfaceAlt: Color(0xFF0A2E14),
+    ink: Color(0xFF33FF66),
+    inkMuted: Color(0xFF1F9940),
+    inkFaint: Color(0xFF0E5223),
+    grid: Color(0xFF0B3D1A),
+    gridMajor: Color(0xFF12602A),
+    accent: Color(0xFF9CFFB5),
+    accent2: Color(0xFFFFB000),
+    steel: Color(0xFF33FF66),
+    liquidLight: Color(0xFF66FF99),
+    liquidHeavy: Color(0xFF1A8F3A),
+    froth: Color(0xFF9CFFB5),
+    vapor: Color(0x6633FF66),
+    hot: Color(0xFF33FF66),
+    cold: Color(0x9933FF66),
+    ok: Color(0xFF33FF66),
+    warn: Color(0xFFFFB000),
+    alarm: Color(0xFF33FF66),
+    info: Color(0xFF9CFFB5),
+    selection: Color(0xFFFFB000),
+    eqCurve: Color(0xFF33FF66),
+    opLine: Color(0xFF9CFFB5),
+    opLineCmo: Color(0xFF9CFFB5),
+    qLine: Color(0xFF9CFFB5),
+    stepLine: Color(0xFF66FF99),
+    diagonal: Color(0xFF0E5223),
+    pseudoEq: Color(0xFF1F9940),
+    marker: Color(0xFF9CFFB5),
+    series: [
+      Color(0xFF33FF66),
+      Color(0xFF9CFFB5),
+      Color(0xFF1F9940),
+      Color(0xFF33FF66),
+      Color(0xFF9CFFB5),
+      Color(0xFF1F9940),
+    ],
+    seriesDash: [
+      [],
+      [6, 3],
+      [],
+      [1.5, 3],
+      [6, 3, 1.5, 3],
+      [6, 3],
+    ],
+  ),
+  type: ThemeTypography(
+    display: TypeToken('VT323', ['Consolas', 'Cascadia Mono', 'Courier New', 'monospace'], letterSpacing: 0.4),
+    label: TypeToken('VT323', ['Consolas', 'Cascadia Mono', 'Courier New', 'monospace']),
+    number: TypeToken('VT323', ['Consolas', 'Cascadia Mono', 'Courier New', 'monospace'], tabularFigures: true),
+    math: TypeToken('STIX Two Math', ['Cambria Math', 'Cambria', 'Times New Roman', 'serif']),
+  ),
+  column: ColumnStyle(
+    vesselStyle: VesselStyle.vector,
+    liquidStyle: LiquidStyle.glyph,
+    vaporStyle: VaporStyle.glyphs,
+    gaugeStyle: GaugeStyle.bargraph,
+    strokeWidth: 1.4,
+    trayStrokeWidth: 1.0,
+  ),
+  chart: ChartStyle(lineStyle: LineStyle.vector, dashOn: 6, dashOff: 3),
+  effects: EffectStyle(scanlines: true, bloom: true, alarmBlink: true, glowStrokesMax: 8),
+);

@@ -40,6 +40,7 @@ const LowsysTheme controlRoomTheme = LowsysTheme(
     diagonal: Color(0xFF3C4A57),
     pseudoEq: Color(0xFF7F93A3),
     marker: Color(0xFFFFFFFF),
+    seriesDash: kSolidDash,
     series: [
       Color(0xFF31C4F3),
       Color(0xFFE6E6E6),

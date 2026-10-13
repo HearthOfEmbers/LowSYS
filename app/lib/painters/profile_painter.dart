@@ -6,7 +6,7 @@ import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
 
-enum ProfileKind { dp, flood, weep, holdup, composition, temperature, vapour, liquid }
+enum ProfileKind { dp, flood, weep, holdup, composition, components, temperature, vapour, liquid }
 
 extension ProfileKindLabel on ProfileKind {
   String get label => switch (this) {
@@ -15,6 +15,7 @@ extension ProfileKindLabel on ProfileKind {
         ProfileKind.weep => 'Weeping',
         ProfileKind.holdup => 'Holdup',
         ProfileKind.composition => 'x',
+        ProfileKind.components => 'x(i)',
         ProfileKind.temperature => 'T',
         ProfileKind.vapour => 'V',
         ProfileKind.liquid => 'L',
@@ -98,6 +99,9 @@ class ProfilePainter extends CustomPainter {
           vals2[j] = st.y[j * st.nc];
         }
         axisMax = 1;
+      case ProfileKind.components:
+        unit = 'liquid mole fraction';
+        axisMax = 1;
       case ProfileKind.temperature:
         unit = u.symbol(Quantity.temperature);
         var lo = double.infinity, hi = double.negativeInfinity;
@@ -160,6 +164,10 @@ class ProfilePainter extends CustomPainter {
             ..color = p.alarm
             ..strokeWidth = 1.4);
       _text(canvas, '100 %', Offset(x100, plot.top - 2), lab.style(12, p.alarm), Alignment.bottomCenter);
+    }
+    if (kind == ProfileKind.components) {
+      _componentLines(canvas, s, plot);
+      return;
     }
     if ((kind == ProfileKind.dp || kind == ProfileKind.flood || kind == ProfileKind.weep) && !full) {
       _text(canvas, 'ideal hydraulics: no tray hydraulics (switch to Full)', plot.center, lab.style(13, p.warn), Alignment.center, maxWidth: plot.width - 12);
@@ -228,6 +236,72 @@ class ProfilePainter extends CustomPainter {
     };
     if (key.isNotEmpty) _text(canvas, key, Offset(plot.left, plot.top - 4), lab.style(12, p.inkMuted), Alignment.bottomLeft, maxWidth: plot.width);
     _text(canvas, 'tray', Offset(plot.left - 8, plot.top - 4), lab.style(12, p.inkMuted), Alignment.bottomRight);
+  }
+
+  /// Component profile chart (M7): x_i against tray for every component. Component i uses series (i mod 6) with its
+  /// dash pattern (seriesDash); a seventh or later component also gets point markers (SCOPE.md 7.1).
+  void _componentLines(Canvas canvas, SimSnapshot s, Rect plot) {
+    final p = theme.palette;
+    final st = s.stages;
+    final N = s.layout.nTrays;
+    final nc = st.nc;
+    final rowH = plot.height / N;
+    final db = ComponentDb.load();
+    double xAt(double v) => plot.left + v.clamp(0.0, 1.0) * plot.width;
+    for (var i = 0; i < nc; i++) {
+      final si = i % p.series.length;
+      final paint = Paint()
+        ..color = p.series[si]
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8;
+      final path = Path();
+      for (var j = 1; j <= N; j++) {
+        final o = Offset(xAt(st.x[j * nc + i]), plot.top + (j - 0.5) * rowH);
+        j == 1 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+      }
+      _drawDashed(canvas, path, paint, p.seriesDash[si]);
+      if (i >= p.series.length) {
+        for (var j = 1; j <= N; j += math.max(1, N ~/ 8)) {
+          canvas.drawCircle(Offset(xAt(st.x[j * nc + i]), plot.top + (j - 0.5) * rowH), 2.5, Paint()..color = p.series[si]);
+        }
+      }
+      // legend: swatch plus name along the top
+      final lx = plot.left + 6 + (i % 3) * (plot.width - 12) / 3;
+      final ly = plot.top + 6 + (i ~/ 3) * 16;
+      final sw = Path()
+        ..moveTo(lx, ly + 6)
+        ..lineTo(lx + 22, ly + 6);
+      _drawDashed(canvas, sw, paint, p.seriesDash[si]);
+      _text(canvas, db[s.components[i]].name, Offset(lx + 26, ly + 6), theme.type.label.style(12, p.ink), Alignment.centerLeft,
+          maxWidth: (plot.width - 12) / 3 - 30);
+    }
+    for (var j = 1; j <= N; j++) {
+      if (j == 1 || j % 5 == 0 || j == N) {
+        _text(canvas, '$j', Offset(plot.left - 8, plot.top + (j - 0.5) * rowH), theme.type.number.style(12, p.inkMuted), Alignment.centerRight);
+      }
+    }
+    final sel = selected.value;
+    if (sel != null && sel >= 1 && sel <= N) {
+      final r = Rect.fromLTRB(plot.left - 2, plot.top + (sel - 1) * rowH, plot.right, plot.top + sel * rowH);
+      canvas.drawRect(r, Paint()..color = p.selection.withValues(alpha: 0.18));
+    }
+    _text(canvas, 'tray', Offset(plot.left - 8, plot.top - 4), theme.type.label.style(12, p.inkMuted), Alignment.bottomRight);
+  }
+
+  static void _drawDashed(Canvas canvas, Path path, Paint paint, List<double> dash) {
+    if (dash.isEmpty) {
+      canvas.drawPath(path, paint);
+      return;
+    }
+    for (final m in path.computeMetrics()) {
+      var d = 0.0, k = 0;
+      while (d < m.length) {
+        final len = dash[k % dash.length];
+        if (k.isEven) canvas.drawPath(m.extractPath(d, math.min(d + len, m.length)), paint);
+        d += len;
+        k++;
+      }
+    }
   }
 
   void _text(Canvas c, String t, Offset at, TextStyle st, Alignment a, {double maxWidth = double.infinity}) {

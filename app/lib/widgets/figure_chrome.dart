@@ -9,7 +9,7 @@ import '../theme/lowsys_theme.dart';
 import '../theme/themes/paper.dart';
 
 /// Names of the diagram tabs by id (0 McCabe-Thiele, 1 Profiles, 2 T-x-y).
-const Map<int, String> kDiagramNames = {0: 'McCabe–Thiele', 1: 'Profiles', 2: 'T-x-y'};
+const Map<int, String> kDiagramNames = {0: 'McCabe–Thiele', 1: 'Profiles', 2: 'T-x-y', 3: 'Products'};
 
 String _clock(double t) {
   final s = t.floor();

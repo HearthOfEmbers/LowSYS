@@ -36,7 +36,13 @@ class SimController extends ChangeNotifier {
 
   /// Diagram tab ids in display order: 0 McCabe-Thiele, 2 T-x-y (binaries only), 1 Profiles. Figure numbers of the Paper
   /// theme follow the position (SCOPE.md 7.2).
-  List<int> get diagramTabOrder => [0, if (config.components.length == 2) 2, 1];
+  List<int> get diagramTabOrder => [0, if (config.components.length == 2) 2, 1, if (config.components.length > 2) 3];
+
+  /// M7 Products tab: FUG result (null for binaries, plant views and invalid keys), recomputed every 10 s of sim time
+  /// (PHYSICS.md 14.3). [fugTargets] null is live mode; otherwise target mode with the recoveries and optional R/R_min.
+  final ValueNotifier<FugResult?> fug = ValueNotifier<FugResult?>(null);
+  final ValueNotifier<FugTargets?> fugTargets = ValueNotifier<FugTargets?>(null);
+  double _fugAt = -1e9;
 
   /// Cycles the tier through the tiers the system offers (key T).
   Future<void> cycleTier() async {
@@ -146,6 +152,13 @@ class SimController extends ChangeNotifier {
   List<LeverSpec> get levers => runner.levers;
   ColumnConfig get config => runner.config;
 
+  /// debut and deprop keep the preset's ideal hydraulics: at the ruled 0.75 / 0.55 m diameters the deprop stripping
+  /// section floods under full hydraulics (docs/DEVIATIONS.md "M7 app"); the Hydraulics lever still switches to Full.
+  ColumnConfig _sandboxConfig(PresetId id) {
+    final c = Presets.byId(id);
+    return (id == Presets.debut || id == Presets.deprop) ? c : c.copyWith(hydraulics: HydraulicsMode.full);
+  }
+
   /// Sandbox default is full hydraulics (SCOPE.md 4.2); the preset itself stays ideal (docs/DEVIATIONS.md E19).
   Future<void> load(
     PresetId id, {
@@ -162,7 +175,7 @@ class SimController extends ChangeNotifier {
       scoreCard = null;
     }
     await runner.load(
-      config ?? Presets.byId(id).copyWith(hydraulics: HydraulicsMode.full),
+      config ?? _sandboxConfig(id),
     );
     if (!keepScenario)
       await runner.setLever('noise', 1); // sandbox default (SCOPE.md 3, M3)
@@ -476,7 +489,8 @@ class SimController extends ChangeNotifier {
     final t1 = sw.elapsedMicroseconds;
     snapshot.value = s;
     final t2 = sw.elapsedMicroseconds;
-    mccabe.value = _builder.build(s, runner.thermo, showRmin: showRmin);
+    mccabe.value = _builder.build(s, runner.thermo, showRmin: showRmin, keys: s.stages.nc > 2 ? config.effectiveKeys : null);
+    _refreshFug(s);
     if (diagramTab.value == 2 && s.stages.nc == 2 && s.view == SimView.model) {
       final th = runner.thermo;
       txy.value = _txyBuilder.build(s, (s.tier != ThermoTier.t1 && th is Tier2Raoult) ? th : runner.idealThermo);
@@ -502,6 +516,23 @@ class SimController extends ChangeNotifier {
     if (!mapEquals(br, brokenStages.value)) brokenStages.value = br;
     _updateScenario(s);
     _refreshMath();
+  }
+
+  void _refreshFug(SimSnapshot s, {bool force = false}) {
+    if (s.stages.nc < 3 || s.view.isPlant) {
+      if (fug.value != null) fug.value = null;
+      return;
+    }
+    if (!force && (s.time - _fugAt).abs() < 10 && fug.value != null) return;
+    _fugAt = s.time;
+    fug.value = const FugCalculator().compute(s, config.effectiveKeys, targets: fugTargets.value, thermo: runner.thermo);
+  }
+
+  /// Switches the FUG panel between live mode (null) and target mode.
+  void setFugTargets(FugTargets? t) {
+    fugTargets.value = t;
+    final s = snapshot.value;
+    if (s != null) _refreshFug(s, force: true);
   }
 
   void setSpeed(double v) {
@@ -626,6 +657,8 @@ class SimController extends ChangeNotifier {
     txy.dispose();
     txySub.dispose();
     profileKind.dispose();
+    fug.dispose();
+    fugTargets.dispose();
     controlTab.dispose();
     mathTarget.dispose();
     mathResult.dispose();
