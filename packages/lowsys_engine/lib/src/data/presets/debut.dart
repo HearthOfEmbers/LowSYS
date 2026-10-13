@@ -12,7 +12,7 @@ const String debutPresetJson = r'''
   "tier1Props": {"rhoL": 560, "rhoV": 15.0, "sigma": 0.009},
   "liquidViscosity": 0.00013,
   "sections": [{"kind": "trays", "trays": 32, "type": "sieve",
-    "geometry": {"diameter": 1.2, "traySpacing": 0.9, "downcomerFraction": 0.12, "weirHeight": 0.05,
+    "geometry": {"diameter": 0.75, "traySpacing": 0.9, "downcomerFraction": 0.12, "weirHeight": 0.05,
                  "apronClearance": 0.038, "holeFraction": 0.10, "holeDiameter": 0.0127, "orificeCoeff": 0.73,
                  "downcomerAeration": 0.5, "systemFactor": 1.0}}],
   "feeds": [{"stage": 16, "flow": 27.77777777777778, "z": [0.05, 0.15, 0.25, 0.2, 0.2, 0.15], "thermal": {"q": 1.0}}],
