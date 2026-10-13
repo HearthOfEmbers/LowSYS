@@ -418,15 +418,13 @@ void main() {
   });
 
   group('dt 30 s after a large step (ac E 1, condenser ×2, L0 150 → 300, duty ×1.8)', () {
-    // PHYSICS.md 12.7 / 13.3: identical steady states at dt 0.5, 2 and 30 s;
-    // negativeClamps stays 0 in normal operation.
-    // Agreed behaviour after 601f80e (DEVIATIONS "M5 validation: fixes" item 6): the false "reached" is gone; at dt 30
-    // PC-101 (doubled condenser = doubled loop gain, executed every 30 s) keeps a ±0.5 kPa limit cycle, so the run
-    // ends with reached == false near the dt-2 state. Whether dt 30 must settle (sub-step PC-101) or is accepted only
-    // for presets at their own condenser is with the spec lead; the clamps / identity clause waits for that ruling.
-    final res = <double, (bool, double, double, double, int)>{};
+    // VALIDATION.md §0 / PHYSICS.md §12.5 dt-30 contract (ruling 2044f1a, 2026-10-13): dt 30 is a steady-state
+    // robustness step. In this case (doubled condenser = doubled PC-101 gain) assert at dt 30 only: no NaN, no fatal,
+    // and reached == false or a state within 0.05 kmol/h / 0.5 kPa of dt 2; negativeClamps is recorded, not asserted.
+    // At dt 2 and 10 s it settles (D 16.32 ± 0.05, P at SP ± 0.5 kPa); negativeClamps == 0 at dt 2.
+    final res = <double, (bool, double, double, double, int, double)>{};
     setUpAll(() {
-      for (final dt in [2.0, 30.0]) {
+      for (final dt in [2.0, 10.0, 30.0]) {
         final m = _sim('ac',
             e: 1.0,
             ov: {
@@ -441,30 +439,30 @@ void main() {
         final r = m.runToSteadyState(fastForward: false, maxSimSeconds: 300000);
         final q = m.snapshot();
         res[dt] = (r.reached, _k(q.kpis.d), q.kpis.pTop, q.kpis.energyResidual,
-            q.solverHealth.negativeClamps - c0);
+            q.solverHealth.negativeClamps - c0, m.lever('pTop'));
       }
-      print('dt 2: ${res[2.0]}; dt 30: ${res[30.0]} (reached, D, P, energy residual, clamps)');
+      print('dt 2: ${res[2.0]}; dt 10: ${res[10.0]}; dt 30: ${res[30.0]} '
+          '(reached, D, P, energy residual, negativeClamps after the step, P SP)');
     });
-    test('dt 2 settles; dt 30 gives no false "reached" (agreed: reached false in the PC-101 limit cycle, near the dt-2 state)',
+    test('dt 2 and 10 s settle: D 16.32 ± 0.05 kmol/h, P at SP ± 0.5 kPa; negativeClamps == 0 at dt 2', () {
+      for (final dt in [2.0, 10.0]) {
+        final a = res[dt]!;
+        expect(a.$1, isTrue, reason: 'dt $dt reached');
+        expect(a.$2, closeTo(16.32, 0.05), reason: 'dt $dt D');
+        expect(a.$3, closeTo(a.$6, 500), reason: 'dt $dt P');
+        expect(a.$4, lessThan(1e-6), reason: 'dt $dt energy residual');
+      }
+      expect(res[2.0]!.$5, 0, reason: 'negative clamps at dt 2');
+    });
+    test('dt 30: finite, no false "steady": reached == false, or within 0.05 kmol/h / 0.5 kPa of dt 2 (clamps recorded)',
         () {
       final a = res[2.0]!, b = res[30.0]!;
-      expect(a.$1, isTrue);
-      expect(a.$4, lessThan(1e-6));
+      expect(b.$2.isFinite && b.$3.isFinite && b.$4.isFinite, isTrue);
       if (b.$1) {
+        expect(b.$2, closeTo(a.$2, 0.05), reason: 'D at dt 30 vs dt 2');
+        expect(b.$3, closeTo(a.$3, 500), reason: 'P at dt 30 vs dt 2');
         expect(b.$4, lessThan(1e-6), reason: 'a reached state must close the energy balance');
       }
-      expect(b.$1, isFalse, reason: 'agreed behaviour at 601f80e: limit cycle, not steady');
-      expect(b.$2, closeTo(a.$2, 0.5), reason: 'D at dt 30 within the cycle of the dt-2 value');
-      expect(b.$3, closeTo(a.$3, 1500), reason: 'P at dt 30 within the ±0.5 kPa cycle (+margin)');
-    });
-    test('negativeClamps == 0 at dt 30 and the dt-2 state to 1e-3 kmol/h / 1 Pa',
-        skip: 'pending the spec lead\'s ruling on dt 30 with a doubled condenser (DEVIATIONS "M5 validation: fixes" '
-            'item 6: sub-step PC-101, or accept dt 30 only at the preset\'s own condenser); at 601f80e: 2576 clamps, '
-            'D 16.263 vs 16.317, P +79 Pa', () {
-      final a = res[2.0]!, b = res[30.0]!;
-      expect(b.$5, 0, reason: 'negative clamps at dt 30');
-      expect(b.$2, closeTo(a.$2, 1e-3), reason: 'D at dt 30 vs dt 2');
-      expect(b.$3, closeTo(a.$3, 1), reason: 'P at dt 30 vs dt 2');
     });
   });
 
