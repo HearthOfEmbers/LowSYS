@@ -938,6 +938,38 @@ class Stepper {
     hyd.rhoVs[0] = hyd.rhoVs[1];
   }
 
+  /// After a restore: rebuilds the quantities derived from the saved thermo arrays (efficiencies, hydraulic
+  /// properties, inert fraction) without touching T, K~, y, h, H, tau or the stage pressures.
+  void t2RestoreDerived() {
+    final N = nTrays;
+    hyd.pTop = s.pTop;
+    final nv = overheadMoles;
+    yIner = nv + s.nI > 0 ? s.nI / (nv + s.nI) : 0.0;
+    fBlanket = math.min(0.95, 3 * yIner);
+    subcool = inp.refluxSub + 20 * fBlanket;
+    for (var j = 1; j <= N; j++) {
+      s.eff[j] = _effNow(j);
+    }
+    s.eff[N + 1] = 1.0;
+    s.eff[0] = 1.0;
+    for (var j = 0; j < n; j++) {
+      var mwl = 0.0;
+      for (var i = 0; i < nc; i++) {
+        mwl += s.x[j * nc + i] * t2.mw[i];
+        _xn[i] = s.x[j * nc + i];
+      }
+      hyd.rhoLs[j] = mwl / 1000 / s.vLiq[j];
+      hyd.sigmas[j] = t2.surfaceTension(j == 0 ? s.tRefl : s.t[j], _xn);
+    }
+    for (var j = 1; j <= N + 1; j++) {
+      for (var i = 0; i < nc; i++) {
+        _yy[i] = s.y[j * nc + i];
+      }
+      hyd.rhoVs[j] = t2.vaporDensity(s.t[j], s.pStage[j], _yy);
+    }
+    hyd.rhoVs[0] = hyd.rhoVs[1];
+  }
+
   /// Heat capacity C_j (liquid plus tray metal) of every stage for the storage term (4.5).
   void _t2Capacity() {
     final metal = 75.0 * aTotal * 500.0;

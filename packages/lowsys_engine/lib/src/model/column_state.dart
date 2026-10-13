@@ -66,6 +66,9 @@ class ColumnState {
   /// condenser duty (W), delivered reboiler duty (W), vent + relief rate (mol/s).
   double tSat0 = 350, tRefl = 350, nCond = 0, qC = 0, qR = 0, nVent = 0, nRelief = 0, dV = 0;
 
+  /// True when a saved state carried the Tier-2 thermo arrays (restore keeps them instead of recomputing).
+  bool thermoLoaded = false;
+
   /// Simulation time (s).
   double time = 0;
 
@@ -152,6 +155,11 @@ class ColumnState {
         'psi': _l(psi),
         'lbar': _l(lbar),
         'T': _l(t),
+        'kt': _l(kt),
+        'hLiq': _l(hLiq),
+        'hVap': _l(hVap),
+        'tau': _l(tau),
+        'pStage': _l(pStage),
         'pTop': pTop,
         'nI': nI,
         'nVi': _l(nVi),
@@ -187,6 +195,14 @@ class ColumnState {
     if (j['lbar'] != null) _load(lbar, j['lbar']);
     if (j['T'] != null) {
       _load(t, j['T']);
+      if (j['kt'] != null) {
+        _load(kt, j['kt']);
+        _load(hLiq, j['hLiq']);
+        _load(hVap, j['hVap']);
+        _load(tau, j['tau']);
+        _load(pStage, j['pStage']);
+        thermoLoaded = true;
+      }
       _load(nVi, j['nVi']);
       pTop = (j['pTop']! as num).toDouble();
       nI = (j['nI']! as num).toDouble();

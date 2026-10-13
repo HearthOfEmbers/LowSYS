@@ -647,6 +647,7 @@ class ControlSystem {
   void setSp(LoopTag tag, double sp) {
     final l = loop(tag);
     l.setSp(sp);
+    if (tag == 'PC-101' && tier2) setPtSpan();
   }
 
   void setOp(LoopTag tag, double op) {
@@ -1294,6 +1295,8 @@ class ControlSystem {
       final m = ls[l.tag];
       if (m != null) l.loadJson(m as Map<String, Object?>);
     }
+    // re-range PT-101 before its saved state (the OU noise state) is loaded, or applySpec would reset it
+    if (tier2) setPtSpan();
     final vs = j['valves']! as Map<String, Object?>;
     for (final v in valves) {
       final m = vs[v.id];
@@ -1304,7 +1307,6 @@ class ControlSystem {
       final m = ins[i.spec.tag];
       if (m != null) i.loadJson(m as Map<String, Object?>);
     }
-    if (tier2) setPtSpan();
     alarms.loadJson(j['alarms']! as Map<String, Object?>);
     final tr = j['trends'];
     if (tr != null && trends != null)
