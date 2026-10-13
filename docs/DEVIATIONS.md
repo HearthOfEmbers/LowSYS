@@ -642,3 +642,13 @@ Rulings on the open items of "M7 validation" (2eff06f) and "M7 app" / "M7 app 2"
 - VC-9.6 (a) and (b) on the two-section `deprop` and on `debut` (45–85 %); VC-16.6d on both presets.
 - H6 rows as changed: F07 (healthy reference, 4.5 pre-event cap), F12 brackets, F20 and healthy-planning C3a / C5; B-T C3a rows (H3, H9, H10) still pass with λ_top at T_dew.
 - `m4_energy_faults_test.dart` F12: s = 0.8.
+
+## M7 close-out (coder, 2026-10-13)
+
+Coder actions of "Spec rulings M7 close-out" (d48e6ff).
+
+1. **C3a / C5 (drum) lambda_top at T_dew.** `cross_checks.dart`: lambda_top = H_V(x_D, T_dew(x_D, P-bar_101)) - h_L(x_D, T-bar_100). H6 on `debut` (noise off, seed 3): healthy planning C3a is `check` at +10 min (r/band 1.95; TI-202 true 34.07 C, measured 34.07 C, so the transient is the process side, not the meter) and C3a and C5 (drum) are `ok` at 2 h. F20 at 2 h: C3a `ok` or `check` (asserted), C5 `ok` (printed).
+2. **F07.** Peak D - start before the 2700 s event: 1.64 kmol/h at 1600 s (limit 4.5, asserted); D within 1 kmol/h of the healthy run at 2 h. The flash mechanism is **not seen**: at the peak the feed (bubble point) is 4.7 K cooler than the feed tray, not hotter. The small D rise is the heavier-feed transient of the profile, not extra feed flash. Please re-read the ruling's mechanism sentence.
+3. **F12** on af6864e at 2 h: D 62.44 kmol/h, true xDHeavy 0.2196. Thresholds unchanged. F20 debrief reworded as ENGINE_API.md 11.10.
+4. **Multi-tray-section support.** The hydraulic solver and stepper take the tray geometry per stage (`geomAt`); `withTrays` changes the last tray section; the `trayType.0` lever sets every tray section. `deprop` now has trays 1-10 at 0.55 m and 11-28 at 0.85 m.
+5. **`deprop` VC-9.6 (b) at 0.85 m (full hydraulics, design levers, steady run converges):** jet flood 59-68 % in the top section and 33-52 % in the stripping section (max 52 %, inside 45-85 %), but the stripping trays **weep** (weeping fraction 49-74 %, Phi < 0.75). Scan of the stripping D_c: 0.60 m 90-146 % jet, weep 7 %; 0.65 m 85-113 %, weep 8 %; 0.70 m 43-79 %, weep 60 %; 0.75 m 45-73 %, 56 %; 0.80 m 38-61 %, 66 %. No D_c in the allowed 0.80-0.95 m passes "no weeping" (weeping only gets worse with a larger tray). The preset keeps the ruled 0.85 m. **Question for the spec lead:** relax Phi_min for `deprop` (stripping at the low vapour load), reduce the stripping hole fraction, or accept the weeping. Until ruled, the **sandbox keeps `deprop` on its ideal hydraulics**; `debut` (0.75 m, jet 54-83 %, no weeping) now loads with **Full** hydraulics.

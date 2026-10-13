@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
@@ -628,10 +629,15 @@ class ColumnConfig {
 
   /// Convenience for tests and the app: same column with [trays] trays and the feed on [feedStage].
   ColumnConfig withTrays(int trays, {int? feedStage}) {
-    final s = traySection.copyWith(trays: trays);
+    // several tray sections (deprop): the last one absorbs the change so the upper sections keep their trays
+    final secs = List<SectionConfig>.of(sections);
+    final lastIdx = secs.lastIndexWhere((s) => s is TraySection);
+    final total = trayCount;
+    final last = secs[lastIdx] as TraySection;
+    secs[lastIdx] = last.copyWith(trays: math.max(1, last.trays + trays - total));
     final fs = feedStage ?? feeds.first.stage.clamp(1, trays);
     return copyWith(
-        sections: [s],
+        sections: secs,
         feeds: [feeds.first.copyWith(stage: fs), ...feeds.skip(1)]);
   }
 

@@ -54,13 +54,12 @@ class Stepper {
   bool tier2;
 
   // Geometry (PHYSICS.md 5.1)
-  final double aActive;
-  final double weirLength;
-  final double weirHeight;
-  final double bennettC;
+  /// Per-stage tray geometry (index = stage; several tray sections are allowed, M7 close-out).
+  final List<TrayGeometry> geomAt;
+  final Float64List aActiveAt, weirLengthAt, weirHeightAt, bennettCAt;
   final double drumVolume;
   final double sumpVolume;
-  final double aTotal;
+  final Float64List aTotalAt;
 
   /// Design reflux flow (mol/s): the capacity of the reflux pump for fault F12 (PHYSICS.md 11).
   double refluxCapacity;
@@ -98,18 +97,19 @@ class Stepper {
     required this.full,
     this.tier2 = false,
     required this.refluxCapacity,
-    required TrayGeometry geometry,
+    required List<TrayGeometry> stageGeometry,
     required this.drumVolume,
     required this.sumpVolume,
     this.murphreePasses = 2,
   })  : nTrays = s.nTrays,
         n = s.n,
         nc = s.nc,
-        aActive = geometry.areaActive,
-        aTotal = geometry.areaTotal,
-        weirLength = geometry.weirLength,
-        weirHeight = geometry.weirHeight,
-        bennettC = geometry.bennettC,
+        geomAt = stageGeometry,
+        aActiveAt = Float64List.fromList([for (final g in stageGeometry) g.areaActive]),
+        aTotalAt = Float64List.fromList([for (final g in stageGeometry) g.areaTotal]),
+        weirLengthAt = Float64List.fromList([for (final g in stageGeometry) g.weirLength]),
+        weirHeightAt = Float64List.fromList([for (final g in stageGeometry) g.weirHeight]),
+        bennettCAt = Float64List.fromList([for (final g in stageGeometry) g.bennettC]),
         _kt = Float64List(s.n * s.nc),
         _yhat = Float64List(s.n * s.nc),
         _mnew = Float64List(s.n * s.nc),
@@ -226,7 +226,7 @@ class Stepper {
   /// Murphree efficiency of tray [j]: E (1 - b_V) min(1, h_cl / 5 mm), PHYSICS.md (4.2).
   double _effOf(int j) {
     final sB = _sB(j);
-    final hcl = s.holdup[j] * s.vLiq[j] / (aActive * math.max(1 - sB, 0.02));
+    final hcl = s.holdup[j] * s.vLiq[j] / (aActiveAt[j] * math.max(1 - sB, 0.02));
     final f = hcl >= 0.005 ? 1.0 : (hcl <= 0 ? 0.0 : hcl / 0.005);
     return inp.murphree * (1 - sB) * f;
   }
@@ -315,9 +315,9 @@ class Stepper {
       s.alphaE[j] = ae;
       final vl = s.vLiq[j];
       final qw = s.liquid[j] * vl;
-      final r = qw / (weirLength * ae);
-      final hcl = ae * (weirHeight + bennettC * math.pow(r, 2.0 / 3.0));
-      s.holdup[j] = hcl * aActive / vl;
+      final r = qw / (weirLengthAt[j] * ae);
+      final hcl = ae * (weirHeightAt[j] + bennettCAt[j] * math.pow(r, 2.0 / 3.0));
+      s.holdup[j] = hcl * aActiveAt[j] / vl;
     }
     s.holdup[0] = 0.5 * drumVolume / s.vLiq[0];
     s.holdup[N + 1] = 0.5 * sumpVolume / s.vLiq[N + 1];
@@ -354,7 +354,7 @@ class Stepper {
     }
     final rV = hyd.rhoVs[j], rL = hyd.rhoLs[j];
     final qin = s.vapor[j + 1] * mwv / (1000 * rV);
-    final us = qin / aActive;
+    final us = qin / aActiveAt[j];
     final ks = us * math.sqrt(rV / (rL - rV));
     return ks <= 0 ? 1.0 : math.exp(-12.55 * math.pow(ks, 0.91));
   }
@@ -512,7 +512,8 @@ class Stepper {
           eJ;
       final vl = s.vLiq[j];
       final ae = s.alphaE[j];
-      final aa = full ? hyd.aAct[j] : aActive;
+      final aa = full ? hyd.aAct[j] : aActiveAt[j];
+      final weirLength = weirLengthAt[j], weirHeight = weirHeightAt[j], bennettC = bennettCAt[j];
       final cap = full ? hyd.lMax[j] : double.infinity;
       final kd = full ? hyd.kd[j] : 0.0;
       final mn = s.holdup[j];
@@ -677,7 +678,7 @@ class Stepper {
               1.0,
               s.holdup[j] *
                   s.vLiq[j] /
-                  (aActive * math.max(1 - ep.brokenS[j], 0.02)) /
+                  (aActiveAt[j] * math.max(1 - ep.brokenS[j], 0.02)) /
                   0.005)
       : _effOf(j);
 
@@ -1071,10 +1072,9 @@ class Stepper {
 
   /// Heat capacity C_j (liquid plus tray metal) of every stage for the storage term (4.5).
   void _t2Capacity() {
-    final metal = 75.0 * aTotal * 500.0;
     for (var j = 1; j <= nTrays + 1; j++) {
       _cj[j] = s.holdup[j] * t2.cpLAt(s.t[j], s.x, j * nc) +
-          (j <= nTrays ? metal : 0.0);
+          (j <= nTrays ? 75.0 * aTotalAt[j] * 500.0 : 0.0);
     }
   }
 

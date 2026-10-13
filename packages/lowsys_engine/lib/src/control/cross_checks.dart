@@ -259,7 +259,9 @@ class CrossCheckEngine {
         _comp(cs, _x, 'AT-101', mean('PV:AT-101'), heavy: true);
         final p = mean('PV:PT-101');
         final tCond = th.bubbleAt(p, _x, 0, mean('PV:TI-100') + 1, _y, 0, _k, 0, _health);
-        lamTop = th.hVAt(tCond, _x, 0) - th.hLAt(mean('PV:TI-100'), _x, 0);
+        // the top vapour leaves tray 1 at its dew point (M7 close-out ruling M7-S1)
+        final tDew = th.dewT(p, _x, tCond, _y, _health);
+        lamTop = th.hVAt(tDew, _x, 0) - th.hLAt(mean('PV:TI-100'), _x, 0);
         vCw = lamTop > 0 ? qCw / lamTop : double.nan;
       }
     }
