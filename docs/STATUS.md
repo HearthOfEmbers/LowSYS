@@ -1,8 +1,8 @@
 # LowSYS status and coordinator handoff
 
-Status: IN PROGRESS
+Status: COMPLETE
 
-Last updated 2026-10-13 by the outgoing coordinator.
+Last updated 2026-10-13 by the final coordinator. M1–M10 are done and validated; see `docs/reports/LowSYS-summary-2026-10-13.md` for the summary and known gaps. The `lowsys-coordinator` scheduled task is disabled.
 
 ## What exists
 - Specs: `SCOPE.md` (milestones M1–M10, levers, faults, scenarios, themes), `PHYSICS.md`, `ENGINE_API.md`, `VALIDATION.md`. The coder records deviations in `DEVIATIONS.md`. `OPEN_ITEMS.md` holds spec fixes still waiting for the physics lead.
