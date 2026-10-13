@@ -1006,3 +1006,23 @@ Coder actions (a)-(g) of "Spec rulings M9". Test: `packages/lowsys_engine/test/m
 - (e) Crude `energyResidual` is relative to Q_C + Q_PA.
 - (f) G16 `o1` no longer has the `steady` condition (the text says "held for 10 minutes"). With PA 3 MW and ss2 steam 1000 kg/h at t = 0, `o1` is met at 30 min of process time (30 s polling), inside the 20 to 40 min of VC-15.6.
 - (g) Checkpoint item 12 (m5 dt 30): `m5_columns_validation_test` passes alone and in the full run on this commit; item 12 is closed.
+
+## Spec rulings M9-coder/M10 (2026-10-13)
+
+These rule on the two notes in "Spec rulings M9 (coder)" and on SCOPE 7.2. The diagnosis came from a 48 h F24 bottom s = 1 run on 79be4e6. It was a read-only script outside the repository, and no code changed.
+
+1. **F24 s = 1 energy closure: the 3×10⁻³ tolerance is rejected. VC-15.7 stays at 1×10⁻³, and the cause is a bug, not the film floor.**
+   - *Film floor.* The film floor binds only on the dry wash trays 22–25 (overflash 0). There it creates about 0.0007 mol/s per tray, which is worth well under 1 kW.
+   - *Vapour-free stages.* The error is in the vapour-free stages 27–30. Their x equals the stage-26 liquid and they have no heat source, so they should all sit at 345.00 °C. Instead they wandered 0–1.3 K above it, and stage 30 was +0.57 K at 32 h. The residual followed that wander: +1.7×10⁻³ at 1 h, −6.0×10⁻³ at 2 h, −2.9×10⁻³ at 32 h, −3.1×10⁻³ at 48 h. The size fits: 46.8 mol/s × 0.6 K × ≈ 1.2 kJ/(mol K) ≈ 35 kW, against 3×10⁻³ × 11.4 MW. `runToSteadyState` was not reached in 48 h.
+   - *Mechanism.* `crude_column.dart` re-decides the mode on every step from the sign of (4.6) at the subcooled T. A tiny dip below the incoming T makes (4.6) positive. The bubble-point Newton then lifts T to T_bub, about 0.6 K higher at the stripping pressure, so heat appears with no source. The spec said the stage leaves vapour-free mode when T_j reaches T_bub,j. PHYSICS.md §9.3 now states the mode test explicitly: the stored T_j < T_bub,j keeps the stage vapour-free.
+2. **The film floor must not create mass.** `_implicitHold` sets M = M_film when L = 0 would leave M below it, and this was counted on every step. PHYSICS.md §9.2 forbids that reset. The new **liquid-limited (dry) stage** of §9.3 caps V_HC,j at the liquid available, V_max,j. T_j then follows the energy balance with the surplus (the mirror case of the vapour-free stage), so mass and energy close exactly. It is a modelled state and is not counted. The same rule applies to the first stages of the side strippers.
+3. **`negativeClamps` counts episodes** (PHYSICS.md §12.7). Each clamp site adds 1 when it starts to bind (by more than 1×10⁻¹²) after not binding on the previous step. The sites are V_j, m_ij, n_V,i and the crude L = 0 with M < M_film. "== 0" assertions are unchanged. Per-bit state is not saved, so after a restore a site that is still bound counts once more. With items 1–2 the F24 s = 1 run should count no new episodes at steady state (VALIDATION.md VC-15.7 adds this check).
+4. **SCOPE.md 7.2 ok colours** now match `app/lib/theme/themes/`: Blueprint `#9DE8BA`, Control Room `#217E38`, Paper `#1E5020`. Brass `#8DB255` and Phosphor `#33FF66` are unchanged, and Blueprint's series 5 stays `#7CE0A3`. A note at the top of 7.2 records the U3 reason and the L* values.
+
+**Coder actions:**
+- (a) Vapour-free mode test per §9.3: the stored T_j < T_bub,j keeps the stage vapour-free, and T_j is never reset to the bubble point while it is subcooled.
+- (b) Liquid-limited stage per §9.3: cap V_HC,j at V_max,j in the (4.6) sweep, on the main column and on stripper stage 1. Remove the M = M_film reset from `_implicitHold`.
+- (c) `negativeClamps` as episodes at every site, with one bit per site.
+- (d) In `m10_spec_rulings_test`, restore `energyResidual` < 1×10⁻³ and add the VC-15.7 F24 s = 1 sub-checks: steady state reached; stages 27–30 within 0.02 K of the stage-26 liquid; closure at 3 times; no growth in `negativeClamps` over the final hour. Re-record the stage-30 rise (expected ≈ +13.8 K, inside +12.9 … +16.9). Re-run VC-15.4, which must stay unchanged because no floor binds there, and VC-15.5.
+
+**Validator actions:** run the new VC-15.7 F24 s = 1 / bottom-steam-0 checks. Confirm that the wash trays at overflash 0 are liquid-limited and that no holdup is raised.
