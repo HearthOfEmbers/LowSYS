@@ -26,7 +26,7 @@ LowSYS is a Flutter distillation-column simulator with a pure-Dart engine (`pack
   - Android: the debug APK installs and runs on AVD `lowsys_pixel` with no exceptions (`docs/screenshots/m10/android_pixel_smoke.png`).
 
 ## Known gaps
-- **iOS:** not built or tested, because the host is Windows and iOS needs a Mac. The user's Mac, Vishnu, can be used; the steps are in STATUS.md, "iOS build on Vishnu".
+- **iOS:** the simulator debug build and a smoke run on an iPhone 18 Pro simulator pass on the user's Mac, Vishnu (Xcode 27.0, Flutter 3.47.7; DEVIATIONS "iOS build (Vishnu)"). There is no device, release or TestFlight build, because signing needs the user's Apple developer team. The VALIDATION.md suite has not been run on iOS.
 - **Frame time:** the target is under 1 % of frames over 32 ms. On this machine that target is met only in the best runs. Averages are 4.5 % at 100x and 6.6 % at 1x (idle, 25 s runs, six each). 100x is not worse than 1x, so the floor is this machine's raster cost, not the simulation. Re-check on target hardware in profile/release mode.
 - **Android release:** no release APK or full Android validation run has been done, only a debug smoke run.
 - **SCOPE §7.1:** it still describes parchment McCabe-Thiele charts. Brass now uses lightened lines on the dark plot instead (DEVIATIONS "M10 coder pass 3").

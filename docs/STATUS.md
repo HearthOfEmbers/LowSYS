@@ -69,7 +69,7 @@ Next (run in parallel):
 ## Needs user
 - Disable the `lowsys-coordinator` scheduled task (an unattended run can't; until then each tick just replies "LowSYS complete").
 - Packing constants (M8) and vapour heat capacities / Daubert constants (M9) are quoted from memory; check against the reference books (see OPEN_ITEMS.md).
-- iOS build/simulator validation needs a Mac. The user has a Mac (**Vishnu**) they can start up for this; see "iOS build on Vishnu" below.
+- iOS: the simulator build and smoke run on Vishnu are done (2026-10-13, DEVIATIONS "iOS build (Vishnu)"). A device, release or TestFlight build needs the user's Apple developer team for signing.
 
 ## iOS build on Vishnu
 The user can start up their Mac, Vishnu, for the iOS build. Run Claude Code there with a clone of this repo. Steps:

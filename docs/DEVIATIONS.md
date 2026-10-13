@@ -1058,3 +1058,19 @@ Fixes for the defects of `validation_m10_contrast_test.dart` and `validation_m10
 4. **Painter text scaling.** `PainterText` (`app/lib/theme/painter_text.dart`) holds the platform text scale clamped to 1.0..1.3 (the painted layouts have fixed pixel boxes); `LowsysApp` updates it from `MediaQuery` and keys the tree on it so every painter repaints when it changes. All 17 painter `TextPainter`s pass `textScaler: PainterText.scaler`. No golden changed (the scale is 1.0 in the tests); no golden regenerated.
 5. **100x frame time** (Windows profile build, `LOWSYS_PERF=25`, McCabe tab, noise on, 25 s runs, `LOWSYS_PERF_SPEED` 1 / 100; the machine was idle, about 2 % CPU, at the start). The runs are noisy: the 1x floor itself ranged 1.2 to 12.9 % of frames over 32 ms. Over 32 ms, 100x: 0.73, 5.97, 4.08, 5.22, 7.16, 3.75 % (mean 4.5 %); 1x idle: 1.20, 1.64, 12.89, 8.85, 10.31, 4.37 % (mean 6.6 %). p50 about 21 ms and fps 59 to 60 at both speeds; PERFPARTS: advance p95 0.4 ms, snapshot 0.15 ms, McCabe build p50 3.9 ms (p95 7 ms) at 100x. 100x is not above the 1x floor, so no profiling pass was made. The < 1 % target is met only in the best runs of either speed (1x 1.2 %, 100x 0.73 %): the raster floor of this machine (raster p95 17 ms, Impeller OpenGLES) varies with whatever else is running.
 6. **Tests.** App 84 tests pass; `flutter analyze` reports only infos plus one unused import in the validator's contrast test.
+
+## iOS build (Vishnu)
+
+Run 2026-10-13 on the user's Mac, Vishnu (Apple silicon, macOS 27.0), on `main` at d91cd10, following STATUS.md "iOS build on Vishnu".
+
+1. **Toolchain.** Xcode 27.0 (27A266a) from the App Store, with the iOS 27.0 simulator runtime. CocoaPods 1.17.0 (Homebrew). Flutter 3.47.7 stable (Dart 3.13.5), the same version as `C:\dev\flutter` on the Windows box (Shiva), cloned to `~/development/flutter`. The user approved the installs and accepted the Xcode licence.
+2. **No `pod install`.** `app/ios` has no `Podfile`: the app uses no plugins with native iOS code, so Flutter creates none and the CocoaPods step of STATUS.md does not apply. If a native plugin is added, Flutter will create the Podfile on the next iOS build.
+3. **Build.** `flutter pub get` resolves without changing `pubspec.lock`. `flutter build ios --simulator` (debug, no signing) succeeds in 17 s: `build/ios/iphonesimulator/Runner.app`, bundle id `dev.lowsys.lowsysApp`.
+4. **Smoke run.** `flutter run` (debug) on the iPhone 18 Pro simulator (iOS 27.0, Impeller on Metal). The app launches and shows the tutorial card over the B-T column and the McCabe-Thiele chart (Blueprint). The sim clock runs at 10x and the status reaches Steady (xD 0.978, xB 0.015). Checked by hand:
+   - Skip closes the tutorial.
+   - Tapping tray 9 opens the tray inspector and marks the stage on the chart.
+   - Feed rate + on Levers turns the status to Transient.
+   - Loops, Trends and Faults open.
+   - The `flutter run` log has no Flutter exception, assertion or overflow error.
+   Screenshot: `docs/screenshots/m10/ios_sim_smoke.png` (883x1920, Faults panel open).
+5. **Not done.** No device, release or TestFlight build: these need the user's Apple developer team for signing. Not run on iOS: the VALIDATION.md suite, the app tests (`flutter test`) and the frame-time benchmark.
