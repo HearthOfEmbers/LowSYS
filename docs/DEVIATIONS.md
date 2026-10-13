@@ -887,3 +887,57 @@ Rulings on the open items of "M7 close-out validation" and "M8 validation" (15ba
   - (d): k′ = 5.95 × 10⁻⁵ % span/s per % OP ± 20 %, and Kc k′ Ti ≥ 2.8.
 - H6 F07: row text only, numbers unchanged.
 - M8: no new check. The §6 text now matches the engine (τ_f 10 s, every-step refresh, h_L volume fraction).
+
+## M9 validation
+
+Validator pass on 5eea7e0 (engine e16e897..d5ead9a, app 89958b3). New files:
+- `test/validation/m9_validation_test.dart`, 20 tests (30 s).
+- `reference/crude_reference.dart`: PHYSICS.md §9.1, the §9.2 feed flash and §9.6, written from the spec text. It has no engine or prototype imports: the correlations, LK ω and ΔH_vap, (9.1)–(9.2), Daubert, the product path with the 1 % trim, and a Rachford–Rice flash.
+
+The coder's `test/m9_*` and the full engine suite pass: 814 pass, 4 skipped. **Result: pass.** Every key number matches; most match to the printed digit. There are no blocking issues. Two VC-15.5 rows need spec wording, and three engine details are coder follow-ups.
+
+| E.3 # | Quantity | Engine (reference) | Result |
+|---|---|---|---|
+| 1 | §9.1 table, all nine PCs | engine = reference within the VC-15.1 tolerances; PC1/5/9 T_b, MW, ω, ΔH_vap as printed; P_sat(T_b) = 1 atm to 1e-6 | pass |
+| 2 | Bulk; crude rate | SG 0.8656, 31.96 °API, MW 216.87; 528.36 kmol/h, 114.58 t/h | pass |
+| — | P_sat spot values | the five values to 1e-4 | pass |
+| 3, 4 | Cp_V a / b; h_V on the 298 K basis | as printed; PC1 65.29 / 67.30, steam 49.80 / 55.18 kJ/mol; engine h_L, h_V = reference ± 2 J/mol, h_V rises from 300 to 700 K | pass |
+| 5 | Daubert | the nine D86 points to 0.01 K | pass |
+| 6, 7 | Ideal and lumped cuts | yields, D86 5 / 50 / 95 %, gaps +36.9 / +36.0 / +22.8 and +17.4 / +15.1 / +0.3 K; the engine's product path gives the reference's lumped D86 to 0.01 K | pass |
+| — | §9.2 feed flash | β 0.6815, 50.10 vol % | pass |
+| 8–13 | Default state | yields 19.75 / 11.70 / 16.70 / 5.30 / 46.55, overflash 4.60, FZ 343.25 °C, T₃₀ 331.09 °C, Q_C 8.945 MW, gaps +0.9 / −9.0 / −9.7 K, flood 59.3 % | pass |
+| 15 | H − h on stages 1–30 (validator's own enthalpies) | 41.0 … 286.8 kJ/mol | pass |
+| — | Closure | energy residual < 1 W against Q_C + Q_PA = 13.94 MW; mass < 1e-4 | pass |
+| — | Default physical sense | T rises down to stage 26 and falls through 27–30; each stripper bottom is below its draw tray; draw − product = vapour return; PA return below T₁₆; D86 50 % ordered; dew margin 50.1 K | pass |
+| — | dt | 1 h at dt 0.25 from the dt-0.5 state moves every T < 0.05 K | pass |
+| 18 | COT 360 °C overflash | 10.89 % | pass |
+| 19 | PA 0 / 6 MW | D–K +9.69 / −25.50 K; Q_C 13.689 / 8.091 MW; kero 95 % 246.80 °C at 6 MW | pass |
+| §9.8 | Bottom steam 0 / 3000 kg/h | residue 49.92 / 46.05 % | pass |
+| 28 | G16, PA 3 MW + SS2 1000 kg/h | D–K +12.85 K, kero 95 % 231.28 °C, residue TBP 5 % 358.82 °C | pass |
+| — | Dry-draw closure, F27 kero 16 % | mass 1.6e-5, energy 0.002 % of duties | pass |
+| — | F25 s = 0.5 | duty 5.00 MW; TI-341, TI-349 and TI-350 within 1 K at 10 min; at steady state TI-344 −4.27 K, TI-345 +3.96 K, TI-346 +1.22 K, the same as the prototype | pass; spec 1 |
+
+**Coder's checkpoint deviations, reviewed:**
+- **Item 3, semi-implicit holdup:** sound. The linearised outflow is applied consistently, dM = dt (in − L_new), passing top-down, so conservation holds. Dry-draw mass closure is 1e-5.
+- **Item 2, dt 0.5 steady run:** fine. The steady state does not depend on dt (checked at 0.25).
+- **Item 4, stripper cut law:** physically fine; see spec 3.
+- **Item 5, F24 law:** it matches the spec's symptom (FC at 100 % OP at every s); see spec 2.
+- **Item 10, G16 time:** the process finishes within the par; see spec 4.
+
+**For the coder (not blocking):**
+- **C1. Silent vapour clamp.** In (4.6) `v = max(0, num/den)` clamps without counting. At F24 bottom s = 1, V on stages 27–30 is 0. T then climbs 345.00 → 345.91 °C down the stripping section with no heat source, and energy closure is −48 kW (0.42 % of Q_C + Q_PA; mass is still 1.3e-5). Count these clamps in `negativeClamps` (or a new counter). The heating itself waits for spec 5.
+- **C2. Film floor.** In `_implicitHold`, when the 5 % film floor binds, L_new = L + k dM is not recomputed from the clamped dM. Set L_new = in − dM/dt, or count the event. It does not bind materially at the F27 or F24 states (closure 1e-5).
+- **C3. Energy residual denominator.** `energyResidual` divides by fF·h_F. On the T_b basis that is −1.11 MW at the default: small, negative, and it can pass through zero at other COTs. Use Q_C + Q_PA, or the sum of absolute enthalpy flows.
+
+**For the spec lead:**
+1. **VC-15.5 F25 s = 0.5.** "Every TI within 1 K of its start after 10 min" does not hold in the prototype either. At steady state its stages 11 / 15 / 18 move −4.27 / +3.96 / +1.22 K, and the engine matches. Suggested text: "TI-341, TI-349, TI-350 within 1 K; TI-344 −4.3 K, TI-345 +4.0 K at the new steady state".
+2. **F24 cap follows the live SP.** At s = 0.5 the delivered steam is (1 − s) × the current SP. Raising the bottom-steam SP from 2000 to 4000 kg/h restores the full 2000 kg/h (measured), which defeats a "supply restriction" and lets H8 be masked. Suggest a cap of (1 − s) × the SP (or flow) at onset, frozen while the fault is active.
+3. **§9.4 cut-law wording.** "Below 20 % level … clamp((level − 20 %)/30 %, 0, 1)" contradicts itself: the formula cuts from 50 % down. The reference numbers (AGO 3.20 % at F24 s = 1) come from the prototype law clamp((M/M_SP − 0.2)/0.3, 0, 1): full product above 25 % level and none at 10 % (SP 50 %). Rewrite §9.4 to that law.
+4. **G16 `o1` and the 7200 s par.** With PA 3 MW alone, the specs are met from 19 min. At 2 h, kero 95 % (231.11 °C), D–K (+6.50 K) and Q_C (10.809 MW) already equal the final steady state to 0.01 K. The further 1.75 h is the global steady monitor (1e-7 per minute) waiting on slow inventories (drum and sump LC, Ti 1800 s). Drop `steady` from `o1` (keep the 600 s spec hold) rather than raise the par.
+5. **No-steam stripping section** (with C1). With no bottom steam, the stripping stages have no vapour. The bubble-point T plus the clamp heats the residue about 0.9 K above the flash zone, so the F24 s = 1 "stage 30 +14.9 K" includes about 0.9 K of artefact. Either let a vapour-free stage subcool (T from its energy balance), or note this in §16 together with the ~0.4 % energy closure in that state.
+6. **Daubert constants (from memory, low weight).** Converted with the factor 1.8^(1−B), five of the six A constants of §9.6 agree with the °C form of the API constants as I recall them. I could not cross-check the 90→100 % constant (0.1180).
+
+**M5 "dt 30" (checkpoint item 12):** does not reproduce on 5eea7e0.
+- Alone, `m5_columns_validation_test.dart` passes 23 of 23. In the full suite it also passes.
+- dt 30 returns reached = false, D 16.248, P +142 Pa, `negativeClamps` 2570; the test asserts finiteness only for that branch.
+- No change was made. Coder: re-run on main and close item 12, or post the failing output.
