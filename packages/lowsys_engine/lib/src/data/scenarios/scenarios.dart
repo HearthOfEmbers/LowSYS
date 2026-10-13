@@ -471,8 +471,8 @@ const String g9Json = r'''
     "lock": ["feedStage", "nTrays", "murphree", "hydraulics"],
     "show": ["refluxFlow", "reboilerDuty", "feedFlow", "pTop"]
   },
-  "timeLimit": 172800,
-  "parTime": 57600,
+  "timeLimit": 432000,
+  "parTime": 216000,
   "briefing": "Ethanol and water form a minimum-boiling azeotrope near x = 0.8956 at 1 atm. The column starts in Tier 3, with NRTL activity coefficients, producing about 0.887 ethanol in the distillate.\n\nPush the reflux ratio as high as the condenser allows and see how far the distillate purity goes. Then switch to Tier 1 (constant relative volatility) and see what happens. Finally, change the pressure.",
   "objectives": [
     {"id": "o1", "text": "In Tier 3, run at a reflux ratio of 15 or more, steady.",
@@ -502,9 +502,9 @@ const String g9Json = r'''
                 "correct": 0}}
   ],
   "hints": [
-    {"after": 0, "text": "The condenser is near its limit, so keep the duty and raise R by cutting D: set reflux to 105 kmol/h (D falls to about 6, R to about 17.6)."},
+    {"after": 0, "text": "The condenser is near its limit, so keep the duty and raise R by cutting D: set reflux to 105 kmol/h (D falls to about 6, R to about 17.6). Then fast-forward: at this small D the column takes about a day of simulated time to settle."},
     {"when": {"metric": "objective[o1].met", "op": "==", "value": true}, "text": "Switch to Tier 1 with the badge and let it run. Watch x_D climb past 0.8956; there is no need to wait for steady state."},
-    {"when": {"metric": "objective[o3].met", "op": "==", "value": true}, "text": "Switch back to Tier 3. Then, together: feed 60 kmol/h, reflux 60 kmol/h, duty 748 kW, P_top 0.5 bar(a). At 0.5 bar(a) the condenser carries only about 840 kW, so the feed has to come down."}
+    {"when": {"metric": "objective[o3].met", "op": "==", "value": true}, "text": "Switch back to Tier 3. Then, together: feed 60 kmol/h, reflux 60 kmol/h, duty 748 kW, P_top 0.5 bar(a). At 0.5 bar(a) the condenser carries only about 840 kW, so the feed has to come down. Fast-forward again: it takes about another day to settle."}
   ],
   "events": [],
   "scoring": {"objectives": 0.6, "time": 0.2, "safety": 0.1, "quality": 0.1,
@@ -554,5 +554,53 @@ const String g10Json = r'''
   "events": [],
   "scoring": {"objectives": 0.7, "time": 0.2, "safety": 0.1, "quality": 0.0},
   "debrief": "A maximum-boiling azeotrope is the heaviest thing in the column, so it collects in the bottoms: x_B can approach 0.333 from above but never cross it, and drawing more distillate only dilutes the top."
+}
+''';
+
+/// G14, thermosyphon tuning (M6, ENGINE_API.md 11.8): a low sump level makes the loop surge once the inlet valve is
+/// opened. Reference numbers: VALIDATION.md VC-14.3.
+const String g14Json = r'''
+{
+  "id": "G14_thermosyphon",
+  "kind": "guided",
+  "title": "Thermosyphon tuning",
+  "milestone": 6,
+  "topic": "reboiler",
+  "preset": "bt",
+  "overrides": {"tier": "t2", "hydraulics": "full"},
+  "start": "steady",
+  "noise": false,
+  "levers": {
+    "set": {"reboilerType": 1, "sumpLevelSp": 15, "tsInletValve": 8},
+    "lock": ["reboilerType", "nTrays", "feedStage", "murphree", "hydraulics"],
+    "show": ["sumpLevelSp", "tsInletValve", "reboilerDuty"]
+  },
+  "timeLimit": 14400,
+  "parTime": 3600,
+  "briefing": "This column has a thermosyphon reboiler: nothing pumps the liquid round the loop, the density difference does. The sump is being held at 15 % with the inlet valve pinched to 8 %, which keeps the loop calm but costs duty.\n\nAt the start the outside operator opens the inlet valve fully. Open the Equipment tab and watch what the loop does. Then restore a stable boilup without losing more than 10 % of the duty.",
+  "objectives": [
+    {"id": "o1", "text": "Stop the surging: oscillation below 2 %, the instability index below 1, and at least 1170 kW delivered.",
+     "when": {"all": [{"metric": "reboiler.oscAmplitude", "op": "<", "value": 0.02},
+                      {"metric": "reboiler.instabilityIndex", "op": "<", "value": 1.0},
+                      {"metric": "kpi.qr", "op": ">=", "value": 1170000}]},
+     "holdFor": 300, "latch": true},
+    {"id": "o2", "text": "Throttling the inlet valve calms a thermosyphon because...", "after": "o1",
+     "answer": {"type": "choice",
+                "options": ["extra single-phase friction at the inlet damps the density waves", "it raises the circulation", "it lowers the exit quality", "it raises the sump level"],
+                "correct": 0}}
+  ],
+  "hints": [
+    {"after": 0, "text": "Open the Equipment tab. I_s above 1 means the loop will surge. Your handles: the sump level (driving head), the inlet valve (stabilising friction, but less circulation) and the duty."},
+    {"when": {"metric": "reboiler.oscAmplitude", "op": ">=", "value": 0.05},
+     "text": "Raise the LC-102 set point to 40 %. More head means more circulation, an exit quality below 0.3 and I_s below 1."},
+    {"when": {"metric": "objective[o1].met", "op": "==", "value": true},
+     "text": "At 15 % level the inlet valve could only trade surge for duty: 16 % open still surged (I_s about 1.08), and 8 % open lost about 16 % of the duty."}
+  ],
+  "events": [
+    {"id": "open_inlet", "at": 0, "action": "setLever", "lever": "tsInletValve", "value": 100,
+     "text": "The outside operator has opened the reboiler inlet valve fully."}
+  ],
+  "scoring": {"objectives": 0.7, "time": 0.2, "safety": 0.1, "quality": 0.0},
+  "debrief": "A thermosyphon surges when the exit quality is high and the driving head is low. At 15 % sump level the head was small, so the circulation was low and the exit quality high (I_s above 1). Throttling the inlet adds single-phase friction that damps the density waves, but it also cuts the circulation, and at this level it cost more duty than it saved. Raising the level fixed the cause: more head, more circulation, lower exit quality."
 }
 ''';

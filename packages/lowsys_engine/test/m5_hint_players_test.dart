@@ -77,7 +77,7 @@ void main() {
       print('G9 sim times to steady (s): $times, total ${s.time}, CW ${(cw * 100).toStringAsFixed(1)} %');
       // VC-28.8 / OPEN_ITEMS "G9/G10 time limits": the path takes 203 640 s of sim time, over the 172 800-s limit
       // (and over half of it); o1 and o5 wait on the steady monitor (docs/DEVIATIONS.md M5 handoff). Bound it loosely.
-      expect(s.time, lessThan(2 * 172800));
+      expect(s.time, lessThan(216000));
       final card = s.finishScenario();
       expect(card.completed, isTrue);
     }, timeout: const Timeout(Duration(minutes: 20)));

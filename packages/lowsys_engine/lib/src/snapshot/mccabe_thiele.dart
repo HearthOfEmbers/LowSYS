@@ -208,7 +208,7 @@ abstract final class McCabeThieleMath {
 
   /// q-line intersection with the equilibrium curve. q-line: through (z, z), slope q/(q - 1), vertical for q = 1.
   static ({double x, double y}) qLinePinch(double alpha, double z, double q) {
-    if ((q - 1).abs() < 1e-12) return (x: z, y: yEq(z, alpha));
+    if ((q - 1).abs() < 1e-6) return (x: z, y: yEq(z, alpha));
     final s = q / (q - 1);
     final c0 = z * (1 - s);
     final c1 = s;
@@ -268,7 +268,7 @@ abstract final class McCabeThieleMath {
     final a = r / (r + 1);
     final b = xD / (r + 1);
     double xi, yi;
-    if ((q - 1).abs() < 1e-12) {
+    if ((q - 1).abs() < 1e-6) {
       xi = z;
     } else {
       final s = q / (q - 1);
@@ -369,18 +369,43 @@ class McCabeThieleBuilder {
   /// q-line pinch for the non-ideal curve (PHYSICS.md 14.1): walk from (z, z) away from the diagonal in steps of
   /// 1e-3 in x, take the first sign change of y_line - y* and refine it by bisection to 1e-8.
   Point2 _qPinchT2(Tier2Raoult th, double p, double z, double q) {
-    if ((q - 1).abs() < 1e-9) return Point2(z, _yBub(th, z, p));
+    if ((q - 1).abs() < 1e-6) return Point2(z, _yBub(th, z, p));
+    final ys = _yBub(th, z, p);
+    if ((ys - z).abs() < 1e-9) return Point2(z, z);
     final slope = q / (q - 1);
-    double f(double x) => z + slope * (x - z) - _yBub(th, x, p);
-    // direction: towards larger y for q >= 1 and q <= 0, towards smaller x for 0 < q < 1
-    final dir = (q > 0 && q < 1) ? -1.0 : (slope > 0 ? 1.0 : -1.0);
-    var xa = z;
+    // walk towards the side of the diagonal where the curve lies at x = z: the line is on that side where
+    // sign(y_line - x) = sign((z - x)(1 - slope)) equals s = sign(y*(z) - z)
+    final s = ys > z ? 1.0 : -1.0;
+    final dirX = -s * (1 - slope).sign;
+    if (slope.abs() <= 1) {
+      double f(double x) => z + slope * (x - z) - _yBub(th, x, p);
+      final r = _walkRoot(f, z, dirX, 1e-3);
+      if (r != null) return Point2(r, _yBub(th, r, p));
+      final xe = dirX > 0 ? 1.0 : 0.0;
+      return Point2(xe, (z + slope * (xe - z)).clamp(0.0, 1.0).toDouble());
+    }
+    // steep line: step in y (the frame ends at y = 0 or 1)
+    double xOf(double y) => z + (y - z) / slope;
+    double g(double y) => y - _yBub(th, xOf(y).clamp(0.0, 1.0).toDouble(), p);
+    final dirY = slope.sign * dirX;
+    final r = _walkRoot(g, z, dirY, 1e-3);
+    if (r != null) {
+      final x = xOf(r).clamp(0.0, 1.0).toDouble();
+      return Point2(x, _yBub(th, x, p));
+    }
+    final ye = dirY > 0 ? 1.0 : 0.0;
+    return Point2(xOf(ye).clamp(0.0, 1.0).toDouble(), ye);
+  }
+
+  /// First sign change of [f] walking from [t0] in direction [dir] in steps of [h] inside [0, 1]; bisection to 1e-8.
+  static double? _walkRoot(double Function(double) f, double t0, double dir, double h) {
+    var xa = t0;
     var fa = f(xa);
     for (var k = 1; k <= 1000; k++) {
-      final xb = z + dir * 1e-3 * k;
+      final xb = t0 + dir * h * k;
       if (xb < 0 || xb > 1) break;
       final fb = f(xb);
-      if (fa == 0) return Point2(xa, _yBub(th, xa, p));
+      if (fa == 0) return xa;
       if (fa * fb < 0) {
         var lo = math.min(xa, xb), hi = math.max(xa, xb);
         var flo = f(lo);
@@ -394,15 +419,12 @@ class McCabeThieleBuilder {
             flo = fm;
           }
         }
-        final x = 0.5 * (lo + hi);
-        return Point2(x, _yBub(th, x, p));
+        return 0.5 * (lo + hi);
       }
       xa = xb;
       fa = fb;
     }
-    // no crossing: draw the line to the frame edge
-    final xe = dir > 0 ? 1.0 : 0.0;
-    return Point2(xe, (z + slope * (xe - z)).clamp(0.0, 1.0).toDouble());
+    return null;
   }
 
   /// R_min construction (PHYSICS.md 14.1). Rectifying side: if the equilibrium curve meets the diagonal in (x_q, x_D)
@@ -500,7 +522,7 @@ class McCabeThieleBuilder {
   /// construction asks "if the specification were ..."; VALIDATION.md VC-28.4).
   McCabeThieleData build(SimSnapshot s, ThermoModel thermo,
       {bool showRmin = false, double? xDTarget, double? xBTarget}) {
-    if (s.view == SimView.plant) return McCabeThieleData.unavailable();
+    if (s.view.isPlant) return McCabeThieleData.unavailable();
     final isT2 = thermo is Tier2Raoult;
     if (!isT2 && thermo is! ConstantAlphaThermo) {
       throw UnsupportedError('McCabe-Thiele data needs a Tier 1 or Tier 2 model');

@@ -190,3 +190,213 @@ const String h10Json = r'''
   "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; loop protected: {result.protectTime:time}; diagnosed: {result.diagnosisTime:time}."
 }
 ''';
+
+/// h1Json: ENGINE_API.md 11.9 (M6), copied verbatim.
+const String h1Json = r'''
+{
+  "id": "H1_creeping_dp", "kind": "drill", "title": "Creeping ΔP", "milestone": 6, "topic": "hydraulics",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "plantCalc", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 10800,
+  "briefing": "The column's temperatures and pressure drop have been drifting all week. Rates are steady. Find out whether something inside the column is changing, or something coming into it.",
+  "onsetWindow": [600, 2400],
+  "candidates": [
+    {"id": "foul_strip", "weight": 2,
+     "fault": {"type": "trayFouling", "location": {"from": 12, "to": 18}, "params": {"mode": "holes"}, "severityRange": [0.4, 0.8], "ramp": 7200},
+     "answer": {"category": "fouling", "location": "stripping"},
+     "debrief": "**Trays 12–18 were fouling** (holes plugging) from {fault.onset:time}. Their pressure drop rose at constant flows while trays 1–11 did not change; the separation changed little at first."},
+    {"id": "foul_rect", "weight": 1,
+     "fault": {"type": "trayFouling", "location": {"from": 2, "to": 8}, "params": {"mode": "holes"}, "severityRange": [0.4, 0.8], "ramp": 7200},
+     "answer": {"category": "fouling", "location": "rectifying"},
+     "debrief": "**Trays 2–8 were fouling** from {fault.onset:time}. The ΔP rise was in the rectifying section only, at constant flows."},
+    {"id": "feed_light", "weight": 2,
+     "fault": {"type": "feedComposition", "params": {"dz": {"benzene": 0.10}, "sign": 1}, "severityRange": [1.0, 1.0], "ramp": 1800},
+     "answer": {"category": "feedUpset", "location": "feed"},
+     "debrief": "**The feed got lighter** (+0.10 benzene) from {fault.onset:time}. Every temperature moved down together (a coherent wave on C6), AT-100 showed it, and no section's ΔP changed. More moles boiled at the same duty, so LC-101 raised the distillate."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1500, "cost": 0.03, "text": "Look at the pressure drop tray by tray (Profiles → ΔP, a calculated value). A section whose ΔP rises while the flows stay put is changing inside."},
+    {"after": 3000, "cost": 0.03, "text": "A feed change moves all the temperatures together (C6 shows a coherent wave) and shows on the feed analyser AT-100, but it does not change any section's ΔP."},
+    {"after": 4500, "cost": 0.03, "text": "Fouled holes raise the dry-tray ΔP first, and the flood % of those trays rises with it."}
+  ],
+  "diagnosis": {"categories": ["fouling", "feedUpset", "foaming", "trayDamage", "instrument", "none"],
+                "locations": ["rectifying", "stripping", "column", "feed", "instrument:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; diagnosed: {result.diagnosisTime:time}."
+}
+''';
+
+/// h2Json: ENGINE_API.md 11.9 (M6), copied verbatim.
+const String h2Json = r'''
+{
+  "id": "H2_pressure", "kind": "drill", "title": "Pressure won't hold", "milestone": 6, "topic": "condenser",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "model", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType", "cwInletT", "cwMaxFlow"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 10800,
+  "briefing": "PC-101 is struggling to hold the top pressure. Is the cooling water letting you down, is the condenser dirty, or is something in the overhead that will not condense?",
+  "onsetWindow": [600, 2400],
+  "candidates": [
+    {"id": "cw_temp", "weight": 1,
+     "fault": {"type": "coolingLoss", "params": {"mode": "temperature"}, "severityRange": [0.6, 1.0], "ramp": 1800},
+     "answer": {"category": "cooling", "location": "condenser"},
+     "debrief": "**The cooling water got warmer** by {fault.magnitude} K from {fault.onset:time} (TI-201). PC-101 opened the CW valve to 100 %, then the pressure rose; the reflux was *less* subcooled."},
+    {"id": "cw_flow", "weight": 1,
+     "fault": {"type": "coolingLoss", "params": {"mode": "flow"}, "severityRange": [0.6, 0.7], "ramp": 0},
+     "answer": {"category": "cooling", "location": "condenser"},
+     "debrief": "**A cooling-water pump tripped** at {fault.onset:time}: FT-201 fell at once and the CW valve went to 100 %; the pressure rose and the reflux was less subcooled."},
+    {"id": "cond_foul", "weight": 1,
+     "fault": {"type": "condenserFouling", "severityRange": [0.7, 1.0], "ramp": 7200},
+     "answer": {"category": "fouling", "location": "condenser"},
+     "debrief": "**The condenser was fouling** from {fault.onset:time}. CW temperature and flow were normal, the CW valve crept open over an hour, and the subcooling fell."},
+    {"id": "inerts", "weight": 1,
+     "fault": {"type": "nonCondensables", "severityRange": [0.7, 1.0], "ramp": 0},
+     "answer": {"category": "inerts", "location": "condenser"},
+     "debrief": "**Non-condensables were building up** from {fault.onset:time}. They blanket tubes, so the condensate came out *more* subcooled while the pressure rose — the classic tell. Opening the vent clears them."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1500, "cost": 0.03, "text": "Check the cooling water first: inlet temperature TI-201 and flow FT-201. A supply problem shows there."},
+    {"after": 3000, "cost": 0.03, "text": "Watch the reflux subcooling on the condenser panel. Blanketing by inerts *raises* it; a weaker condenser lowers it."},
+    {"after": 4500, "cost": 0.03, "text": "Fouling is slow (an hour or more); a pump trip is a step; inerts accumulate steadily and a vent clears them."}
+  ],
+  "diagnosis": {"categories": ["cooling", "fouling", "inerts", "instrument", "valve", "none"],
+                "locations": ["condenser", "instrument:*", "valve:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; diagnosed: {result.diagnosisTime:time}."
+}
+''';
+
+/// h3Json: ENGINE_API.md 11.9 (M6), copied verbatim.
+const String h3Json = r'''
+{
+  "id": "H3_lost_separation", "kind": "drill", "title": "Lost separation", "milestone": 6, "topic": "hydraulics",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "plantCalc", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 7200,
+  "briefing": "The distillate is going off-spec and nobody touched the set points. Something inside the column — or one of its meters — has changed. Find it.",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "broken_tray", "weight": 1,
+     "fault": {"type": "trayDamage", "location": {"from": 5, "to": 5}, "severityRange": [0.8, 1.0], "ramp": 0},
+     "answer": {"category": "trayDamage", "location": "rectifying"},
+     "debrief": "**Tray 5 was broken** at {fault.onset:time}: its calculated ΔP dropped to a small fraction of its neighbours', the column ΔP fell, and the distillate purity fell at the same L/D."},
+    {"id": "foam", "weight": 1,
+     "fault": {"type": "foaming", "location": {"from": 1, "to": 20}, "severityRange": [0.8, 1.0], "ramp": 600},
+     "answer": {"category": "foaming", "location": "column"},
+     "debrief": "**The column was foaming** from {fault.onset:time}. Flood % went to 100 % at normal rates while the measured column ΔP hardly moved. Antifoam fixes it."},
+    {"id": "ft102_bias", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "FT-102"}, "params": {"kind": "bias", "sign": "random"}, "severityRange": [0.4, 0.6], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:FT-102"},
+     "debrief": "**FT-102 (reflux) read {fault.magnitude} wrong** from {fault.onset:time}. FC-102 held the reading, so the real reflux changed. C3a (vapour from the condenser duty vs reflux + distillate) and C4 for FV-102 went red."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1200, "cost": 0.03, "text": "Look at the calculated ΔP of each tray. One tray with almost none is a hole in the column."},
+    {"after": 2400, "cost": 0.03, "text": "Compare the flood % (calc) with the measured column ΔP (PDT-101). Foam floods the trays without raising the ΔP much."},
+    {"after": 3300, "cost": 0.03, "text": "Open the Balance tab: if C3a and a valve check disagree, suspect a meter, not the column."}
+  ],
+  "diagnosis": {"categories": ["trayDamage", "foaming", "instrument", "valve", "fouling", "feedUpset", "none"],
+                "locations": ["rectifying", "stripping", "column", "feed", "instrument:*", "valve:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+''';
+
+/// h4Json: ENGINE_API.md 11.9 (M6), copied verbatim.
+const String h4Json = r'''
+{
+  "id": "H4_reboiler", "kind": "drill", "title": "Reboiler can't keep up", "milestone": 6, "topic": "reboiler",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "model", "badPvShed": true,
+  "levers": {"lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType", "steamHeaderP"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 10800,
+  "briefing": "The reboiler is not delivering the duty FC-103 asks for. Is it the exchanger, its steam trap, or the steam supply?",
+  "onsetWindow": [600, 2400],
+  "candidates": [
+    {"id": "reb_foul", "weight": 1,
+     "fault": {"type": "reboilerFouling", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 5400},
+     "answer": {"category": "fouling", "location": "reboiler"},
+     "debrief": "**The reboiler was fouling** from {fault.onset:time}. The steam valve crept open for about three quarters of an hour and then saturated, and only then did the duty fall short. The header pressure (PT-201) stayed normal."},
+    {"id": "trap", "weight": 1,
+     "fault": {"type": "condensateBackup", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 60},
+     "answer": {"category": "condensate", "location": "reboiler"},
+     "debrief": "**The steam trap failed** at {fault.onset:time}, and condensate backed up over the tubes. The duty fell short within minutes with the valve at 100 % and a normal header pressure. The fix is to open the trap bypass."},
+    {"id": "header", "weight": 1,
+     "fault": {"type": "steamHeaderLoss", "location": {"equipment": "reboiler"}, "severityRange": [0.7, 1.0], "ramp": 120},
+     "answer": {"category": "steam", "location": "steamSupply"},
+     "debrief": "**The steam header pressure fell** at {fault.onset:time} (PT-201), so the steam was colder. FC-103 saturated at 100 % with the duty below its set point; the exchanger itself was fine."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1500, "cost": 0.03, "text": "Check the steam supply first: the header pressure PT-201."},
+    {"after": 3000, "cost": 0.03, "text": "How fast did it happen? Fouling takes most of an hour; a failed trap takes minutes."},
+    {"after": 4500, "cost": 0.03, "text": "A degraded exchanger raises the duty-limited alarm; a header loss does not, because the valve's own capacity fell with it."}
+  ],
+  "diagnosis": {"categories": ["fouling", "condensate", "steam", "valve", "instrument", "none"],
+                "locations": ["reboiler", "steamSupply", "instrument:*", "valve:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; product off-spec: {result.offSpecTime:time}; diagnosed: {result.diagnosisTime:time}."
+}
+''';
+
+/// h5Json: ENGINE_API.md 11.9 (M6), copied verbatim.
+const String h5Json = r'''
+{
+  "id": "H5_bottoms_swings", "kind": "drill", "title": "Bottoms level swings", "milestone": 6, "topic": "reboiler",
+  "preset": "bt", "overrides": {"tier": "t2", "hydraulics": "full"}, "start": "steady", "noise": true,
+  "view": "plantCalc", "badPvShed": true,
+  "levers": {"set": {"reboilerType": 1, "tsInletValve": 100},
+             "lock": ["nTrays", "feedStage", "murphree", "trayType.0", "hydraulics", "noise", "view", "badPvShed", "tc101Enable", "reboilerType"]},
+  "loops": {"FC-101": {"mode": "auto"}, "FC-102": {"mode": "auto"}, "FC-103": {"mode": "auto"},
+            "LC-101": {"mode": "auto"}, "LC-102": {"mode": "auto"}, "PC-101": {"mode": "auto"}},
+  "timeLimit": 14400,
+  "briefing": "This column has a thermosyphon reboiler. The night shift reported that the boilup and the bottoms were 'swinging' at times. Watch the loop on the Equipment tab and find the cause before it gets worse.",
+  "onsetWindow": [600, 1800],
+  "candidates": [
+    {"id": "lt102_drift", "weight": 1,
+     "fault": {"type": "instrument", "location": {"tag": "LT-102"}, "params": {"kind": "drift", "sign": 1}, "severityRange": [1.0, 1.0], "ramp": 0},
+     "answer": {"category": "instrument", "location": "instrument:LT-102"},
+     "debrief": "**LT-102 (sump level) drifted high** by 10 % per hour from {fault.onset:time}. LC-102 kept the *reading* at its set point, so the true level fell. Less head meant less circulation and a higher exit quality, and the loop began to surge once the true level was below about 30 %. The sight glass LG-102 and C5 (sump) gave it away."},
+    {"id": "ts_inlet", "weight": 1,
+     "fault": {"type": "tsInletRestriction", "location": {"equipment": "reboiler"}, "severityRange": [0.3, 0.8], "ramp": 1800},
+     "answer": {"category": "restriction", "location": "tsInletLine"},
+     "debrief": "**The reboiler inlet line was restricting** from {fault.onset:time}. The inlet-line ΔP rose, the circulation fell and the exit quality rose, but the loop did *not* surge: friction at the inlet stabilises a thermosyphon."},
+    {"id": "ts_outlet", "weight": 1,
+     "fault": {"type": "tsOutletRestriction", "location": {"equipment": "reboiler"}, "severityRange": [0.2, 0.6], "ramp": 1800},
+     "answer": {"category": "restriction", "location": "tsOutletLine"},
+     "debrief": "**The reboiler outlet line was restricting** from {fault.onset:time}. The outlet-line ΔP rose, I_s went above 1 and the boilup surged with a period of about 10–13 s. Throttling the inlet valve damps it until the line is cleared."}
+  ],
+  "offSpec": {"when": {"any": [{"metric": "kpi.xD", "from": "start", "op": "<", "value": -0.01},
+                               {"metric": "kpi.xB", "from": "start", "op": ">", "value": 0.01}]}, "holdFor": 120},
+  "hints": [
+    {"after": 1500, "cost": 0.03, "text": "Open the Equipment tab: the circulation, the exit quality and I_s tell you how healthy the loop is, and the inlet- and outlet-line ΔPs tell you where it is being squeezed."},
+    {"after": 3000, "cost": 0.03, "text": "Is the sump level real? Compare LT-102 with C5 (sump) on the Balance tab — try the 1-hour window — and do a field check of LG-102."},
+    {"after": 4500, "cost": 0.03, "text": "Inlet restriction lowers circulation without surging; outlet restriction makes the loop surge."}
+  ],
+  "diagnosis": {"categories": ["restriction", "instrument", "fouling", "condensate", "steam", "valve", "none"],
+                "locations": ["tsInletLine", "tsOutletLine", "reboiler", "steamSupply", "instrument:*", "valve:*"], "modes": [], "attempts": 2},
+  "scoring": {"category": 0.5, "location": 0.2, "time": 0.2, "safety": 0.1, "timeFull": 600, "timeZero": 3600,
+              "wrongPenalty": 0.1, "bonus": {"protectBeforeOffSpec": 0, "mode": 0}},
+  "debrief": "Fault onset {fault.onset:time}; first cross-check to fail: {result.firstFlaggedCheck}; diagnosed: {result.diagnosisTime:time}."
+}
+''';

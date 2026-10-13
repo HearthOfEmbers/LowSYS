@@ -263,7 +263,25 @@ class Instrument {
   /// loop, PHYSICS.md 10.5).
   double? typicalPct;
 
-  double get typicalSigma => (typicalPct ?? spec.sigmaDisp) / 100 * span;
+  /// Process part of the typical sigma (SI), added in quadrature (PT-101, TI-100, FT-201, TI-202 in Tiers 2/3).
+  double procSigma = 0;
+
+  double get typicalSigma {
+    final base = (typicalPct ?? spec.sigmaDisp) / 100 * span;
+    return procSigma > 0 ? math.sqrt(base * base + procSigma * procSigma) : base;
+  }
+
+  /// Mean of the readings over the last 300 s (the same window as [sigma5min]); NaN with no data.
+  double mean5min() {
+    var n = _curN;
+    var sum = _curSum;
+    for (var i = 0; i < 60; i++) {
+      if (i == _binIdx) continue;
+      n += _binN[i];
+      sum += _binSum[i];
+    }
+    return n > 0 ? sum / n : double.nan;
+  }
 
   /// Transmitter update (flow transmitters: h = 0.1 s; others: dt).
   void update(double h, double v, double t) {

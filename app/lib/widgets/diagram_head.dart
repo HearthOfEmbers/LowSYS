@@ -123,7 +123,7 @@ class _DiagramShellState extends State<DiagramShell> {
               child: ValueListenableBuilder<SimSnapshot?>(
                 valueListenable: sim.snapshot,
                 builder: (context, s, _) {
-                  if (s?.view == SimView.plant) {
+                  if (s?.view.isPlant == true) {
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(16),

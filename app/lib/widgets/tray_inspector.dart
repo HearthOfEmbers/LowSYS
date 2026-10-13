@@ -60,7 +60,7 @@ class TrayInspector extends StatelessWidget {
     UnitSystem u,
   ) {
     final p = t.palette;
-    if (s.view == SimView.plant) {
+    if (s.view.isPlant) {
       return Text(
         'Not observable on a real plant: tray compositions and flows are not measured. Use the Loops, Balance and Trends tabs.',
         style: t.type.label.style(13, p.inkMuted),

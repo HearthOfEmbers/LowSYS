@@ -19,6 +19,7 @@ export 'src/math/banded_solver.dart';
 export 'src/model/tray_hydraulics.dart'
     show TrayCorrelations, TrayGeometryDerived;
 export 'src/model/column_state.dart' show StepDebug;
+export 'src/model/thermosyphon.dart';
 export 'src/runner/local_sim_runner.dart';
 export 'src/runner/sim_runner.dart';
 export 'src/sim/lever_spec.dart';

@@ -153,10 +153,11 @@ typedef TxyView = ({
 class TxyBuilder {
   final Map<String, TxyData> _cache = {};
 
-  TxyData data(Tier2Raoult m, double p, {required String tierKey, bool ideal = false}) {
-    final key = '${m.comps.map((c) => c.id).join(',')}:$tierKey:${(p / 100).round()}';
+  TxyData data(Tier2Raoult m, double p, {required String tierKey, bool ideal = false, String slot = 'top'}) {
+    // hysteresis (ENGINE_API.md 7.3): rebuild when |P - P_cached| > 100 Pa or the system or tier changes
+    final key = '${m.comps.map((c) => c.id).join(',')}:$tierKey:$slot';
     final hit = _cache[key];
-    if (hit != null) return hit;
+    if (hit != null && (hit.p - p).abs() <= 100) return hit;
     if (_cache.length > 24) _cache.clear();
     return _cache[key] = TxyData.build(m, p, ideal: ideal);
   }
@@ -172,9 +173,9 @@ class TxyBuilder {
     final nc = s.stages.nc;
     final pTop = s.kpis.pTop.isFinite ? s.kpis.pTop : 101325.0;
     final pBot = s.stages.p[N + 1].isFinite ? s.stages.p[N + 1] : pTop;
-    final top = data(m, pTop, tierKey: key, ideal: ideal);
+    final top = data(m, pTop, tierKey: key, ideal: ideal, slot: 'top');
     final bottom = (pBot - pTop).abs() > 1000
-        ? data(m, pBot, tierKey: key, ideal: ideal)
+        ? data(m, pBot, tierKey: key, ideal: ideal, slot: 'bot')
         : null;
     final stages = <Point2>[
       for (var j = 1; j <= N; j++) Point2(s.stages.x[j * nc], s.stages.t[j]),

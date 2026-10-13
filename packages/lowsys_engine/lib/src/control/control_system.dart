@@ -3,7 +3,9 @@ import 'dart:typed_data';
 
 import '../core/ids.dart';
 import '../core/quantity.dart';
+import '../config/column_config.dart' show ThermosyphonGeometry;
 import '../faults/fault_manager.dart';
+import '../model/thermosyphon.dart';
 import '../faults/fault_spec.dart';
 import '../snapshot/sim_snapshot.dart' show AlarmPriority;
 import 'alarms.dart';
@@ -68,13 +70,28 @@ class ControlDesign {
   /// Tier 2 data (M4): design top pressure (Pa), CW capacity (kg/s), initial duty (W) and the clean steam-valve
   /// scale Q_max,0 (W), tray count, instrumented trays, the TC-101 tray and the PC-101 set point (Pa).
   final double pTopDesign, cwMaxFlow, dutyDesign, qMax0, cwDesign;
+
+  /// dT_bub/dP of the design distillate (K/Pa), for TI-100's process sigma.
+  final double dTbubDp;
   final int nTrays, tc101Tray;
   /// Partial condenser (PHYSICS.md 7.2, 10.7): PC-101 drives the vapour-product valve PV-102 (full scale [dvMax] mol/s,
   /// start OP [dvOp] %) and the CW valve sits at [cwManualOp] %.
   final bool partial;
   final double dvMax, dvOp, cwManualOp;
   final List<int> trays;
+
+  /// Flow and duty ranges (PHYSICS.md 2.3 "Lever ranges"): the B-T values, or 0 to 2 x the preset default. kmol/h, W.
+  final double feedMax, refluxMax, boilupMax, dutyMax;
+
+  /// Thermosyphon reboiler geometry (null: kettle) and the sump height (m).
+  final ThermosyphonGeometry? thermosyphon;
   const ControlDesign({
+    this.feedMax = 250,
+    this.refluxMax = 300,
+    this.boilupMax = 300,
+    this.dutyMax = 3.0e6,
+    this.thermosyphon,
+    this.dTbubDp = 3.2e-4,
     this.partial = false,
     this.dvMax = 0,
     this.dvOp = 20,
@@ -125,6 +142,11 @@ class ControlSystem {
   double _lastGoodRatioSp = 0;
 
   // convenience handles
+  /// dT_bub/dP (K/Pa) used by [_updateProcSigma].
+  double dTbubDp = 3.2e-4;
+
+  /// FT-103 / FV-103 range: boilup (mol/s, Tier 1) and duty (W, Tiers 2/3).
+  double boilupMax = 300 * _kmolh, dutyMax = 3.0e6;
   late final Valve fv101, fv102, fv103, lv101, lv102;
   late final Instrument ft101,
       ft102,
@@ -160,6 +182,13 @@ class ControlSystem {
   double pDesign = 101325;
   static const double rhoWater = 995.0;
   bool modelRelief = false, modelDutyLimited = false;
+
+  /// Thermosyphon loop (null for a kettle, PHYSICS.md 8.3) and the column conditions the stepper freezes for it at
+  /// the start of every main step: sump level (%), sump height (m), fouling resistance (K/W), flooded fraction, the
+  /// F17/F18 loss increments, the inlet valve opening (%). [modelTsIs] is the last instability index (alarm).
+  ThermosyphonLoop? ts;
+  double tsLevelPct = 50, tsSumpHeight = 2.4, tsRfK = 0, tsFFlooded = 0, tsKInAdd = 0, tsKOutAdd = 0;
+  double tsInletOp = 100, modelTsIs = 0;
 
   /// PC-101 gain schedule: Kc is scaled by OP / [pcScheduleOp] below that opening (never below [pcScheduleMin]).
   static const double pcScheduleOp = 35.0, pcScheduleMin = 0.1;
@@ -216,6 +245,9 @@ class ControlSystem {
   /// Last mean flows of the fast layer (mol/s): feed, reflux, boilup, distillate, bottoms.
   final Float64List meanFlows = Float64List(5);
 
+  /// Mean of the steam-side duty Q_k over the sub-steps (W, Tiers 2/3): what FT-103 measures.
+  double meanSteamQ = 0;
+
   /// Moles per 1 % of drum and sump level at the design state (PHYSICS.md 14.6: C1, C3, C5).
   double n01 = 307, ns1 = 236;
 
@@ -235,9 +267,9 @@ class ControlSystem {
   factory ControlSystem.bt(ControlDesign d, int seed) {
     Valve valve(String id, double fMax, double flow) =>
         Valve(id, fMax, seed, op: fMax > 0 ? 100 * flow / fMax : 0);
-    final fv101 = valve('FV-101', 250 * _kmolh, d.feedFlow);
-    final fv102 = valve('FV-102', 300 * _kmolh, d.refluxFlow);
-    final fv103 = valve('FV-103', 300 * _kmolh, d.boilup);
+    final fv101 = valve('FV-101', d.feedMax * _kmolh, d.feedFlow);
+    final fv102 = valve('FV-102', d.refluxMax * _kmolh, d.refluxFlow);
+    final fv103 = valve('FV-103', d.boilupMax * _kmolh, d.boilup);
     final lv101 = valve('LV-101', d.dMax, d.distillate);
     final lv102 = valve('LV-102', d.bMax, d.bottoms);
 
@@ -291,9 +323,9 @@ class ControlSystem {
               resolution: 1e-4,
             ),
             seed: seed);
-    final ft101 = ft('FT-101', 250),
-        ft102 = ft('FT-102', 300),
-        ft103 = ft('FT-103', 300),
+    final ft101 = ft('FT-101', d.feedMax),
+        ft102 = ft('FT-102', d.refluxMax),
+        ft103 = ft('FT-103', d.boilupMax),
         ft104 = ft('FT-104', 100),
         ft105 = ft('FT-105', 100);
     final lt101 = lt('LT-101', InstrumentType.ltDrum, 0.5, 5);
@@ -364,9 +396,9 @@ class ControlSystem {
           sp: sp,
           op: v.position,
         );
-    final fc101 = fc('FC-101', ft101, fv101, d.feedFlow, 250 * _kmolh);
-    final fc102 = fc('FC-102', ft102, fv102, d.refluxFlow, 300 * _kmolh);
-    final fc103 = fc('FC-103', ft103, fv103, d.boilup, 300 * _kmolh);
+    final fc101 = fc('FC-101', ft101, fv101, d.feedFlow, d.feedMax * _kmolh);
+    final fc102 = fc('FC-102', ft102, fv102, d.refluxFlow, d.refluxMax * _kmolh);
+    final fc103 = fc('FC-103', ft103, fv103, d.boilup, d.boilupMax * _kmolh);
     final lc101 = lc('LC-101', lt101, lv101, d.drumLevelSp);
     final lc102 = lc('LC-102', lt102, lv102, d.sumpLevelSp);
     // FT-104 and FT-105 are moved by the level loops acting on the level noise: sigma_typ = sqrt(sigma_disp^2 + (Kc sigma_LT F_max/span)^2)
@@ -496,6 +528,10 @@ class ControlSystem {
       ..pv101 = pv101
       ..cwValve = cwValve
       ..partial = d.partial
+      ..boilupMax = d.boilupMax * _kmolh
+      ..dutyMax = d.dutyMax
+      ..dTbubDp = d.dTbubDp
+      ..ts = d.thermosyphon == null ? null : ThermosyphonLoop(d.thermosyphon!)
       ..cwManualOp = d.cwManualOp
       ..pt101 = pt101
       ..pt201 = pt201
@@ -736,6 +772,12 @@ class ControlSystem {
 
   /// Validates an F19/F28/F20 fault before it is accepted (ConfigException on a mismatch).
   void validateFault(FaultSpec s) {
+    if (s.type == FaultType.tsInletRestriction || s.type == FaultType.tsOutletRestriction) {
+      if (ts == null) {
+        throw ConfigException('F17 and F18 need a thermosyphon reboiler (reboilerType 1)');
+      }
+      return;
+    }
     final tag = s.location.tagName;
     if (tag == null) throw ConfigException('Fault needs a tag location');
     if (s.type == FaultType.valve) {
@@ -797,7 +839,7 @@ class ControlSystem {
   void runFastLayer(double dt, double t) {
     time = t;
     final nc = math.max(1, (dt / deltaC).round());
-    var s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0, sCw = 0.0, sDv = 0.0;
+    var s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0, sCw = 0.0, sDv = 0.0, sSteam = 0.0;
     for (var k = 0; k < nc; k++) {
       final tk = t + k * deltaC;
       // 1. valves in the fixed order, then the transmitter on each line
@@ -805,7 +847,19 @@ class ControlSystem {
       ft101.update(deltaC, f0, tk);
       final f1 = fv102.step(deltaC, fc102.op, noise);
       ft102.update(deltaC, f1, tk);
-      final f2 = fv103.step(deltaC, fc103.op, noise);
+      var f2 = fv103.step(deltaC, fc103.op, noise);
+      var f2col = f2;
+      final loop = tier2 ? ts : null;
+      if (loop != null) {
+        // PHYSICS.md 8.3.4: one loop sub-step with the valve's request; FT-103 measures the steam-side Q_k, the column
+        // gets Q_k (1 + u_k)
+        loop.substep(deltaC, f2, tsLevelPct, tsSumpHeight, tsInletOp,
+            rfK: tsRfK, fFlooded: tsFFlooded, kInAdd: tsKInAdd, kOutAdd: tsKOutAdd);
+        f2 = loop.q;
+        f2col = loop.qDelivered;
+        fv103.flow = f2;
+        modelTsIs = loop.iS;
+      }
       ft103.update(deltaC, f2, tk);
       final f3 = lv101.step(deltaC, lc101.op, noise);
       ft104.update(deltaC, f3, tk);
@@ -813,7 +867,8 @@ class ControlSystem {
       ft105.update(deltaC, f4, tk);
       s0 += f0;
       s1 += f1;
-      s2 += f2;
+      s2 += f2col;
+      sSteam += f2;
       s3 += f3;
       s4 += f4;
       if (tier2) {
@@ -853,6 +908,7 @@ class ControlSystem {
     meanFlows[0] = s0 / nc;
     meanFlows[1] = s1 / nc;
     meanFlows[2] = s2 / nc;
+    meanSteamQ = sSteam / nc;
     meanFlows[3] = s3 / nc;
     meanFlows[4] = s4 / nc;
     meanCw = sCw / nc;
@@ -920,9 +976,23 @@ class ControlSystem {
       _runTc101(dt, t);
     }
     _pushLoops();
+    if (tier2) _updateProcSigma();
     alarms.update(dt, t);
     trends?.advance(t);
     time = t;
+  }
+
+  /// Process-driven typical sigma of PT-101, TI-100, FT-201 and TI-202 (PHYSICS.md 10.5), from 300-s window means of
+  /// the readings and PC-101's mode: sigma_typ = sqrt(sigma_disp^2 + sigma_proc^2). [impl-tunable]: 0.0015 and 0.022.
+  void _updateProcSigma() {
+    final sigP = 0.0015 * pc101.sp;
+    pt101.procSigma = sigP;
+    ti100.procSigma = dTbubDp * sigP;
+    final cF = pc101.mode == LoopMode.man ? 0.010 : 0.022;
+    final f = ft201.mean5min();
+    ft201.procSigma = f.isNaN ? 0 : cF * f.abs();
+    final rise = ti202.mean5min() - ti201.mean5min();
+    ti202.procSigma = rise.isNaN ? 0 : cF * rise.abs();
   }
 
   /// The true value an instrument measures.
@@ -947,13 +1017,13 @@ class ControlSystem {
   /// Number of trays N (for the sump TI and the stage-temperature table).
   int trayCount = 20;
 
-  static InstrumentSpec ft103Spec(bool t2) => InstrumentSpec(
+  InstrumentSpec ft103Spec(bool t2) => InstrumentSpec(
         tag: 'FT-103',
         type: t2 ? InstrumentType.ftSteam : InstrumentType.ftLiquid,
         measures: 'valve.flow',
         quantity: t2 ? Quantity.energyRate : Quantity.molarFlow,
         lo: 0,
-        hi: t2 ? 3.0e6 : 300 * _kmolh,
+        hi: t2 ? dutyMax : boilupMax,
         tauM: 0.5,
         sigmaS: 0.50,
         tauS: 1,
@@ -979,7 +1049,7 @@ class ControlSystem {
     fc103.hi = ft103.spec.hi;
     fc103.spLo = 0;
     fc103.spHi = ft103.spec.hi;
-    fv103.fMax = t2 ? math.max(fv103.fMax, 1.0) : 300 * _kmolh;
+    fv103.fMax = t2 ? math.max(fv103.fMax, 1.0) : boilupMax;
   }
 
   /// T2 <-> T3 switch with a total condenser (PHYSICS.md 13.5): puts the CW valve and PC-101's OP, bumplessly,
@@ -1054,7 +1124,7 @@ class ControlSystem {
     fc103.hi = ft103.spec.hi;
     fc103.spLo = 0;
     fc103.spHi = ft103.spec.hi;
-    fv103.fMax = 300 * _kmolh;
+    fv103.fMax = boilupMax;
     fv103.init(100 * boilup / fv103.fMax);
     fc103.op = fv103.position;
     fc103.sp = boilup;
@@ -1222,6 +1292,8 @@ class ControlSystem {
         (a) => tier2 && modelRelief);
     add('model.dutyLimited', AlarmPriority.medium, 60, 30,
         'Reboiler duty limited by heat transfer', (a) => tier2 && modelDutyLimited);
+    add('model.tsUnstable', AlarmPriority.medium, 30, 30, 'Thermosyphon surging (instability index above 1)',
+        (a) => tier2 && ts != null && modelTsIs > (a ? 0.98 : 1.0));
     for (final at in [at101, at102]) {
       final t = at.spec.tag;
       add('$t.HI', AlarmPriority.medium, 5, 10, '$t impurity high',
@@ -1311,6 +1383,8 @@ class ControlSystem {
         'tc101Enabled': tc101Enabled,
         'tc101Pv': tc101.pvTag,
         'cwScale': cwScale,
+        if (ts != null) 'ts': ts!.toJson(),
+        'tsInletOp': tsInletOp,
         if (partial) 'cwManualOp': cwManualOp,
         if (partial) 'cwValve': cwValve.toJson(),
         'loops': {for (final l in loops) l.tag: l.toJson()},
@@ -1337,6 +1411,11 @@ class ControlSystem {
     final pv = j['tc101Pv'] as String?;
     if (pv != null && _inst.containsKey(pv)) tc101.pvTag = pv;
     cwScale = (j['cwScale'] as num?)?.toDouble() ?? 1.0;
+    if (ts != null && j['ts'] != null) {
+      ts!.loadJson(j['ts']! as Map<String, Object?>);
+      modelTsIs = ts!.iS;
+    }
+    tsInletOp = (j['tsInletOp'] as num?)?.toDouble() ?? 100;
     if (partial) {
       cwManualOp = (j['cwManualOp'] as num?)?.toDouble() ?? cwManualOp;
       final cv = j['cwValve'];

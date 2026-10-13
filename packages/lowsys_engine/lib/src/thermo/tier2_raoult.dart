@@ -5,6 +5,7 @@ import '../config/column_config.dart';
 import '../core/ids.dart';
 import 'component.dart';
 import 'thermo_model.dart';
+import 'tier3_depriester.dart';
 
 /// Gas constant (J/mol/K).
 const double gasR = 8.314462618;
@@ -131,8 +132,31 @@ class Tier2Raoult implements ThermoModel {
     if (!ok || !(t > 100) || t.isNaN) {
       health.bubbleFallbacks++;
       var lo = 150.0, hi = 900.0;
-      for (final c in comps) {
-        hi = math.min(hi, 0.98 * c.tc);
+      // Lee-Kesler and DePriester stay valid above 0.98 Tc (PHYSICS.md 3.6.1): bracket to 900 K for them
+      if (!_wideBracket) {
+        for (final c in comps) {
+          hi = math.min(hi, 0.98 * c.tc);
+        }
+      }
+      if (_noSignChange((tt) {
+        kAt(tt, p, x, xo, _tmp1, 0);
+        var sm = 0.0;
+        for (var i = 0; i < n; i++) {
+          sm += _tmp1[i] * x[xo + i];
+        }
+        return sm - 1;
+      }, lo, hi)) {
+        // no bracket: keep the best Newton iterate and say so
+        health.thermoOutOfRange = true;
+        if (!(t > 100) || t.isNaN) t = 0.5 * (lo + hi);
+        s = _sumKx(t, p, x, xo, kOut, ko);
+        den = lastDen;
+        lastS = s;
+        lastDen = den;
+        for (var i = 0; i < n; i++) {
+          yOut[yo + i] = kOut[ko + i] * x[xo + i] / s;
+        }
+        return t;
       }
       for (var it = 0; it < 80; it++) {
         final mid = 0.5 * (lo + hi);
@@ -163,6 +187,11 @@ class Tier2Raoult implements ThermoModel {
   double bubbleT(double p, Float64List x, double tGuess, Float64List yOut,
           Float64List kOut, SolverHealth health) =>
       bubbleAt(p, x, 0, tGuess, yOut, 0, kOut, 0, health);
+
+  /// True when the fallback bracket must extend to 900 K (Lee-Kesler vapour pressures or DePriester K).
+  bool get _wideBracket => this is Tier3DePriester || comps.any((c) => c.vpKind == VaporPressureKind.leeKesler);
+
+  static bool _noSignChange(double Function(double) f, double lo, double hi) => f(lo) * f(hi) > 0;
 
   /// Temperature at which sum y_i / K_i(T, [x]) = 1 for a fixed liquid composition [x] (Newton, bisection fallback).
   double _dewInner(double p, Float64List y, Float64List x, double tGuess,
@@ -198,8 +227,22 @@ class Tier2Raoult implements ThermoModel {
     if (!ok) {
       health.bubbleFallbacks++;
       var lo = 150.0, hi = 900.0;
-      for (final c in comps) {
-        hi = math.min(hi, 0.98 * c.tc);
+      // Lee-Kesler and DePriester stay valid above 0.98 Tc (PHYSICS.md 3.6.1): bracket to 900 K for them
+      if (!_wideBracket) {
+        for (final c in comps) {
+          hi = math.min(hi, 0.98 * c.tc);
+        }
+      }
+      if (_noSignChange((tt) {
+        kAt(tt, p, x, 0, _tmp1, 0);
+        var sm = 0.0;
+        for (var i = 0; i < n; i++) {
+          sm += y[i] / _tmp1[i];
+        }
+        return sm - 1;
+      }, lo, hi)) {
+        health.thermoOutOfRange = true;
+        return (t > 100 && !t.isNaN) ? t : 0.5 * (lo + hi);
       }
       for (var it = 0; it < 80; it++) {
         final mid = 0.5 * (lo + hi);

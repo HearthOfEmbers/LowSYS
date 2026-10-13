@@ -608,7 +608,7 @@ class ColumnLivePainter extends CustomPainter {
     const wall = 4.0;
     final sel = selected.value;
 
-    final plant = s.view == SimView.plant;
+    final plant = s.view.isPlant;
     final isa = theme.column.gaugeStyle == GaugeStyle.bargraph;
     _solidLiquid = theme.column.liquidStyle != LiquidStyle.hatch;
     final t2 = s.tier != ThermoTier.t1;
