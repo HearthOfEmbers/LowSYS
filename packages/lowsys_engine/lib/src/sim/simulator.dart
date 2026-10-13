@@ -288,7 +288,7 @@ class Simulator {
           sumpLevelSp: config.control.sumpLevelSp,
           levelKc: config.control.levelKc,
           levelTi: config.control.levelTi,
-          pTopDesign: inp.pTopInit,
+          pTopDesign: config.condenser.pTopDesign,
           cwMaxFlow: config.condenser.cwMaxFlow,
           dutyDesign: _dutyLever,
           nTrays: N,
@@ -2366,7 +2366,11 @@ class Simulator {
     _faults.apply(_state.time, _ep, _inputs.z);
     _control.loadJson(d['control']! as Map<String, Object?>);
     _stepper.refreshFromHoldups();
-    _stepper.refreshVapour();
+    if (_stepper.tier2 && _state.thermoLoaded) {
+      _stepper.t2RestoreDerived();
+    } else {
+      _stepper.refreshVapour();
+    }
     _stepper.bus.drumLevelPct = _stepper.drumLevelPct;
     _stepper.bus.sumpLevelPct = _stepper.sumpLevelPct;
     _debug.dt = 0;
