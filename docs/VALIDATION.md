@@ -753,7 +753,14 @@ The prototype's cold start reaches this state in 3.5 h of sim time. The engine r
   - bottom steam 0 and 5000 kg/h;
   - TC-301 SP 90 and 160 °C;
   - P_top 1.0 and 2.5 bar(a).
-- *Fault extremes.* For F24 s = 1, F25 s = 1 and F26 s = 1, `solverHealth.bubbleFallbacks` and `negativeLatent` stay 0, and energy closure stays ≤ 1×10⁻³ relative to Q_C + Q_PA (F24 s = 1 runs stages 27–30 vapour-free, PHYSICS.md §9.3; so does the bottom-steam-0 lever extreme, which takes the same check). `negativeClamps` is recorded; a non-zero count goes to DEVIATIONS.md.
+- *Fault extremes.* For F24 s = 1, F25 s = 1 and F26 s = 1, `solverHealth.bubbleFallbacks` and `negativeLatent` stay 0, and energy closure stays ≤ 1×10⁻³ relative to Q_C + Q_PA (F24 s = 1 runs stages 27–30 vapour-free, PHYSICS.md §9.3; so does the bottom-steam-0 lever extreme, which takes the same check). `negativeClamps` (episodes, PHYSICS.md §12.7) is recorded; a non-zero count goes to DEVIATIONS.md.
+  - **F24 s = 1 and bottom steam 0, at steady state (spec ruling M9-coder, 2026-10-13).** The tolerance stays 1×10⁻³; the 3×10⁻³ that M10 proposed is rejected (DEVIATIONS.md "Spec rulings M9-coder/M10").
+    - `runToSteadyState` reaches steady state.
+    - Stages 27–30 are within 0.02 K of the stage-26 liquid temperature and stay so over the final hour; the stripping section is vapour-free with an unchanged x and no heat source.
+    - Energy closure ≤ 1×10⁻³ relative to Q_C + Q_PA, checked at three times 20 min apart.
+    - Material closure ≤ 1×10⁻⁴ (as VC-15.4).
+    - No stage holdup is ever raised by the film floor: Σ M changes only by the net flows.
+    - `negativeClamps` does not increase over the final hour; the wash trays 22–25 run liquid-limited (§9.3), which is not counted.
 - *No alternation.* No stage temperature alternates in sign between consecutive steps for more than 20 steps after any VC-15.5 onset. This checks the ỹ_w filter of PHYSICS.md §9.3.
 
 ## VC-16 Controllers [I] / [P]
