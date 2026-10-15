@@ -228,7 +228,7 @@ cd app && flutter test                   # app tests (golden images are made on 
 
 ### Making a release
 
-Every pull request builds all five platforms in GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)); the files are on the run's summary page. Pushing a tag such as `v0.1.0` also publishes them as a GitHub Release.
+Every pull request builds all five platforms in GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)); the files are on the run's summary page. Pushing a tag such as `v0.1.0` also publishes them as a GitHub Release. If a platform fails (macOS runners are sometimes unavailable), the release still goes out with the rest; run the workflow again on the tag (**Actions > Build and release > Run workflow**, pick the tag) to add the missing files.
 
 ## Contributing and extending
 
