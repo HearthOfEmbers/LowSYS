@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../theme/lowsys_theme.dart';
+import 'steampunk.dart';
 
 /// Static drafting-paper backdrop: minor/major ruled grid, paper grain and vignette.
 /// Cheap by construction: lines only, painted once into a RepaintBoundary and re-painted only when
@@ -15,6 +16,7 @@ class BlueprintBackdropPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final p = theme.palette;
     canvas.drawRect(Offset.zero & size, Paint()..color = p.bg);
+    if (theme.effects.rivets) paintBrassBackdrop(canvas, size, p);
     if (theme.effects.blueprintGrid) {
       const step = 16.0;
       final minor = Paint()
@@ -74,6 +76,10 @@ class SheetFramePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p = theme.palette;
+    if (theme.effects.rivets) {
+      paintBrassFrame(canvas, size, p);
+      return;
+    }
     final outer = Rect.fromLTWH(0.5, 0.5, size.width - 1, size.height - 1);
     canvas.drawRect(
         outer,
