@@ -1,8 +1,146 @@
+<div align="center">
+
 # LowSYS
 
-An interactive distillation column simulator built to teach how distillation works, from vapour-liquid equilibrium on a single tray up to full column behaviour: McCabe-Thiele, tray and packed hydraulics, control loops, faults, a crude unit, and guided scenarios and drills.
+**A distillation column you can break on purpose.**
 
-LowSYS is free for students, teachers and anyone else to use, study, modify and share. See [License](#license).
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/runs%20on-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-informational)
+![Price](https://img.shields.io/badge/price-%240.00-brightgreen)
+![Real columns harmed](https://img.shields.io/badge/real%20columns%20harmed-0-success)
+
+[**Download**](../../releases/latest) · [What you'll learn](#what-youll-learn) · [Themes](#pick-your-vibe) · [For instructors](#for-instructors) · [Install](#install) · [FAQ](#faq)
+
+<img src="docs/screenshots/readme/hero_control_room.png" alt="LowSYS in the Control Room theme: a benzene-toluene column on the left, a live McCabe-Thiele diagram in the middle, and condenser, reboiler and energy balance readouts on the right" width="900">
+
+<sub>Control Room theme, six minutes in, load just bumped 15 %. The stairs are still catching up with the operating lines.</sub>
+
+<sub>LowSYS is an independent student project, not affiliated with AspenTech. See [Trademarks](#trademarks).</sub>
+
+</div>
+
+## What is this
+
+LowSYS is a free, interactive distillation column simulator built for learning. You get a live column, a live McCabe-Thiele diagram that redraws itself as the column moves, and a pile of levers. Push reflux, starve the reboiler, flood the trays, then watch exactly *why* things went sideways, down to the equation.
+
+It goes from vapour-liquid equilibrium on a single tray up to full column behaviour: tray and packed hydraulics, control loops, alarms, faults, azeotropes, a multicomponent debutanizer and a crude unit, plus guided scenarios and hidden-fault drills.
+
+Textbooks show you a column at steady state. Real columns are never at steady state. LowSYS lets you feel the difference without anyone setting a real one on fire.
+
+<img src="docs/screenshots/readme/phone_phosphor.png" alt="LowSYS on a phone in portrait, Phosphor theme" width="200" align="right">
+
+**Why students use it**
+
+- **It shows its work.** Tap a tray, hit **Equations**, and you get every balance and correlation behind that tray with the live numbers plugged in.
+- **It's honest about the physics.** Three thermodynamic tiers, from textbook constant-alpha up to NRTL, so you can see exactly what the simplifying assumptions hide (and when they lie to you).
+- **Breaking it is the point.** Inject a fault in the sandbox, or let a drill hide one and play detective with noisy instruments, like an actual plant.
+- **It runs on your phone.** Every layout works from a 360 px portrait phone up to a desktop. Study on the bus. Flood a column in the dining hall.
+- **It works offline.** No accounts, no sign-in, no licence server. Download it once and it's yours.
+- **It costs nothing, forever.** AGPL-licensed, so no one can ever paywall it. Not even us.
+
+## Your first ten minutes
+
+1. [Install it](#install) (about two minutes, most of which is clicking past an "unrecognised app" warning).
+2. Open **Learn** and play **G1, Meet the column**. Watch it reach steady state and find the feed tray on the McCabe-Thiele diagram.
+3. Play **G2, Minimum reflux**. Lower the reflux until the column can't hold its purity anymore. That pinch at the q-line? That's R_min. You just derived it with your hands.
+4. Open the **Sandbox**, crank the feed rate, and watch the trays flood. Back it off before the flood % goes red.
+5. Feeling brave? Try a **Diagnose** drill. Something is broken. The game won't tell you what.
+
+## What you'll learn
+
+Sixteen guided scenarios, each with a briefing, objectives, hints, a score and a debrief. They line up with what a separations or unit-ops course covers.
+
+| Course topic | Scenarios |
+|---|---|
+| McCabe-Thiele, stages, feed tray | G1 Meet the column, G5 Where to feed |
+| Minimum reflux, total reflux, Fenske | G2 Minimum reflux, G3 Total reflux and Fenske |
+| Feed condition and the q-line | G4 The q-line |
+| Tray efficiency | G6 Real trays (Murphree) |
+| Energy balances, constant molar overflow | G7 What CMO hides |
+| Pressure and relative volatility | G8 Pressure and volatility |
+| Azeotropes and non-ideal VLE | G9 The azeotrope wall, G10 The other azeotrope |
+| Tray hydraulics: flooding and weeping | G11 Flooding, G12 Turndown and weeping |
+| Multicomponent shortcut design (FUG) | G13 Debutanizer keys and FUG |
+| Reboilers and thermosyphon stability | G14 Thermosyphon tuning |
+| Packed columns, HETP, pressure drop | G15 Packing retrofit |
+| Crude fractionation, cut points and gaps | G16 Crude cut points and gaps |
+
+Then there are the **ten hidden-fault drills** (H1 to H10). The game picks one fault at random from a list, hides it, and turns on measurement noise. You get the plant's instruments, the levers and your brain. Diagnose the category and location before product goes off-spec. Some drills include a decoy where nothing is broken and the feed just changed, so jumping to conclusions costs points. Two of them, *Don't trust the gauge* and *Bad valve or bad meter?*, are about instruments that lie, which is the most real-plant lesson in here.
+
+There's also a **Library** of short concept cards (minimum reflux, weeping, azeotropes and more), each linked to the scenario that demonstrates it.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/readme/g11_flooding_profiles.png" alt="G11 Flooding: the Profiles tab shows the flood percentage of every tray, with trays 10 to 20 past the 100 percent line"></td>
+<td width="50%"><img src="docs/screenshots/readme/math_overlay.png" alt="Math overlay for tray 7, showing the material balance, equilibrium, Murphree and tray hydraulics equations with the live numbers substituted in"></td>
+</tr>
+<tr>
+<td><sub><b>G11 Flooding.</b> 175 % throughput, and everything below the feed is past 100 % of flood. The column has given up. Back off.</sub></td>
+<td><sub><b>Show your work.</b> Tap a tray, hit Equations, and every number for that tray is traced back to its equation, with the values plugged in.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/readme/g9_azeotrope_txy.png" alt="G9 The azeotrope wall: T-x-y diagram for ethanol-water with the azeotrope marked at x = 0.8956 and 78.14 degrees C"></td>
+<td><img src="docs/screenshots/readme/h9_drill.png" alt="H9 drill: noisy trends for FT-102 and LT-101 in plant view, with Diagnose and Hint buttons"></td>
+</tr>
+<tr>
+<td><sub><b>G9 The azeotrope wall.</b> Ethanol-water stops at 0.8956 no matter how much reflux you throw at it. Tier 1 will happily tell you otherwise.</sub></td>
+<td><sub><b>H9 Don't trust the gauge.</b> One instrument might be lying, or none. Noisy trends, plant view only, two guesses.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/readme/library.png" alt="The Library: concept cards for minimum reflux, total reflux and Fenske, the q-line and more"></td>
+<td><img src="docs/screenshots/readme/crude_brass.png" alt="The crude unit flowsheet in the Brass theme: a riveted brass column with side strippers, pumparounds and a furnace"></td>
+</tr>
+<tr>
+<td><sub><b>The Library.</b> The backstory behind every scenario, one tap from the scenario itself.</sub></td>
+<td><sub><b>G16 Crude cut points and gaps.</b> A whole crude unit with side strippers and pumparounds, in its natural habitat: the Brass theme.</sub></td>
+</tr>
+</table>
+
+## Pick your vibe
+
+Six themes, same column, same moment, same physics. Switch any time in Settings.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/readme/theme_blueprint.png" alt="Blueprint theme"><br><sub><b>Blueprint</b>: drafting-table nostalgia. Hand-ruled grids, hatched liquid, pencil-yellow highlights.</sub></td>
+<td width="50%"><img src="docs/screenshots/readme/theme_controlRoom.png" alt="Control Room theme"><br><sub><b>Control Room</b>: DCS night shift. Follows ISA-101, so colour only shows up when something is wrong.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/readme/theme_phosphor.png" alt="Phosphor theme"><br><sub><b>Phosphor</b>: green-screen terminal. Your column, but make it 1983.</sub></td>
+<td><img src="docs/screenshots/readme/theme_paper.png" alt="Paper theme"><br><sub><b>Paper</b>: looks like the textbook figure, except it moves.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/readme/theme_brass.png" alt="Brass theme"><br><sub><b>Brass</b>: steamworks refinery. Riveted plating, walnut panelling and dial gauges you want to tap with a wrench.</sub></td>
+<td><img src="docs/screenshots/readme/theme_spd.png" alt="SPD theme in red and gold"><br><sub><b>SPD</b>: red and gold. Dressed for the occasion.</sub></td>
+</tr>
+</table>
+
+Blueprint, Control Room and Paper were tuned to pass a colour-blind safety check, so the important colours stay distinct for everyone.
+
+## For instructors
+
+LowSYS is built to be assigned.
+
+- **Every scenario is scored** (objectives, time, safety and product quality) and ends with a debrief, so "play G4 and screenshot your debrief" is a complete homework question.
+- **Drills are seeded and graded.** Students submit a diagnosis and get a score for category, location and time. Wrong guesses cost points, so they have to reason from evidence.
+- **Numbers are checked against the literature.** [docs/VALIDATION.md](docs/VALIDATION.md) lists the test cases, reference values and tolerances, and the engine's test suite runs them.
+- **The model is fully documented.** [docs/PHYSICS.md](docs/PHYSICS.md) has every equation, which makes it a decent companion reading for a separations course.
+- **Write your own.** Scenarios and drills are plain JSON. [docs/EXTENDING.md](docs/EXTENDING.md) shows how to add scenarios, drills, faults, column presets and themes for your course.
+- **No accounts, no licences, no IT ticket.** Students download it and run it on whatever they own, phones included.
+
+## FAQ
+
+**Is it accurate enough to check my homework against?**
+
+For textbook problems, yes: the Tier 1 scenarios use the same constant-alpha, constant-molar-overflow assumptions as most textbooks, and the reference numbers are tested in [docs/VALIDATION.md](docs/VALIDATION.md). Your answer still has to be your own work, sadly.
+
+**Does it need the internet?**
+
+No. There are no accounts and nothing phones home.
+
+**Why "LowSYS"?**
+
+It was the first thing I thought of.
 
 ## Install
 
@@ -88,9 +226,9 @@ cd app && flutter test                   # app tests (golden images are made on 
 
 Every pull request builds all five platforms in GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)); the files are on the run's summary page. Pushing a tag such as `v0.1.0` also publishes them as a GitHub Release.
 
-## Extending LowSYS
+## Contributing and extending
 
-[docs/EXTENDING.md](docs/EXTENDING.md) explains how to add themes, scenarios and drills, column presets, faults, levers, components and panels, with the files to change and the tests to run.
+Found a bug, a wrong number or a confusing hint? Open an issue. Want to add something? [docs/EXTENDING.md](docs/EXTENDING.md) explains how to add themes, scenarios and drills, column presets, faults, levers, components and panels, with the files to change and the tests to run.
 
 ## Specification
 

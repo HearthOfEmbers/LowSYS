@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:lowsys_engine/lowsys_engine.dart';
 
 import '../theme/lowsys_theme.dart';
+import 'effects/steampunk.dart';
 import 'column_geometry.dart';
 import 'packed_painter.dart';
 import '../theme/painter_text.dart';
@@ -184,7 +185,11 @@ class ColumnVesselPainter extends CustomPainter {
         math.max(side, side + dir * wall),
         g.sumpBot + 2,
       );
-      _hatch(canvas, r, p.steel, 3.2, 0.7, alpha: 0.55);
+      if (theme.effects.rivets) {
+        paintBrassWall(canvas, r, math.max(10.0, g.spacing * 2), p);
+      } else {
+        _hatch(canvas, r, p.steel, 3.2, 0.7, alpha: 0.55);
+      }
       canvas.drawLine(
         Offset(side, g.yT0 - 2),
         Offset(side, g.sumpBot + 2),
@@ -206,6 +211,11 @@ class ColumnVesselPainter extends CustomPainter {
       ..quadraticBezierTo(g.shellR, bot, g.shellR, g.sumpBot + 2);
     canvas.drawPath(topHead, steel);
     canvas.drawPath(botHead, steel);
+    if (theme.effects.rivets) {
+      for (var j = 5; j < trays; j += 5) {
+        paintCollar(canvas, g.shellL - wall, g.shellR + wall, g.deckY(j) + g.spacing * 0.5, p);
+      }
+    }
     // flange ticks between shell and heads
     for (final y in [g.yT0 - 2, g.sumpBot + 2]) {
       canvas.drawLine(
@@ -310,6 +320,7 @@ class ColumnVesselPainter extends CustomPainter {
       pipe,
     );
     // condenser: circle with zig-zag tube
+    if (theme.effects.rivets) paintRivetRing(canvas, g.condCenter, g.condR, p);
     canvas.drawCircle(g.condCenter, g.condR, steel);
     final zz = Path()..moveTo(g.condCenter.dx - g.condR * 0.7, g.condCenter.dy);
     for (var i = 0; i < 4; i++) {
@@ -375,6 +386,7 @@ class ColumnVesselPainter extends CustomPainter {
     final by = g.sumpBot - (g.sumpBot - g.sumpTop) * 0.18;
     canvas.drawLine(Offset(g.shellL - wall, by), Offset(6, by), pipe);
     final rb = g.reboilerCenter;
+    if (theme.effects.rivets) paintRivetRing(canvas, rb, g.reboilerR, p);
     canvas.drawCircle(rb, g.reboilerR, steel);
     final coil = Path()..moveTo(rb.dx - g.reboilerR * 0.7, rb.dy);
     for (var i = 0; i < 4; i++) {
@@ -1179,6 +1191,15 @@ class ColumnLivePainter extends CustomPainter {
         if (t2) {
           _tagBubble(canvas, Offset(g.condCenter.dx + g.condR + 17, g.condCenter.dy), 'PC-101', loopOf('PC-101'), theme);
         }
+      }
+    }
+
+    // ---- Brass: dial gauges for the drum and sump levels (parchment faces, red zone above 85 %)
+    if (theme.column.gaugeStyle == GaugeStyle.dial && !narrow) {
+      final rd = math.min(13.0, g.drum.height * 0.5);
+      paintDialGauge(canvas, Offset(dr.right - rd * 0.2, dr.top - rd - 5), rd, s.kpis.drumLevelPct, p, label: 'LI');
+      if (g.shellL > 40) {
+        paintDialGauge(canvas, Offset(g.shellL - wall - rd - 6, g.sumpTop + rd + 2), rd, s.kpis.sumpLevelPct, p, label: 'LI');
       }
     }
 
