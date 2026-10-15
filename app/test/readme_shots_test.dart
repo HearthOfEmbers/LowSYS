@@ -84,7 +84,6 @@ void main() {
     await _throughput(sim, 1.75);
     sim.setSpeed(100);
     await frames(tester, 400);
-    await _shot(tester, key, 'g11_flooding');
     sim.diagramTab.value = 1;
     sim.profileKind.value = 1;
     await frames(tester, 5);
@@ -101,7 +100,6 @@ void main() {
     await frames(tester, 60);
     await tester.tap(find.byIcon(Icons.expand_less).first);
     await frames(tester, 20);
-    await _shot(tester, key, 'g9_azeotrope_mccabe');
     sim.diagramTab.value = 2;
     await frames(tester, 10);
     await _shot(tester, key, 'g9_azeotrope_txy');
