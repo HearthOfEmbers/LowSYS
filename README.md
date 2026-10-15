@@ -108,3 +108,7 @@ LowSYS is licensed under the [GNU Affero General Public License v3.0 or later](L
 In short: anyone may use, study, change and share LowSYS for free, including in classes and courses. If someone distributes a modified version, or runs one as a website or online service, they must release their full source code under the same license. That keeps every version of LowSYS open, so nobody can turn it into a closed, paywalled product.
 
 The physical property data and correlations come from the published literature cited in [docs/PHYSICS.md](docs/PHYSICS.md) §17. The bundled fonts are under the SIL Open Font License 1.1; their license texts are in [app/assets/fonts/LICENSES](app/assets/fonts/LICENSES).
+
+## Trademarks
+
+LowSYS is an independent, free teaching project. It is not affiliated with, endorsed by, or sponsored by Aspen Technology, Inc., and contains no code, data or artwork from HYSYS. HYSYS and Aspen HYSYS are trademarks of Aspen Technology, Inc.
