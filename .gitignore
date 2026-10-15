@@ -37,3 +37,7 @@ app/test/failures/
 docs/STATUS.md
 docs/DEVIATIONS.md
 docs/reports/
+
+# Milestone screenshots are regenerated with LOWSYS_SHOTS=1; only the README set is published
+docs/screenshots/*
+!docs/screenshots/readme/
