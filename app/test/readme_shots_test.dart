@@ -135,6 +135,17 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, skip: !shots);
 
+  testWidgets('crude unit in Brass', (tester) async {
+    final key = GlobalKey();
+    final sim = await _boot(tester, key, theme: 'brass');
+    await tester.runAsync(() => sim.load(Presets.crude));
+    sim.setSpeed(30);
+    await frames(tester, 60);
+    await _shot(tester, key, 'crude_brass');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  }, skip: !shots);
+
   testWidgets('Library', (tester) async {
     final key = GlobalKey();
     await _boot(tester, key, theme: 'spd');
