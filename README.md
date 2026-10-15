@@ -11,9 +11,9 @@
 
 [**Download**](../../releases/latest) · [What you'll learn](#what-youll-learn) · [Install](#install) · [For instructors](#for-instructors) · [Themes](#pick-your-vibe)
 
-<img src="docs/screenshots/m4/desktop_1440x900_control_room.png" alt="LowSYS in the Control Room theme: a benzene-toluene column on the left, a live McCabe-Thiele diagram in the middle, condenser and reboiler readouts on the right, and a pressure deviation alarm across the top" width="900">
+<img src="docs/screenshots/readme/hero_control_room.png" alt="LowSYS in the Control Room theme: a benzene-toluene column on the left, a live McCabe-Thiele diagram in the middle, and condenser, reboiler and energy balance readouts on the right" width="900">
 
-<sub>Control Room theme, six minutes into a run, already one alarm deep. Situation: normal.</sub>
+<sub>Control Room theme, six minutes in, load just bumped 15 %. The stairs are still catching up with the operating lines.</sub>
 
 <sub>LowSYS is an independent student project, not affiliated with AspenTech. See [Trademarks](#trademarks).</sub>
 
@@ -68,38 +68,46 @@ There's also a **Library** of short concept cards (minimum reflux, weeping, azeo
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/m8/desktop_1000x700_packed_flooding.png" alt="A packed column flooding in the Blueprint theme, with liquid backing up through the beds and flood at 112 percent"></td>
-<td width="50%"><img src="docs/screenshots/m10/library_1024x768.png" alt="The Library screen listing concept cards such as minimum reflux, the q-line and azeotropes"></td>
+<td width="50%"><img src="docs/screenshots/readme/g11_flooding_profiles.png" alt="G11 Flooding: the Profiles tab shows the flood percentage of every tray, with trays 10 to 20 past the 100 percent line"></td>
+<td width="50%"><img src="docs/screenshots/readme/math_overlay.png" alt="Math overlay for tray 7, showing the material balance, equilibrium, Murphree and tray hydraulics equations with the live numbers substituted in"></td>
 </tr>
 <tr>
-<td><sub>Packed column at 112 % of flood. The column has given up. Back off the feed.</sub></td>
-<td><sub>The Library: the backstory behind every scenario.</sub></td>
+<td><sub><b>G11 Flooding.</b> 175 % throughput, and everything below the feed is past 100 % of flood. The column has given up. Back off.</sub></td>
+<td><sub><b>Show your work.</b> Tap a tray, hit Equations, and every number on screen is traced back to the equation and the values that made it.</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/m5/desktop_1440x900_txy_ac_t3.png" alt="T-x-y diagram for acetone-chloroform showing a maximum-boiling azeotrope"></td>
-<td><img src="docs/screenshots/m6/desktop_1440x900_g14_equipment.png" alt="Thermosyphon reboiler equipment tab with circulation, exit quality and instability gauge"></td>
+<td><img src="docs/screenshots/readme/g9_azeotrope_txy.png" alt="G9 The azeotrope wall: T-x-y diagram for ethanol-water with the azeotrope marked at x = 0.8956 and 78.14 degrees C"></td>
+<td><img src="docs/screenshots/readme/h9_drill.png" alt="H9 drill: noisy trends for FT-102 and LT-101 in plant view, with Diagnose and Hint buttons"></td>
 </tr>
 <tr>
-<td><sub>Acetone-chloroform. The azeotrope that refuses to leave out the top.</sub></td>
-<td><sub>Thermosyphon tuning. The reboiler is surging and it's your problem now.</sub></td>
+<td><sub><b>G9 The azeotrope wall.</b> Ethanol-water stops at 0.8956 no matter how much reflux you throw at it. Tier 1 will happily tell you otherwise.</sub></td>
+<td><sub><b>H9 Don't trust the gauge.</b> One instrument might be lying, or none. Noisy trends, plant view only, two guesses.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/readme/library.png" alt="The Library: concept cards for minimum reflux, total reflux and Fenske, the q-line and more"></td>
+<td align="center"><img src="docs/screenshots/readme/phone_phosphor.png" alt="LowSYS on a phone in portrait, Phosphor theme" width="220"></td>
+</tr>
+<tr>
+<td><sub><b>The Library.</b> The backstory behind every scenario, one tap from the scenario itself.</sub></td>
+<td><sub><b>Pocket-sized.</b> The whole simulator fits a phone in portrait.</sub></td>
 </tr>
 </table>
 
 ## Pick your vibe
 
-Six themes, all drawing the same physics. Switch any time in Settings.
+Six themes, same column, same moment, same physics. Switch any time in Settings.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/m9/desktop_1440x900_crude_blueprint.png" alt="Blueprint theme"><br><sub><b>Blueprint</b>: drafting-table nostalgia. Hand-ruled grids, hatched liquid, pencil-yellow highlights.</sub></td>
-<td width="50%"><img src="docs/screenshots/m4/desktop_1440x900_control_room_loops.png" alt="Control Room theme"><br><sub><b>Control Room</b>: DCS night shift. Follows ISA-101, so colour only shows up when something is wrong.</sub></td>
+<td width="50%"><img src="docs/screenshots/readme/theme_blueprint.png" alt="Blueprint theme"><br><sub><b>Blueprint</b>: drafting-table nostalgia. Hand-ruled grids, hatched liquid, pencil-yellow highlights.</sub></td>
+<td width="50%"><img src="docs/screenshots/readme/theme_controlRoom.png" alt="Control Room theme"><br><sub><b>Control Room</b>: DCS night shift. Follows ISA-101, so colour only shows up when something is wrong.</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/m7/desktop_1440x900_phosphor_products.png" alt="Phosphor theme"><br><sub><b>Phosphor</b>: green-screen terminal. Your column, but make it 1983.</sub></td>
-<td><img src="docs/screenshots/m5/desktop_1440x900_paper_mccabe.png" alt="Paper theme"><br><sub><b>Paper</b>: looks like the textbook figure, except it moves.</sub></td>
+<td><img src="docs/screenshots/readme/theme_phosphor.png" alt="Phosphor theme"><br><sub><b>Phosphor</b>: green-screen terminal. Your column, but make it 1983.</sub></td>
+<td><img src="docs/screenshots/readme/theme_paper.png" alt="Paper theme"><br><sub><b>Paper</b>: looks like the textbook figure, except it moves.</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/m9/desktop_1440x900_crude_brass.png" alt="Brass theme"><br><sub><b>Brass</b>: steampunk refinery. Gauges you want to tap with a wrench.</sub></td>
+<td><img src="docs/screenshots/readme/theme_brass.png" alt="Brass theme"><br><sub><b>Brass</b>: steampunk refinery. Gauges you want to tap with a wrench.</sub></td>
 <td><img src="docs/screenshots/readme/theme_spd.png" alt="SPD theme in red and gold"><br><sub><b>SPD</b>: red and gold. Dressed for the occasion.</sub></td>
 </tr>
 </table>

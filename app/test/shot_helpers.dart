@@ -30,7 +30,8 @@ Future<void> loadFonts() async {
       }
     }
   }
-  await load('MaterialIcons', 'C:/dev/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+  final flutterRoot = Platform.environment['FLUTTER_ROOT'] ?? 'C:/dev/flutter';
+  await load('MaterialIcons', '$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
   await load('Architects Daughter', 'assets/fonts/ArchitectsDaughter-Regular.ttf');
   await load('Share Tech Mono', 'assets/fonts/ShareTechMono-Regular.ttf');
   await load('VT323', 'assets/fonts/VT323-Regular.ttf');

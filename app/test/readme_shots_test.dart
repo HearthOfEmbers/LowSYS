@@ -85,7 +85,8 @@ void main() {
     sim.setSpeed(100);
     await frames(tester, 400);
     await _shot(tester, key, 'g11_flooding');
-    sim.diagramTab.value = 2;
+    sim.diagramTab.value = 1;
+    sim.profileKind.value = 1;
     await frames(tester, 5);
     await _shot(tester, key, 'g11_flooding_profiles');
     expect(tester.takeException(), isNull);
@@ -98,8 +99,10 @@ void main() {
     await tester.runAsync(() => sim.startScenario(Scenarios.byId('G9_azeotrope_wall')));
     sim.setSpeed(30);
     await frames(tester, 60);
+    await tester.tap(find.byIcon(Icons.expand_less).first);
+    await frames(tester, 20);
     await _shot(tester, key, 'g9_azeotrope_mccabe');
-    sim.diagramTab.value = 1;
+    sim.diagramTab.value = 2;
     await frames(tester, 10);
     await _shot(tester, key, 'g9_azeotrope_txy');
     expect(tester.takeException(), isNull);
@@ -139,8 +142,6 @@ void main() {
     await frames(tester, 30);
     await tester.tap(find.text(S.menuLibrary));
     await frames(tester, 30);
-    await tester.tap(find.text(S.libraryCards.first.title));
-    await frames(tester, 10);
     await _shot(tester, key, 'library');
     await tester.pumpWidget(const SizedBox());
   }, skip: !shots);
