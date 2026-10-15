@@ -59,7 +59,7 @@ cd app && flutter test test/m10_theme_test.dart
 **Goldens fail on Linux.** The five PNGs in `app/test/goldens/` were made on Windows; on
 Linux `m5_golden_test.dart` and `m10_crude_golden_test.dart` fail with about 2-3 % pixel difference. Do not run `--update-goldens` on them from Linux, and delete the `app/test/failures/` folder a failed
 golden run leaves behind. `test/shot_helpers.dart` `loadFonts` loads the bundled fonts from `assets/fonts/` and skips
-missing files (the MaterialIcons path is a Windows path). Set `LOWSYS_SHOTS=1` only to write screenshots to
+missing files. Set `LOWSYS_SHOTS=1` only to write screenshots to
 `docs/screenshots/`.
 
 ---
