@@ -4,7 +4,7 @@
 
 **A distillation column you can break on purpose.**
 
-*It's HYSYS, but low. Low cost (free). Low stakes (nobody gets fired). And honestly the least painful way to finally get McCabe-Thiele.*
+*Low cost (free). Low stakes (nobody gets fired). And honestly the least painful way to finally get McCabe-Thiele.*
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/runs%20on-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-informational)
@@ -16,8 +16,6 @@
 <img src="docs/screenshots/readme/hero_control_room.png" alt="LowSYS in the Control Room theme: a benzene-toluene column on the left, a live McCabe-Thiele diagram in the middle, and condenser, reboiler and energy balance readouts on the right" width="900">
 
 <sub>Control Room theme, six minutes in, load just bumped 15 %. The stairs are still catching up with the operating lines.</sub>
-
-<sub>LowSYS is an independent student project, not affiliated with AspenTech. See [Trademarks](#trademarks).</sub>
 
 </div>
 
@@ -113,7 +111,7 @@ Six themes, same column, same moment, same physics. Switch any time in Settings.
 </tr>
 <tr>
 <td><img src="docs/screenshots/readme/theme_brass.png" alt="Brass theme"><br><sub><b>Brass</b>: steamworks refinery. Riveted plating, walnut panelling and dial gauges you want to tap with a wrench.</sub></td>
-<td><img src="docs/screenshots/readme/theme_spd.png" alt="SPD theme in red and gold"><br><sub><b>SPD</b>: red and gold. Dressed for the occasion.</sub></td>
+<td><img src="docs/screenshots/readme/theme_spd.png" alt="SPD theme in red and gold"><br><sub><b>SPD</b>: red and gold. Science. Friendship. Duty.</sub></td>
 </tr>
 </table>
 
@@ -136,17 +134,17 @@ LowSYS is built to be assigned.
 
 For textbook problems, yes: the Tier 1 scenarios use the same constant-alpha, constant-molar-overflow assumptions as most textbooks, and the reference numbers are tested in [docs/VALIDATION.md](docs/VALIDATION.md). Your answer still has to be your own work, sadly.
 
-**Is it HYSYS?**
-
-No. It's a teaching tool for one unit operation, built from scratch, with no code or data from HYSYS. It's for building intuition about columns, not for designing a real one. See [Trademarks](#trademarks).
-
 **Does it need the internet?**
 
 No. There are no accounts and nothing phones home.
 
 **Why "LowSYS"?**
 
-Because it's HYSYS, but low.
+It was the first thing I thought of.
+
+**Why does this exist?**
+
+A hermit crab asked me to.
 
 ## Install
 
@@ -252,7 +250,3 @@ LowSYS is licensed under the [GNU Affero General Public License v3.0 or later](L
 In short: anyone may use, study, change and share LowSYS for free, including in classes and courses. If someone distributes a modified version, or runs one as a website or online service, they must release their full source code under the same license. That keeps every version of LowSYS open, so nobody can turn it into a closed, paywalled product.
 
 The physical property data and correlations come from the published literature cited in [docs/PHYSICS.md](docs/PHYSICS.md) §17. The bundled fonts are under the SIL Open Font License 1.1; their license texts are in [app/assets/fonts/LICENSES](app/assets/fonts/LICENSES).
-
-## Trademarks
-
-LowSYS is an independent, free teaching project. Its name is an affectionate nod to Aspen HYSYS, but LowSYS is not affiliated with, endorsed by, or sponsored by Aspen Technology, Inc., and contains no code, data or artwork from HYSYS. HYSYS and Aspen HYSYS are trademarks of Aspen Technology, Inc.
