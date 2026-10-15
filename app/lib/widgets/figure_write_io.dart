@@ -8,8 +8,8 @@ Future<String> writeFigureBytes(Uint8List bytes, String name) async {
   final env = Platform.environment;
   if (Platform.isWindows) {
     final home = env['USERPROFILE'] ?? '.';
-    dir = Directory('$home\Downloads');
-    if (!dir.existsSync()) dir = Directory('$home\Documents');
+    dir = Directory('$home\\Downloads');
+    if (!dir.existsSync()) dir = Directory('$home\\Documents');
   } else if (Platform.isAndroid) {
     dir = Directory('/storage/emulated/0/Android/data/dev.lowsys.lowsys_app/files/figures');
   } else {

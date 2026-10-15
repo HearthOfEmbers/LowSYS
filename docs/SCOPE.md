@@ -50,7 +50,7 @@ Targets: Android first; Windows desktop is the development build; iOS and web la
 | Teaching layers | Math overlay (equation trace), guided scenarios, free sandbox, hidden-fault drills. | M2 (overlay), M3 (scenarios), M6 (drills) |
 | Diagrams | Live McCabe–Thiele (binary and key-component pseudo-binary), T-x-y, profiles (T, x, L, V, flood, ΔP), trends, FUG panel, crude TBP/D86 and gap chart. | M1, M4, M5, M7, M9 |
 | Units | SI and US field units, switchable at runtime. | M2 |
-| Themes | Blueprint, Control Room (DCS), Phosphor CRT, Brass Steamworks, Textbook Paper. | M1, M4, M5, M7, M9 |
+| Themes | Blueprint, Control Room (DCS), Phosphor CRT, Brass Steamworks, Textbook Paper, SPD (Royal Crimson). | M1, M4, M5, M7, M9 |
 
 ---
 
@@ -311,7 +311,7 @@ Typography tokens: `display`, `label`, `number` (tabular figures), `math` (font 
 
 Style switches (enums): `vesselStyle` {outline, flat, bevel, vector}, `liquidStyle` {hatch, gradient, glyph, amber}, `vaporStyle` {circles, glowDots, glyphs, puffs, dots}, `gaugeStyle` {numeric, bargraph, dial}, `lineStyle` {pen, glow, vector, ink}, plus effect flags: `blueprintGrid`, `paperGrain`, `scanlines`, `bloom`, `vignette`, `rivets`, `needlePhysics`, `figureCaptions`, `alarmBlink`.
 
-### 7.2 The five themes
+### 7.2 The six themes
 
 **ok colours (M10, ruled 2026-10-13).** The `ok` colours of Blueprint, Control Room and Paper were changed so that they pass VALIDATION.md U3 (colour-blind safety). Their L* differences under deuteranopia were 12.1, 6.8 and 3.8 and are now 16.7, 17.3 and 20.0, and every U2 ratio still passes. Brass passes unchanged. Phosphor is exempt because its alarm is inverse video with a text label. Blueprint's fifth series colour stays `#7CE0A3`. The values below are the ones in `app/lib/theme/themes/`.
 
@@ -381,6 +381,12 @@ Style switches (enums): `vesselStyle` {outline, flat, bevel, vector}, `liquidSty
   - Figure captions under each diagram, in Source Serif 4 italic, inkMuted: "Figure n — <diagram>, <system>, Tier <k>[ (<model>)], P = <P_top in display units>, t = hh:mm:ss". n is the tab's position (McCabe–Thiele 1, T-x-y 2, Profiles 3, Trends 4, Products 5, Equipment 6). Example: "Figure 2 — T-x-y, ethanol–water, Tier 3 (NRTL), P = 1.013 bar, t = 01:32:10". A "transient" caption (PHYSICS.md §14.1) is appended in accent2.
   - Margin note for the selected tray: a 160-dp box in the diagram's right margin (below the caption on compact layouts), Source Serif 4 italic 12 sp, ink on surface with a hairline inkFaint border, joined to the stage marker by a thin inkMuted leader. Content: "Tray j: T, x, y, y*, L, V" in display units, 4 significant figures.
   - "Export figure": a button in the diagram panel header (Paper only; other themes hide it). It renders that panel's chart and caption, without the app chrome, through `RepaintBoundary.toImage(pixelRatio: 3)` (longest side capped at 4096 px), on an opaque surface background, and writes a PNG named `lowsys_<preset>_<tab>_<hhmmss>.png`. Windows: the Downloads folder (`getDownloadsDirectory()`, falling back to the Documents folder). Android: the app's external files folder `…/Android/data/<package>/files/figures/` (`getExternalStorageDirectory()`; no storage permission needed). A snackbar shows the full path. This adds `path_provider` (flutter.dev) to the app dependencies (§9). A share sheet is not in M5.
+
+**T-6 SPD — "Royal Crimson"** (added after M10)
+- Palette: bg `#3A0F17` (oxblood), bgAlt `#2A0A10`, surface `#531824`, surfaceAlt `#6A2331`, ink `#F7EBD2` (ivory), inkMuted `#DDC49C`, inkFaint `#9E7A6A`, grid `#6B2C39`, gridMajor `#8F4A55`, accent `#E7B94C` (gold), accent2 `#D4A05A`, steel `#D9B35A`, liquidLight `#F0C45A`, liquidHeavy `#B3394A`, froth `#F8E3A8`, vapor `#F1E6D2`, hot `#FF8A4D`, cold `#7FC6D6`, ok `#9BE8BE` (pale mint), warn `#FFA03A`, alarm `#FF2E7E` (hot magenta-pink, set apart from the red ground by hue and lightness), info `#7FC6D6`, selection `#E7B94C`, eqCurve `#F7EBD2`, opLine and opLineCmo `#E7B94C`, qLine `#FF8A4D`, stepLine `#7FC6D6`, diagonal `#B08C78`, pseudoEq `#C9AA8C`, marker `#F7EBD2`; series `#E7B94C` `#5CC8C0` `#F7EBD2` `#F28BA8` `#8FB4F0` `#F08A3E` with dashes solid, 7-3, 2-3, 8-3-2-3, 4-2, 1.5-2.5.
+- Typography: "Cinzel" (titles), "Source Serif 4" (labels), "JetBrains Mono" (numbers), "STIX Two Math" (math).
+- Style switches: vesselStyle flat, liquidStyle gradient, vaporStyle glowDots, gaugeStyle bargraph, lineStyle glow (at most 4 glow strokes). Effects: vignette and alarmBlink on.
+- Contrast: see the test output of `validation_m10_contrast_test.dart`; no exemption.
 
 ### 7.2b T-x-y drawing (all themes, M5)
 

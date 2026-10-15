@@ -1,0 +1,150 @@
+# Builds LowSYS for Linux, Android, Windows, macOS and iOS.
+#  - pull_request / workflow_dispatch: build and keep the files as workflow artifacts.
+#  - push of a tag like v1.0.0: also publish a GitHub Release with every file attached.
+name: Build and release
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.47.7'
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+        working-directory: .
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - name: Package
+        run: tar -czf "$GITHUB_WORKSPACE/LowSYS-linux-x64.tar.gz" -C build/linux/x64/release/bundle .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LowSYS-linux-x64
+          path: LowSYS-linux-x64.tar.gz
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Signed with the debug key (see android/app/build.gradle*), fine for sideloading.
+      - run: flutter build apk --release
+      - name: Package
+        run: cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/LowSYS-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LowSYS-android
+          path: LowSYS-android.apk
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "$env:GITHUB_WORKSPACE/LowSYS-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LowSYS-windows-x64
+          path: LowSYS-windows-x64.zip
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: Package (zip + dmg, both unsigned)
+        run: |
+          APP="$(ls -d build/macos/Build/Products/Release/*.app | head -n1)"
+          # ditto keeps symlinks and permissions inside the .app intact
+          ditto -c -k --keepParent "$APP" "$GITHUB_WORKSPACE/LowSYS-macos.zip"
+          hdiutil create -volname LowSYS -srcfolder "$APP" -ov -format UDZO "$GITHUB_WORKSPACE/LowSYS-macos.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LowSYS-macos
+          path: |
+            LowSYS-macos.zip
+            LowSYS-macos.dmg
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - name: Package unsigned .ipa (an .ipa is just a zip with Payload/Runner.app)
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -qry "$GITHUB_WORKSPACE/LowSYS-ios-unsigned.ipa" Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LowSYS-ios-unsigned
+          path: LowSYS-ios-unsigned.ipa
+
+  # Only on version tags: collect every artifact and attach it to a GitHub Release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, android, windows, macos, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: ls -l dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
