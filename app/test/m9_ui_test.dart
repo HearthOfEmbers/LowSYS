@@ -149,6 +149,15 @@ void main() {
     expect(find.byKey(const ValueKey('lab-note')), findsNothing);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('SPD theme: setTheme(spd) renders the sim screen', (tester) async {
+    final key = GlobalKey();
+    final sim = await _boot(tester, key);
+    await tester.runAsync(() => sim.setTheme('spd'));
+    await frames(tester, 20);
+    expect(tester.takeException(), isNull);
+    expect(sim.themeId.value, 'spd');
+    expect(themeById('spd').name, 'SPD');
+  });
   for (final sz in [const Size(360, 800), const Size(800, 360), const Size(900, 700)]) {
     testWidgets('crude unit lays out without overflow at ${sz.width.toInt()}x${sz.height.toInt()}', (tester) async {
       final key = GlobalKey();
