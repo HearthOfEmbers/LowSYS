@@ -83,7 +83,7 @@ menu, the Material bridge, persistence and the contrast tests all pick a new the
    Courier Prime (400, 700), VT323. Always give `TypeToken` fallback families.
 4. **Check the per-theme branches** (below) and decide whether the new theme needs any of them.
 5. **Run the theme tests** (below). The contrast tests run for every entry of `kThemes` automatically.
-6. **Docs:** add the theme to `docs/SCOPE.md` §7.2 ("The five themes", T-1..T-5) with its tokens, and keep the
+6. **Docs:** add the theme to `docs/SCOPE.md` §7.2 ("The six themes", T-1..T-6; add a T-n block and update the count in the heading and the S-level theme list) with its tokens, and keep the
    VALIDATION.md §U contrast rules satisfied.
 
 No change is needed in `app.dart`, `sim_controller.dart`, `theme_bridge.dart` or `time_bar.dart` to register it.
@@ -155,10 +155,9 @@ rather than a new `id ==` branch. Find them again with
   `settings.theme` to the save store; `restoreSettings()` reads it back.
 - The time-bar menu builds one `CheckedPopupMenuItem` per `kThemes` entry with value `'theme:<id>'`.
 - `themeById(id)` returns `blueprintTheme` for an unknown id.
-- **Boot race:** `main.dart` calls `sim.restoreSettings()` without awaiting it, then `runApp`, and
-  `_LowsysAppState.initState` (`app.dart`) unconditionally sets `themeId` to `widget.theme.id` (Blueprint by
-  default). The saved theme survives only if the store read completes after `initState`. No test covers this. It does
-  not affect adding a theme; fix it (await the restore, or drop the `initState` write) as a separate change.
+- **Boot:** `main.dart` awaits `sim.restoreSettings()` before `runApp` and passes `theme: themeById(sim.themeId.value)`,
+  so `_LowsysAppState.initState` (`app.dart`), which sets `themeId` from `widget.theme.id`, writes back the restored id.
+  Tests that build `LowsysApp` directly choose the theme through the `theme:` argument.
 
 ### Tests
 
