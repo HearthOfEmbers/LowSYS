@@ -32,3 +32,8 @@ docs/.coordinator_heartbeat
 docs/.handoff_now
 .scratch/
 app/test/failures/
+
+# Private working notes (kept locally, not published)
+docs/STATUS.md
+docs/DEVIATIONS.md
+docs/reports/
