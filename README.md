@@ -7,7 +7,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/runs%20on-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-informational)
 ![Price](https://img.shields.io/badge/price-%240.00-brightgreen)
-![Aura](https://img.shields.io/badge/reflux%20aura-%2B1000-gold)
+![Real columns harmed](https://img.shields.io/badge/real%20columns%20harmed-0-success)
 
 [**Download**](../../releases/latest) · [What you'll learn](#what-youll-learn) · [Install](#install) · [For instructors](#for-instructors) · [Themes](#pick-your-vibe)
 
@@ -41,7 +41,7 @@ Textbooks show you a column at steady state. Real columns are never at steady st
 2. Open **Learn** and play **G1, Meet the column**. Watch it reach steady state and find the feed tray on the McCabe-Thiele diagram.
 3. Play **G2, Minimum reflux**. Lower the reflux until the column can't hold its purity anymore. That pinch at the q-line? That's R_min. You just derived it with your hands.
 4. Open the **Sandbox**, crank the feed rate, and watch the trays flood. Back it off before the flood % goes red.
-5. Feeling sigma? Try a **Diagnose** drill. Something is broken. The game won't tell you what.
+5. Feeling brave? Try a **Diagnose** drill. Something is broken. The game won't tell you what.
 
 ## What you'll learn
 
@@ -72,8 +72,8 @@ There's also a **Library** of short concept cards (minimum reflux, weeping, azeo
 <td width="50%"><img src="docs/screenshots/m10/library_1024x768.png" alt="The Library screen listing concept cards such as minimum reflux, the q-line and azeotropes"></td>
 </tr>
 <tr>
-<td><sub>Packed column at 112 % of flood. The column is cooked. Back off the feed.</sub></td>
-<td><sub>The Library: the lore drop for every scenario.</sub></td>
+<td><sub>Packed column at 112 % of flood. The column has given up. Back off the feed.</sub></td>
+<td><sub>The Library: the backstory behind every scenario.</sub></td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/m5/desktop_1440x900_txy_ac_t3.png" alt="T-x-y diagram for acetone-chloroform showing a maximum-boiling azeotrope"></td>
@@ -91,7 +91,7 @@ Six themes, all drawing the same physics. Switch any time in Settings.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/m9/desktop_1440x900_crude_blueprint.png" alt="Blueprint theme"><br><sub><b>Blueprint</b>: drafting table energy. Hand-ruled grids, hatched liquid, pencil-yellow highlights.</sub></td>
+<td width="50%"><img src="docs/screenshots/m9/desktop_1440x900_crude_blueprint.png" alt="Blueprint theme"><br><sub><b>Blueprint</b>: drafting-table nostalgia. Hand-ruled grids, hatched liquid, pencil-yellow highlights.</sub></td>
 <td width="50%"><img src="docs/screenshots/m4/desktop_1440x900_control_room_loops.png" alt="Control Room theme"><br><sub><b>Control Room</b>: DCS night shift. Follows ISA-101, so colour only shows up when something is wrong.</sub></td>
 </tr>
 <tr>
@@ -99,7 +99,7 @@ Six themes, all drawing the same physics. Switch any time in Settings.
 <td><img src="docs/screenshots/m5/desktop_1440x900_paper_mccabe.png" alt="Paper theme"><br><sub><b>Paper</b>: looks like the textbook figure, except it moves.</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/m9/desktop_1440x900_crude_brass.png" alt="Brass theme"><br><sub><b>Brass</b>: steampunk refinery. Gauges with main character energy.</sub></td>
+<td><img src="docs/screenshots/m9/desktop_1440x900_crude_brass.png" alt="Brass theme"><br><sub><b>Brass</b>: steampunk refinery. Gauges you want to tap with a wrench.</sub></td>
 <td><img src="docs/screenshots/readme/theme_spd.png" alt="SPD theme in red and gold"><br><sub><b>SPD</b>: red and gold. Dressed for the occasion.</sub></td>
 </tr>
 </table>
