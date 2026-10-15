@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+  <radialGradient id="bg" cx="50%" cy="35%" r="75%">
+    <stop offset="0" stop-color="#4A3420"/><stop offset="1" stop-color="#1E140C"/>
+  </radialGradient>
+  <linearGradient id="shell" x1="0" x2="1" y1="0" y2="0">
+    <stop offset="0" stop-color="#6E3A16"/><stop offset="0.28" stop-color="#E0A85A"/>
+    <stop offset="0.5" stop-color="#C47A3A"/><stop offset="1" stop-color="#5A2E12"/>
+  </linearGradient>
+  <linearGradient id="band" x1="0" x2="1" y1="0" y2="0">
+    <stop offset="0" stop-color="#8A6420"/><stop offset="0.3" stop-color="#F2CF6E"/>
+    <stop offset="0.6" stop-color="#C89B3C"/><stop offset="1" stop-color="#6E4E18"/>
+  </linearGradient>
+  <linearGradient id="pipe" x1="0" x2="0" y1="0" y2="1">
+    <stop offset="0" stop-color="#E9B46A"/><stop offset="1" stop-color="#8A4E20"/>
+  </linearGradient>
+  <radialGradient id="rivet" cx="35%" cy="35%" r="70%">
+    <stop offset="0" stop-color="#FFF0C0"/><stop offset="1" stop-color="#5A3E12"/>
+  </radialGradient>
+</defs><rect x="16" y="16" width="992" height="992" rx="200" fill="url(#bg)" stroke="#C89B3C" stroke-width="12"/><path d="M864.0,520.0 L909.5,564.8 L902.0,609.0 L844.2,636.3 L829.1,672.7 L850.7,732.8 L824.7,769.4 L760.9,768.9 L731.5,795.2 L724.8,858.7 L685.6,880.4 L628.3,852.2 L590.3,863.2 L556.8,917.5 L512.0,920.0 L472.6,869.8 L433.7,863.2 L379.9,897.6 L338.4,880.4 L324.7,818.0 L292.5,795.2 L229.2,802.8 L199.3,769.4 L214.0,707.3 L194.9,672.7 L134.4,652.1 L122.0,609.0 L162.2,559.4 L160.0,520.0 L114.5,475.2 L122.0,431.0 L179.8,403.7 L194.9,367.3 L173.3,307.2 L199.3,270.6 L263.1,271.1 L292.5,244.8 L299.2,181.3 L338.4,159.6 L395.7,187.8 L433.7,176.8 L467.2,122.5 L512.0,120.0 L551.4,170.2 L590.3,176.8 L644.1,142.4 L685.6,159.6 L699.3,222.0 L731.5,244.8 L794.8,237.2 L824.7,270.6 L810.0,332.7 L829.1,367.3 L889.6,387.9 L902.0,431.0 L861.8,480.6 Z" fill="none" stroke="#C89B3C" stroke-opacity="0.14" stroke-width="22" stroke-linejoin="round"/>
+<g transform="translate(512 512) scale(0.82) translate(-512 -512)">
+  <!-- overhead vapour line -->
+  <path d="M512 150 V114 Q512 88 538 88 H716 Q746 88 746 118 V280" fill="none" stroke="#2A1B0E" stroke-width="50" stroke-linecap="round"/>
+  <path d="M512 150 V114 Q512 88 538 88 H716 Q746 88 746 118 V280" fill="none" stroke="url(#pipe)" stroke-width="34" stroke-linecap="round"/>
+  <rect x="716" y="262" width="60" height="24" rx="6" fill="url(#band)" stroke="#2A1B0E" stroke-width="5"/>
+  <!-- shell -->
+  <path d="M372 860 V280 A140 140 0 0 1 652 280 V860 Z" fill="url(#shell)" stroke="#2A1B0E" stroke-width="10"/>
+  <path d="M414 840 V290 A100 100 0 0 1 462 206" fill="none" stroke="#FFE7A8" stroke-opacity="0.55" stroke-width="14" stroke-linecap="round"/>
+  <rect x="356" y="328" width="312" height="48" rx="8" fill="url(#band)" stroke="#2A1B0E" stroke-width="5"/><rect x="356" y="524" width="312" height="48" rx="8" fill="url(#band)" stroke="#2A1B0E" stroke-width="5"/><rect x="356" y="720" width="312" height="48" rx="8" fill="url(#band)" stroke="#2A1B0E" stroke-width="5"/><circle cx="398" cy="352" r="7" fill="url(#rivet)"/><circle cx="455" cy="352" r="7" fill="url(#rivet)"/><circle cx="512" cy="352" r="7" fill="url(#rivet)"/><circle cx="569" cy="352" r="7" fill="url(#rivet)"/><circle cx="626" cy="352" r="7" fill="url(#rivet)"/><circle cx="398" cy="548" r="7" fill="url(#rivet)"/><circle cx="455" cy="548" r="7" fill="url(#rivet)"/><circle cx="512" cy="548" r="7" fill="url(#rivet)"/><circle cx="569" cy="548" r="7" fill="url(#rivet)"/><circle cx="626" cy="548" r="7" fill="url(#rivet)"/><circle cx="398" cy="744" r="7" fill="url(#rivet)"/><circle cx="455" cy="744" r="7" fill="url(#rivet)"/><circle cx="512" cy="744" r="7" fill="url(#rivet)"/><circle cx="569" cy="744" r="7" fill="url(#rivet)"/><circle cx="626" cy="744" r="7" fill="url(#rivet)"/>
+  <!-- gauge -->
+  <circle cx="512" cy="450" r="70" fill="url(#band)" stroke="#2A1B0E" stroke-width="8"/>
+  <circle cx="512" cy="450" r="50" fill="#E9D8B4" stroke="#2A1B0E" stroke-width="4"/>
+  <path d="M478 466 A38 38 0 0 1 546 466" fill="none" stroke="#3B2A1A" stroke-width="5"/>
+  <line x1="512" y1="450" x2="540" y2="424" stroke="#8B2E1F" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="512" cy="450" r="9" fill="#3B2A1A"/>
+  <!-- skirt + base plate -->
+  <path d="M384 860 L352 912 H672 L640 860 Z" fill="url(#band)" stroke="#2A1B0E" stroke-width="8" stroke-linejoin="round"/>
+  <rect x="306" y="904" width="412" height="30" rx="10" fill="#7A4A22" stroke="#2A1B0E" stroke-width="8"/>
+</g></svg>
