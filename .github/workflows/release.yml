@@ -129,8 +129,10 @@ jobs:
           path: LowSYS-ios-unsigned.ipa
 
   # Only on version tags: collect every artifact and attach it to a GitHub Release.
+  # Runs even if some platforms failed (e.g. no macOS runner was free), so the
+  # release still ships what built; re-run the workflow on the tag to add the rest.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') }}
     needs: [linux, android, windows, macos, ios]
     runs-on: ubuntu-latest
     permissions:
