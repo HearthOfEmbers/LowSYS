@@ -23,7 +23,7 @@ app/                             Flutter app (package lowsys_app)
   lib/controllers/sim_controller.dart   app state, settings, save store
   lib/widgets/, lib/painters/, lib/layout/sim_layout.dart, lib/l10n/strings.dart (class S)
   test/                          widget, contrast and golden tests
-docs/                            SCOPE, PHYSICS, ENGINE_API, VALIDATION (specs), DEVIATIONS, OPEN_ITEMS, STATUS
+docs/                            SCOPE, PHYSICS, ENGINE_API, VALIDATION (specs), OPEN_ITEMS
 ```
 
 ## Golden rules
@@ -40,7 +40,7 @@ docs/                            SCOPE, PHYSICS, ENGINE_API, VALIDATION (specs),
    engine call the app makes must go on `SimRunner` first.
 5. **Specs stay in sync.** `docs/SCOPE.md` (what ships), `docs/ENGINE_API.md` (types and JSON), `docs/PHYSICS.md`
    (equations, data) and `docs/VALIDATION.md` (test cases) describe the product. When you add a module, update the
-   matching section. A deliberate departure from a spec goes in `docs/DEVIATIONS.md` with its reason. Where spec and
+   matching section. Explain a deliberate departure from a spec, with its reason, in the pull request. Where spec and
    code disagree today, the code is the truth (for example `ENGINE_API.md` §1 and §13.1 list files that do not
    exist, such as `component_db.dart`, `settings_controller.dart`, `home_screen.dart`).
 6. **English strings in `S`.** App text goes in `abstract final class S` (`app/lib/l10n/strings.dart`). Engine text
@@ -49,18 +49,17 @@ docs/                            SCOPE, PHYSICS, ENGINE_API, VALIDATION (specs),
 ## Running tests
 
 ```sh
-export PATH=/home/claude/sdk/flutter/bin:$PATH        # Flutter 3.47.7 here; ignore the root warning
+flutter --version                                      # needs Flutter 3.47.7 stable on PATH
 cd packages/lowsys_engine && dart test                 # whole engine suite (long)
 cd packages/lowsys_engine && dart test test/scenario_test.dart
 cd app && flutter test                                 # whole app suite
 cd app && flutter test test/m10_theme_test.dart
 ```
 
-**Goldens fail on Linux.** The five PNGs in `app/test/goldens/` were made on the Windows build machine
-(`docs/STATUS.md`); on Linux `m5_golden_test.dart` and `m10_crude_golden_test.dart` fail with about 2-3 % pixel
-difference. Do not run `--update-goldens` on them from Linux, and delete the `app/test/failures/` folder a failed
+**Goldens fail on Linux.** The five PNGs in `app/test/goldens/` were made on Windows; on
+Linux `m5_golden_test.dart` and `m10_crude_golden_test.dart` fail with about 2-3 % pixel difference. Do not run `--update-goldens` on them from Linux, and delete the `app/test/failures/` folder a failed
 golden run leaves behind. `test/shot_helpers.dart` `loadFonts` loads the bundled fonts from `assets/fonts/` and skips
-missing files (the MaterialIcons path is a Windows path). Set `LOWSYS_SHOTS=1` only to write screenshots to
+missing files. Set `LOWSYS_SHOTS=1` only to write screenshots to
 `docs/screenshots/`.
 
 ---

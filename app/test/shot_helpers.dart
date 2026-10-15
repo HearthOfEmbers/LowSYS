@@ -16,7 +16,8 @@ Future<void> loadFonts() async {
   }
 
   // KaTeX fonts of flutter_math_fork (package assets are not auto-loaded in tests)
-  final cache = Platform.environment['PUB_CACHE'] ?? '${Platform.environment['LOCALAPPDATA']}/Pub/Cache';
+  final cache = Platform.environment['PUB_CACHE'] ??
+      (Platform.isWindows ? '${Platform.environment['LOCALAPPDATA']}/Pub/Cache' : '${Platform.environment['HOME']}/.pub-cache');
   final hosted = Directory('$cache/hosted/pub.dev');
   if (hosted.existsSync()) {
     for (final d in hosted.listSync().whereType<Directory>().where((d) => d.path.contains('flutter_math_fork'))) {
@@ -30,8 +31,10 @@ Future<void> loadFonts() async {
       }
     }
   }
-  final flutterRoot = Platform.environment['FLUTTER_ROOT'] ?? 'C:/dev/flutter';
-  await load('MaterialIcons', '$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+  final flutterRoot = _flutterRoot();
+  if (flutterRoot != null) {
+    await load('MaterialIcons', '$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+  }
   await load('Architects Daughter', 'assets/fonts/ArchitectsDaughter-Regular.ttf');
   await load('Share Tech Mono', 'assets/fonts/ShareTechMono-Regular.ttf');
   await load('VT323', 'assets/fonts/VT323-Regular.ttf');
@@ -65,3 +68,15 @@ Future<void> frames(WidgetTester tester, int n) async {
   }
 }
 
+/// The Flutter SDK running this test: FLUTTER_ROOT if set, else found by walking up from the
+/// test runner binary (it lives under `<root>/bin/cache/artifacts/engine/`).
+String? _flutterRoot() {
+  final env = Platform.environment['FLUTTER_ROOT'];
+  if (env != null && env.isNotEmpty) return env;
+  var dir = File(Platform.resolvedExecutable).parent;
+  while (dir.parent.path != dir.path) {
+    if (Directory('${dir.path}/bin/cache/artifacts').existsSync()) return dir.path;
+    dir = dir.parent;
+  }
+  return null;
+}
